@@ -47,6 +47,8 @@ pub mod boring_vault_svm {
         // 3. Hash target program
         hash_data.extend(target_program_id.as_ref());
 
+        // TODO we also need to hash the accounts, but the instruction parser should probs indicate which ones we need to hash.
+
         // Create final hash
         let hash = hash::hash(&hash_data);
         msg!("Instruction hash: {:?}", hash);
