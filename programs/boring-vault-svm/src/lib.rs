@@ -1,172 +1,160 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::instruction::AccountMeta;
-use anchor_lang::solana_program::{program::invoke, program::invoke_signed};
-
-mod instruction_operators;
-use instruction_operators::*;
+mod state;
+use anchor_lang::system_program;
+use anchor_spl::token_interface;
+use state::*;
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
-
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct SerializableAccount {
-    pub pubkey: Pubkey,
-    pub is_signer: bool,
-    pub is_writable: bool,
-}
 
 #[program]
 pub mod boring_vault_svm {
     use super::*;
 
-    pub fn serialize_operators(
-        _ctx: Context<SerializeOperators>,
-        operators: Vec<Operators>,
-    ) -> Result<()> {
-        let res = operators.try_to_vec()?;
-        msg!("Serialized operators length: {:?}", res.len());
+    pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        config.authority = authority;
+        config.vault_count = 0;
+        config.bump = ctx.bumps.config;
         Ok(())
     }
 
-    pub fn initialize(ctx: Context<Initialize>, deployer: Pubkey) -> Result<()> {
-        ctx.accounts.config.vault_count = 0;
-        ctx.accounts.config.deployer = deployer;
-        Ok(())
-    }
+    pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
+        // Make sure the signer is the authority.
+        require_keys_eq!(ctx.accounts.signer.key(), ctx.accounts.config.authority);
 
-    pub fn deploy(ctx: Context<Deploy>, authority: Pubkey, strategist: Pubkey) -> Result<()> {
-        ctx.accounts.boring_vault.authority = authority;
-        ctx.accounts.boring_vault.strategist = strategist;
+        // Make sure the authority is not the zero address.
+        require_keys_neq!(args.authority, Pubkey::default());
+
+        // Initialize vault.
+        let vault = &mut ctx.accounts.boring_vault;
+        vault.vault_id = ctx.accounts.config.vault_count;
+        vault.authority = args.authority;
+        vault.strategist = args.strategist;
+        vault.share_mint = ctx.accounts.share_mint.key();
+        vault.initialized = true;
+        vault.paused = false;
+
+        // Update program config.
         ctx.accounts.config.vault_count += 1;
+
+        msg!(
+            "Boring Vault deployed successfully with share token {}",
+            ctx.accounts.share_mint.key()
+        );
         Ok(())
     }
 
-    pub fn manage(
-        ctx: Context<Manage>,
-        boring_vault_id: u32,
-        ix_program_id: Pubkey,
-        ix_data: Vec<u8>,
-        operators: Vec<Operators>,
-        expected_size: u16,
-    ) -> Result<()> {
-        // Make sure the signer is the authority
-        require_keys_eq!(
-            ctx.accounts.signer.key(),
-            ctx.accounts.boring_vault.authority
-        );
-        // Create hash digest from instruction data
-        let hash = instruction_decoder_and_sanitizer(
-            &ix_program_id,
-            &ctx.remaining_accounts,
-            &ix_data,
-            &operators,
-            expected_size,
-        )?;
+    pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
+        // Check if we are paused
+        require_eq!(ctx.accounts.boring_vault.paused, false);
 
-        msg!("Instruction hash: {:?}", hash);
+        let amount_in_jito_sol = match args.asset {
+            DepositAsset::Sol => {
+                // Transfer SOL from user to vault
+                system_program::transfer(
+                    CpiContext::new(
+                        ctx.accounts.system_program.to_account_info(),
+                        system_program::Transfer {
+                            from: ctx.accounts.signer.to_account_info(),
+                            to: ctx.accounts.boring_vault.to_account_info(),
+                        },
+                    ),
+                    args.deposit_amount,
+                )?;
 
-        let needs_program_signature = ctx
-            .remaining_accounts
-            .iter()
-            .any(|account| *account.owner == crate::ID && account.is_signer);
+                // TODO: Mint JitoSOL using transferred SOL
+                // This will require adding JitoSOL program accounts to the Deposit context
+                // https://github.com/solana-program/stake-pool/blob/main/program/src/instruction.rs#L363C1-L378C21
+                // example tx https://solscan.io/tx/2xo7GGcUtcz79viby1WW5GXimUW5ctSfynRyXtSardN73ZeUG7gmrZqjTQorNY67hQ5LTWSihyLs2nc5sDYd2eqm
+                // Looks like we litearlly just serialize a 14 u8, then an amount as a u64
+                // 0e40420f0000000000 example instruction
 
-        // Sue remaining accounts to create AccountMeta
-        let accounts = ctx
-            .remaining_accounts
-            .iter()
-            .map(|account| {
-                if account.is_writable {
-                    AccountMeta::new(*account.key, account.is_signer)
-                } else {
-                    AccountMeta::new_readonly(*account.key, account.is_signer)
-                }
-            })
-            .collect();
+                const DEPOSIT_SOL_IX: u8 = 14; // 0x0e in hex
+                let mut instruction_data = vec![DEPOSIT_SOL_IX];
+                instruction_data.extend_from_slice(&args.deposit_amount.to_le_bytes());
 
-        // Create the instruction
-        let ix = anchor_lang::solana_program::instruction::Instruction {
-            program_id: ix_program_id,
-            accounts: accounts,
-            data: ix_data,
+                // Make CPI call to Jito's stake pool program
+                anchor_lang::solana_program::program::invoke(
+                    &anchor_lang::solana_program::instruction::Instruction {
+                        program_id: jito_stake_pool_program_id, // You'll need to add this as a constant
+                        accounts: vec![
+                            // Add required accounts based on Jito's DepositSol instruction
+                            // You'll need to add these to your Deposit context
+                        ],
+                        data: instruction_data,
+                    },
+                    &[/* Add account infos */],
+                )?;
+                let amount = 0;
+                amount
+            }
+            DepositAsset::JitoSol => {
+                // Transfer JitoSOL directly from user
+                token_interface::transfer_checked(
+                    CpiContext::new(
+                        ctx.accounts.token_program.to_account_info(),
+                        token_interface::TransferChecked {
+                            from: ctx
+                                .accounts
+                                .user_jito_sol
+                                .as_ref()
+                                .unwrap()
+                                .to_account_info(),
+                            mint: ctx
+                                .accounts
+                                .jito_sol_mint
+                                .as_ref()
+                                .unwrap()
+                                .to_account_info(),
+                            to: ctx
+                                .accounts
+                                .vault_jito_sol
+                                .as_ref()
+                                .unwrap()
+                                .to_account_info(),
+                            authority: ctx.accounts.signer.to_account_info(),
+                        },
+                    ),
+                    args.deposit_amount,
+                    6, // JitoSOL decimals
+                )?;
+
+                args.deposit_amount
+            }
         };
 
-        if needs_program_signature {
-            invoke_signed(
-                &ix,
-                ctx.accounts.to_account_infos().as_slice(),
+        let shares_to_mint =
+            1000000000 * amount_in_jito_sol / ctx.accounts.boring_vault.exchange_rate;
+
+        // Verify minimum shares
+        require!(
+            shares_to_mint >= args.min_mint_amount,
+            ErrorCode::SlippageExceeded
+        );
+
+        // Mint shares to user
+        token_interface::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token_interface::MintTo {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    to: ctx.accounts.user_shares.to_account_info(),
+                    authority: ctx.accounts.boring_vault.to_account_info(),
+                },
                 &[&[
                     b"boring-vault",
-                    &boring_vault_id.to_le_bytes(),
+                    ctx.accounts.config.key().as_ref(),
+                    &args.vault_id.to_le_bytes()[..],
                     &[ctx.bumps.boring_vault],
                 ]],
-            )
-        } else {
-            invoke(&ix, ctx.accounts.to_account_infos().as_slice())
-        }
-        .map_err(Into::into)
+            ),
+            shares_to_mint,
+        )?;
+        Ok(())
     }
 }
 
-#[derive(Accounts)]
-#[instruction(boring_vault_id: u32)]
-pub struct Manage<'info> {
-    pub signer: Signer<'info>,
-    #[account(
-        mut,
-        seeds = [b"boring-vault", &boring_vault_id.to_le_bytes()],
-        bump,
-    )]
-    pub boring_vault: Account<'info, BoringVault>,
-}
-
-#[derive(Accounts)]
-pub struct SerializeOperators<'info> {
-    pub payer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct Deploy<'info> {
-    #[account(
-        mut,
-        seeds = [b"boring-vault-config"],
-        bump,
-    )]
-    pub config: Account<'info, BoringVaultConfig>,
-    #[account(
-        init,
-        payer = signer,
-        space = 8 + 32 + 32,
-        seeds = [b"boring-vault", &config.vault_count.to_le_bytes()[..], &[0u8; 28]],
-        bump,
-    )]
-    pub boring_vault: Account<'info, BoringVault>,
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(
-        init,
-        payer = signer,
-        space = 8 + 32 + 4,
-        seeds = [b"boring-vault-config"],
-        bump,
-    )]
-    pub config: Account<'info, BoringVaultConfig>,
-    #[account(mut)]
-    pub signer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[account]
-pub struct BoringVaultConfig {
-    deployer: Pubkey, // Who can deploy new vaults.
-    vault_count: u32, // Number of vaults deployed.
-}
-
-#[account]
-pub struct BoringVault {
-    authority: Pubkey,
-    strategist: Pubkey,
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Slippage tolerance exceeded")]
+    SlippageExceeded,
 }
