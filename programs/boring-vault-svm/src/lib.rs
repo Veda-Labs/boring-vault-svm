@@ -10,7 +10,9 @@ mod error;
 use error::*;
 mod constants;
 use constants::*;
+use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
+
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
@@ -25,6 +27,7 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    // Need to set all the other state
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
         // Make sure the signer is the authority.
         require_keys_eq!(ctx.accounts.signer.key(), ctx.accounts.config.authority);
@@ -40,6 +43,8 @@ pub mod boring_vault_svm {
         vault.config.initialized = true;
         vault.config.paused = false;
 
+        vault.teller.exchange_rate = 1000000000;
+
         // Update program config.
         ctx.accounts.config.vault_count += 1;
 
@@ -50,10 +55,30 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    // TODO this could check that the decimals is correct by making a cpi
+    pub fn update_asset_data(
+        ctx: Context<UpdateAssetData>,
+        args: UpdateAssetDataArgs,
+    ) -> Result<()> {
+        let asset_data = &mut ctx.accounts.asset_data;
+        asset_data.decimals = args.asset_data.decimals;
+        asset_data.allow_deposits = args.asset_data.allow_deposits;
+        asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
+        asset_data.share_premium_bps = args.asset_data.share_premium_bps;
+        asset_data.price_feed = args.asset_data.price_feed;
+        asset_data.inverse_price_feed = args.asset_data.inverse_price_feed;
+        Ok(())
+    }
+
+    // TODO so Option accounts still take up TX space, so maybe it would be better to have 2 deposit functions?
     pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
         // Handle transferring the deposit asset into the vault.
+        let mut deposit_is_base_asset = false;
         match &ctx.accounts.deposit_mint {
             Some(mint) => {
+                if mint.key() == ctx.accounts.boring_vault.teller.base_asset.key() {
+                    deposit_is_base_asset = true;
+                }
                 let user_ata = ctx.accounts.user_ata.as_ref().unwrap();
                 let vault_ata = ctx.accounts.vault_ata.as_ref().unwrap();
                 // Accepting a Token2022
@@ -73,6 +98,9 @@ pub mod boring_vault_svm {
                 )?;
             }
             None => {
+                if NATIVE.key() == ctx.accounts.boring_vault.teller.base_asset.key() {
+                    deposit_is_base_asset = true;
+                }
                 // Accepting native SOL
                 // Transfer SOL from user to vault
                 system_program::transfer(
@@ -88,25 +116,38 @@ pub mod boring_vault_svm {
             }
         }
 
-        // Query price feed.
-        let feed_account = ctx.accounts.price_feed.data.borrow();
-        let feed = PullFeedAccountData::parse(feed_account).unwrap();
+        let shares_to_mint;
+        let exchange_rate = ctx.accounts.boring_vault.teller.exchange_rate;
+        if deposit_is_base_asset {
+            shares_to_mint = args.deposit_amount / exchange_rate;
+        } else {
+            // Query price feed.
+            let feed_account = ctx.accounts.price_feed.data.borrow();
+            let feed = PullFeedAccountData::parse(feed_account).unwrap();
 
-        let price = match feed.value() {
-            Some(value) => value,
-            None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
-        };
-        msg!("Price: {:?}", price);
+            let mut price = match feed.value() {
+                Some(value) => value,
+                None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
+            };
+            msg!("Price: {:?}", price);
 
-        // if ctx.accounts.asset_data.inverse_price_feed {
-        //     price = PRECISION / price;
-        // }
+            if ctx.accounts.asset_data.inverse_price_feed {
+                price = Decimal::from(PRECISION).checked_div(price).unwrap(); // 1 / price
+            }
 
-        // For now dont factor in the share price just mint 1:1 with whatever they deposit.
+            let mut deposit_amount = Decimal::from(args.deposit_amount);
+            deposit_amount.set_scale(ctx.accounts.asset_data.decimals as u32);
+            let mut exchange_rate = Decimal::from(exchange_rate);
+            exchange_rate.set_scale(ctx.accounts.asset_data.decimals as u32);
+            let shares_to_mint = deposit_amount
+                .checked_div(price.checked_mul(exchange_rate).unwrap())
+                .unwrap();
+
+            let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();
+            msg!("Shares to mint: {:?}", shares_to_mint);
+        }
 
         let shares_to_mint = args.deposit_amount;
-        // let shares_to_mint =
-        //     1000000000 * amount_in_jito_sol / ctx.accounts.boring_vault.exchange_rate;
 
         // Verify minimum shares
         require!(
@@ -189,6 +230,39 @@ pub struct Deploy<'info> {
 
     pub system_program: Program<'info, System>,
     pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: UpdateAssetDataArgs)]
+pub struct UpdateAssetData<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    // State
+    pub config: Account<'info, ProgramConfig>,
+    #[account(
+        mut,
+        seeds = [b"boring-vault", config.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault: Account<'info, BoringVault>,
+    pub system_program: Program<'info, System>,
+
+    /// CHECK: can be zero account, or a Token2022 mint
+    pub asset: AccountInfo<'info>,
+
+    #[account(
+        init_if_needed,
+        payer = signer,
+        space = 8 + std::mem::size_of::<AssetData>(),
+        seeds = [
+            b"asset-data",
+            boring_vault.key().as_ref(),
+            asset.key().as_ref(),
+        ],
+        bump
+    )]
+    pub asset_data: Account<'info, AssetData>,
 }
 
 #[derive(Accounts)]

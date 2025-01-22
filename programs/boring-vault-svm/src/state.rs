@@ -56,6 +56,12 @@ pub struct DeployArgs {
 // =============================== Deposit ===============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct UpdateAssetDataArgs {
+    pub vault_id: u64,
+    pub asset_data: AssetData,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct DepositArgs {
     pub vault_id: u64,
     pub deposit_amount: u64,
@@ -63,6 +69,7 @@ pub struct DepositArgs {
 }
 
 #[account]
+#[derive(Debug)]
 pub struct AssetData {
     pub decimals: u8,
     pub allow_deposits: bool,

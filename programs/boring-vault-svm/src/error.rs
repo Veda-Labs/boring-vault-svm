@@ -14,4 +14,8 @@ pub enum BoringErrorCode {
     VaultPaused,
     #[msg("Invalid price feed")]
     InvalidPriceFeed,
+    #[msg("Not authorized")]
+    NotAuthorized,
+    #[msg("Math overflow")]
+    MathOverflow,
 }

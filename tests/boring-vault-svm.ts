@@ -40,6 +40,10 @@ describe("boring-vault-svm", () => {
   let boringVaultAccount: anchor.web3.PublicKey;
   let boringVaultShareMint: anchor.web3.PublicKey;
   let userJitoSolAta: anchor.web3.PublicKey;
+  let vaultJitoSolAta: anchor.web3.PublicKey;
+  let jitoSolAssetDataPda: anchor.web3.PublicKey;
+  let solAssetDataPda: anchor.web3.PublicKey;
+  let userShareAta: anchor.web3.PublicKey;
   
   const PROJECT_DIRECTORY = "";
   const SWITCHBOARD_ON_DEMAND_PROGRAM_ID = new anchor.web3.PublicKey("SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv");
@@ -105,6 +109,17 @@ describe("boring-vault-svm", () => {
   
     context.setAccount(ata, ataAccountInfo);
     return ata;
+  }
+
+  // Helper function to get token balance from bankrun
+  async function getTokenBalance(
+    client: BanksClient,
+    tokenAccount: PublicKey
+  ): Promise<bigint> {
+    const account = await client.getAccount(tokenAccount);
+    if (!account) throw new Error("Account not found");
+
+    return AccountLayout.decode(account.data).amount;
   }
 
   before(async () => {
@@ -194,8 +209,27 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
-    userJitoSolAta = await setupATA(context, JITOSOL, user.publicKey, 1000000000000000000);
+    [jitoSolAssetDataPda, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("asset-data"),
+        boringVaultAccount.toBuffer(),
+        JITOSOL.toBuffer(),
+      ],
+      program.programId
+    );
 
+    [solAssetDataPda, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("asset-data"),
+        boringVaultAccount.toBuffer(),
+        anchor.web3.PublicKey.default.toBuffer(),
+      ],
+      program.programId
+    );
+
+    userJitoSolAta = await setupATA(context, JITOSOL, user.publicKey, 1000000000000000000);
+    vaultJitoSolAta = await setupATA(context, JITOSOL, boringVaultAccount, 0);
+    userShareAta = await setupATA(context, boringVaultShareMint, user.publicKey, 0);
   });
 
   it("Is initialized", async () => {
@@ -258,28 +292,184 @@ describe("boring-vault-svm", () => {
     expect(boringVault.config.initialized).to.be.true;
 
   });
+
+  it("Can update asset data", async () => {
+    const ix = await program.methods
+    .updateAssetData(
+      {
+        vaultId: new anchor.BN(0),
+        assetData: {
+          decimals: 9,
+          allowDeposits: true,
+          allowWithdrawals: true,
+          sharePremiumBps: 100,
+          priceFeed: JITOSOL_SOL_ORACLE,
+          inversePriceFeed: false,
+        }
+      }
+    )
+    .accounts({
+      // @ts-ignore
+      config: programConfigAccount,
+      signer: authority.publicKey,
+      boringVault: boringVaultAccount,
+      // @ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
+      asset: JITOSOL,
+      assetData: jitoSolAssetDataPda,
+    })
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult.result).to.be.null;
+
+    const assetData = await program.account.assetData.fetch(jitoSolAssetDataPda);
+    expect(assetData.decimals).to.equal(9);
+    expect(assetData.allowDeposits).to.be.true;
+    expect(assetData.allowWithdrawals).to.be.true;
+    expect(assetData.sharePremiumBps).to.equal(100);
+    expect(assetData.priceFeed.equals(JITOSOL_SOL_ORACLE)).to.be.true;
+    expect(assetData.inversePriceFeed).to.be.false;
+  });
+
+  it("Can deposit SOL into a vault", async () => {
+    const ix_0 = await program.methods
+    .updateAssetData(
+      {
+        vaultId: new anchor.BN(0),
+        assetData: {
+          decimals: 9,
+          allowDeposits: true,
+          allowWithdrawals: true,
+          sharePremiumBps: 100,
+          priceFeed: JITOSOL_SOL_ORACLE,
+          inversePriceFeed: true,
+        }
+      }
+    )
+    .accounts({
+      // @ts-ignore
+      config: programConfigAccount,
+      signer: authority.publicKey,
+      boringVault: boringVaultAccount,
+      // @ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
+      asset: anchor.web3.PublicKey.default,
+      assetData: solAssetDataPda,
+    })
+    .instruction();
+
+    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_0.result).to.be.null;
+
+    const ix_1 = await program.methods
+    .deposit(
+      {
+        vaultId: new anchor.BN(0),
+        depositAmount: new anchor.BN(1000000),
+        minMintAmount: new anchor.BN(0),
+      }
+    )
+    .accounts({
+      // @ts-ignore
+      signer: user.publicKey,
+      config: programConfigAccount,
+      boringVault: boringVaultAccount,
+      depositMint: null,
+      // @ts-ignore
+      userAta: null,
+      vaultAta: null,
+      // @ts-ignore
+      assetData: solAssetDataPda,
+      tokenProgram: TOKEN_2022_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      shareMint: boringVaultShareMint,
+      userShares: userShareAta,
+      priceFeed: JITOSOL_SOL_ORACLE,
+    })
+    .instruction();
+
+    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [user]);
+
+    // Expect the tx to succeed.
+    expect(txResult_1.result).to.be.null;
+
+    const userShareBalance = await getTokenBalance(client, userShareAta);
+    expect(userShareBalance.toString()).to.equal("1000000");
+  });
   
-  // TODO add a method to update asset data, and also define the pda for it
-  // it("Can deposit into a vault", async () => {
-  //   const ix = await program.methods
-  //   .deposit(
-  //     {
-  //       vaultId: 0,
-  //       depositAmount: 1000000000000000000,
-  //       minMintAmount: 0,
-  //     }
-  //   )
-  //   .accounts({
-  //     // @ts-ignore
-  //     config: programConfigAccount,
-  //     boringVault: boringVaultAccount,
-  //     shareMint: boringVaultShareMint,
-  //     signer: user.publicKey,
-  //     systemProgram: anchor.web3.SystemProgram.programId,
-  //     tokenProgram: TOKEN_2022_PROGRAM_ID,
-  //     associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-  //   })
-  //   .instruction();
-  // });
+  it("Can deposit JitoSOL into a vault", async () => {
+    const ix_0 = await program.methods
+    .updateAssetData(
+      {
+        vaultId: new anchor.BN(0),
+        assetData: {
+          decimals: 9,
+          allowDeposits: true,
+          allowWithdrawals: true,
+          sharePremiumBps: 100,
+          priceFeed: JITOSOL_SOL_ORACLE,
+          inversePriceFeed: false,
+        }
+      }
+    )
+    .accounts({
+      // @ts-ignore
+      config: programConfigAccount,
+      signer: authority.publicKey,
+      boringVault: boringVaultAccount,
+      // @ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
+      asset: JITOSOL,
+      assetData: jitoSolAssetDataPda,
+    })
+    .instruction();
+
+    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_0.result).to.be.null;
+
+    const ix_1 = await program.methods
+    .deposit(
+      {
+        vaultId: new anchor.BN(0),
+        depositAmount: new anchor.BN(1000000),
+        minMintAmount: new anchor.BN(0),
+      }
+    )
+    .accounts({
+      // @ts-ignore
+      signer: user.publicKey,
+      config: programConfigAccount,
+      boringVault: boringVaultAccount,
+      depositMint: JITOSOL,
+      // @ts-ignore
+      assetData: jitoSolAssetDataPda,
+      userAta: userJitoSolAta,
+      vaultAta: vaultJitoSolAta,
+      tokenProgram: TOKEN_2022_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      shareMint: boringVaultShareMint,
+      userShares: userShareAta,
+      priceFeed: JITOSOL_SOL_ORACLE,
+    })
+    .instruction();
+
+    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [user]);
+
+    // Expect the tx to succeed.
+    expect(txResult_1.result).to.be.null;
+
+    // We expect this to be 2x the amount because of the prior test making a deposit.
+    const userShareBalance = await getTokenBalance(client, userShareAta);
+    expect(userShareBalance.toString()).to.equal("2000000");
+  });
 });
 
