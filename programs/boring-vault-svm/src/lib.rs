@@ -1,8 +1,16 @@
 use anchor_lang::prelude::*;
 mod state;
 use anchor_lang::system_program;
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token_2022::Token2022;
 use anchor_spl::token_interface;
+use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use state::*;
+mod error;
+use error::*;
+mod constants;
+use constants::*;
+use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
@@ -26,12 +34,11 @@ pub mod boring_vault_svm {
 
         // Initialize vault.
         let vault = &mut ctx.accounts.boring_vault;
-        vault.vault_id = ctx.accounts.config.vault_count;
-        vault.authority = args.authority;
-        vault.strategist = args.strategist;
-        vault.share_mint = ctx.accounts.share_mint.key();
-        vault.initialized = true;
-        vault.paused = false;
+        vault.config.vault_id = ctx.accounts.config.vault_count;
+        vault.config.authority = args.authority;
+        vault.config.share_mint = ctx.accounts.share_mint.key();
+        vault.config.initialized = true;
+        vault.config.paused = false;
 
         // Update program config.
         ctx.accounts.config.vault_count += 1;
@@ -44,11 +51,29 @@ pub mod boring_vault_svm {
     }
 
     pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
-        // Check if we are paused
-        require_eq!(ctx.accounts.boring_vault.paused, false);
-
-        let amount_in_jito_sol = match args.asset {
-            DepositAsset::Sol => {
+        // Handle transferring the deposit asset into the vault.
+        match &ctx.accounts.deposit_mint {
+            Some(mint) => {
+                let user_ata = ctx.accounts.user_ata.as_ref().unwrap();
+                let vault_ata = ctx.accounts.vault_ata.as_ref().unwrap();
+                // Accepting a Token2022
+                // Transfer Token2022 from user to vault
+                token_interface::transfer_checked(
+                    CpiContext::new(
+                        ctx.accounts.token_program.to_account_info(),
+                        token_interface::TransferChecked {
+                            from: user_ata.to_account_info(),
+                            to: vault_ata.to_account_info(),
+                            mint: mint.to_account_info(),
+                            authority: ctx.accounts.signer.to_account_info(),
+                        },
+                    ),
+                    args.deposit_amount,
+                    ctx.accounts.asset_data.decimals,
+                )?;
+            }
+            None => {
+                // Accepting native SOL
                 // Transfer SOL from user to vault
                 system_program::transfer(
                     CpiContext::new(
@@ -60,75 +85,33 @@ pub mod boring_vault_svm {
                     ),
                     args.deposit_amount,
                 )?;
-
-                // TODO: Mint JitoSOL using transferred SOL
-                // This will require adding JitoSOL program accounts to the Deposit context
-                // https://github.com/solana-program/stake-pool/blob/main/program/src/instruction.rs#L363C1-L378C21
-                // example tx https://solscan.io/tx/2xo7GGcUtcz79viby1WW5GXimUW5ctSfynRyXtSardN73ZeUG7gmrZqjTQorNY67hQ5LTWSihyLs2nc5sDYd2eqm
-                // Looks like we litearlly just serialize a 14 u8, then an amount as a u64
-                // 0e40420f0000000000 example instruction
-
-                const DEPOSIT_SOL_IX: u8 = 14; // 0x0e in hex
-                let mut instruction_data = vec![DEPOSIT_SOL_IX];
-                instruction_data.extend_from_slice(&args.deposit_amount.to_le_bytes());
-
-                // Make CPI call to Jito's stake pool program
-                anchor_lang::solana_program::program::invoke(
-                    &anchor_lang::solana_program::instruction::Instruction {
-                        program_id: jito_stake_pool_program_id, // You'll need to add this as a constant
-                        accounts: vec![
-                            // Add required accounts based on Jito's DepositSol instruction
-                            // You'll need to add these to your Deposit context
-                        ],
-                        data: instruction_data,
-                    },
-                    &[/* Add account infos */],
-                )?;
-                let amount = 0;
-                amount
             }
-            DepositAsset::JitoSol => {
-                // Transfer JitoSOL directly from user
-                token_interface::transfer_checked(
-                    CpiContext::new(
-                        ctx.accounts.token_program.to_account_info(),
-                        token_interface::TransferChecked {
-                            from: ctx
-                                .accounts
-                                .user_jito_sol
-                                .as_ref()
-                                .unwrap()
-                                .to_account_info(),
-                            mint: ctx
-                                .accounts
-                                .jito_sol_mint
-                                .as_ref()
-                                .unwrap()
-                                .to_account_info(),
-                            to: ctx
-                                .accounts
-                                .vault_jito_sol
-                                .as_ref()
-                                .unwrap()
-                                .to_account_info(),
-                            authority: ctx.accounts.signer.to_account_info(),
-                        },
-                    ),
-                    args.deposit_amount,
-                    6, // JitoSOL decimals
-                )?;
+        }
 
-                args.deposit_amount
-            }
+        // Query price feed.
+        let feed_account = ctx.accounts.price_feed.data.borrow();
+        let feed = PullFeedAccountData::parse(feed_account).unwrap();
+
+        let price = match feed.value() {
+            Some(value) => value,
+            None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
         };
+        msg!("Price: {:?}", price);
 
-        let shares_to_mint =
-            1000000000 * amount_in_jito_sol / ctx.accounts.boring_vault.exchange_rate;
+        // if ctx.accounts.asset_data.inverse_price_feed {
+        //     price = PRECISION / price;
+        // }
+
+        // For now dont factor in the share price just mint 1:1 with whatever they deposit.
+
+        let shares_to_mint = args.deposit_amount;
+        // let shares_to_mint =
+        //     1000000000 * amount_in_jito_sol / ctx.accounts.boring_vault.exchange_rate;
 
         // Verify minimum shares
         require!(
             shares_to_mint >= args.min_mint_amount,
-            ErrorCode::SlippageExceeded
+            BoringErrorCode::SlippageExceeded
         );
 
         // Mint shares to user
@@ -141,6 +124,7 @@ pub mod boring_vault_svm {
                     authority: ctx.accounts.boring_vault.to_account_info(),
                 },
                 &[&[
+                    // PDA signer seeds for vault
                     b"boring-vault",
                     ctx.accounts.config.key().as_ref(),
                     &args.vault_id.to_le_bytes()[..],
@@ -153,8 +137,166 @@ pub mod boring_vault_svm {
     }
 }
 
-#[error_code]
-pub enum ErrorCode {
-    #[msg("Slippage tolerance exceeded")]
-    SlippageExceeded,
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        init,
+        payer = signer,
+        space = 8 + std::mem::size_of::<ProgramConfig>(),
+        seeds = [b"config"],
+        bump,
+    )]
+    pub config: Account<'info, ProgramConfig>,
+
+    pub system_program: Program<'info, System>,
 }
+
+#[derive(Accounts)]
+#[instruction(args: DeployArgs)]
+pub struct Deploy<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"config"],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, ProgramConfig>,
+
+    #[account(
+        init,
+        payer = signer,
+        space = 8 + std::mem::size_of::<BoringVault>(),
+        seeds = [b"boring-vault", config.key().as_ref(), &config.vault_count.to_le_bytes()[..]],
+        bump,
+    )]
+    pub boring_vault: Account<'info, BoringVault>,
+
+    /// The mint of the share token.
+    #[account(
+        init,
+        payer = signer,
+        mint::decimals = args.decimals,
+        mint::authority = boring_vault.key(),
+        seeds = [b"share-token", boring_vault.key().as_ref()],
+        bump,
+    )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: DepositArgs)]
+pub struct Deposit<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    pub config: Account<'info, ProgramConfig>,
+    #[account(
+        mut,
+        seeds = [b"boring-vault", config.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault.config.paused == false @ BoringErrorCode::VaultPaused
+    )]
+    pub boring_vault: Account<'info, BoringVault>,
+
+    // Deposit asset accounts
+    // Optional Deposit asset mint accont
+    // Some => trying to deposit a Token2022
+    // None => trying to deposit NATIVE
+    pub deposit_mint: Option<InterfaceAccount<'info, Mint>>,
+
+    #[account(
+        seeds = [
+            b"asset-data",
+            boring_vault.key().as_ref(),
+            deposit_mint.as_ref().map_or(NATIVE, |mint| mint.key()).as_ref(),
+        ],
+        bump,
+        constraint = asset_data.allow_deposits @ BoringErrorCode::AssetNotAllowed
+    )]
+    pub asset_data: Account<'info, AssetData>,
+
+    /// User's Token2022 associated token account
+    #[account(
+            mut,
+            associated_token::mint = deposit_mint.as_ref().unwrap(),
+            associated_token::authority = signer,
+            associated_token::token_program = token_program,
+        )]
+    pub user_ata: Option<InterfaceAccount<'info, TokenAccount>>,
+
+    /// Vault's Token2022 associated token account
+    #[account(
+            mut,
+            associated_token::mint = deposit_mint.as_ref().unwrap(),
+            associated_token::authority = boring_vault,
+            associated_token::token_program = token_program,
+        )]
+    pub vault_ata: Option<InterfaceAccount<'info, TokenAccount>>,
+
+    // Programs
+    pub token_program: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    // Share Token
+    /// The vault's share mint
+    #[account(
+            mut,
+            seeds = [b"share-token", boring_vault.key().as_ref()],
+            bump,
+            constraint = share_mint.key() == boring_vault.config.share_mint @ BoringErrorCode::InvalidShareMint
+        )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    /// The user's share token account
+    #[account(
+        init_if_needed,
+        payer = signer,
+        associated_token::mint = share_mint,
+        associated_token::authority = signer,
+        associated_token::token_program = token_program,
+    )]
+    pub user_shares: InterfaceAccount<'info, TokenAccount>,
+
+    // Pricing
+    #[account(
+        constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
+    )]
+    /// CHECK: Checked in the constraint
+    pub price_feed: AccountInfo<'info>,
+}
+
+//         // TODO: Mint JitoSOL using transferred SOL
+//         // This will require adding JitoSOL program accounts to the Deposit context
+//         // https://github.com/solana-program/stake-pool/blob/main/program/src/instruction.rs#L363C1-L378C21
+//         // example tx https://solscan.io/tx/2xo7GGcUtcz79viby1WW5GXimUW5ctSfynRyXtSardN73ZeUG7gmrZqjTQorNY67hQ5LTWSihyLs2nc5sDYd2eqm
+//         // Looks like we litearlly just serialize a 14 u8, then an amount as a u64
+//         // 0e40420f0000000000 example instruction
+
+//         const DEPOSIT_SOL_IX: u8 = 14; // 0x0e in hex
+//         let mut instruction_data = vec![DEPOSIT_SOL_IX];
+//         instruction_data.extend_from_slice(&args.deposit_amount.to_le_bytes());
+
+//         // Make CPI call to Jito's stake pool program
+//         // anchor_lang::solana_program::program::invoke(
+//         //     &anchor_lang::solana_program::instruction::Instruction {
+//         //         program_id: jito_stake_pool_program_id, // You'll need to add this as a constant
+//         //         accounts: vec![
+//         //             // Add required accounts based on Jito's DepositSol instruction
+//         //             // You'll need to add these to your Deposit context
+//         //         ],
+//         //         data: instruction_data,
+//         //     },
+//         //     &[/* Add account infos */],
+//         // )?;
+//         let amount = 0;
+//         amount

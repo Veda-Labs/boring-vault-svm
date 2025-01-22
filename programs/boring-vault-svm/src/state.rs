@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 #[account]
 pub struct ProgramConfig {
@@ -10,15 +9,22 @@ pub struct ProgramConfig {
 
 #[account]
 pub struct BoringVault {
-    // Architecture Config
+    pub config: VaultConfig,
+    pub teller: TellerConfig,
+    pub manager: ManagerConfig,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct VaultConfig {
     pub vault_id: u64,
     pub authority: Pubkey,
     pub paused: bool,
     pub initialized: bool,
-    // Token info
     pub share_mint: Pubkey,
+}
 
-    // Teller Info
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct TellerConfig {
     pub base_asset: Pubkey,
     pub exchange_rate: u64,
     pub exchange_rate_high_water_mark: u64,
@@ -31,26 +37,11 @@ pub struct BoringVault {
     pub minimum_update_delay_in_seconds: u16,
     pub platform_fee_bps: u16,
     pub performance_fee_bps: u16,
-
-    // Manager Info
-    pub strategist: Pubkey,
 }
 
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    #[account(
-        init,
-        payer = signer,
-        space = 8 + std::mem::size_of::<ProgramConfig>(),
-        seeds = [b"config"],
-        bump,
-    )]
-    pub config: Account<'info, ProgramConfig>,
-
-    pub system_program: Program<'info, System>,
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct ManagerConfig {
+    pub strategist: Pubkey,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -62,96 +53,21 @@ pub struct DeployArgs {
     pub decimals: u8,
 }
 
-#[derive(Accounts)]
-#[instruction(args: DeployArgs)]
-pub struct Deploy<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    #[account(
-        mut,
-        seeds = [b"config"],
-        bump = config.bump,
-    )]
-    pub config: Account<'info, ProgramConfig>,
-
-    #[account(
-        init,
-        payer = signer,
-        space = 8 + std::mem::size_of::<BoringVault>(),
-        seeds = [b"boring-vault", config.key().as_ref(), &config.vault_count.to_le_bytes()[..]],
-        bump,
-    )]
-    pub boring_vault: Account<'info, BoringVault>,
-
-    /// The mint of the share token.
-    #[account(
-        init,
-        payer = signer,
-        mint::decimals = args.decimals,
-        mint::authority = boring_vault.key(),
-        seeds = [b"share-token", boring_vault.key().as_ref()],
-        bump,
-    )]
-    pub share_mint: InterfaceAccount<'info, Mint>,
-
-    pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
-}
-
 // =============================== Deposit ===============================
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub enum DepositAsset {
-    Sol,
-    JitoSol,
-}
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct DepositArgs {
     pub vault_id: u64,
-    pub asset: DepositAsset,
     pub deposit_amount: u64,
     pub min_mint_amount: u64,
 }
 
-#[derive(Accounts)]
-#[instruction(args: DepositArgs)]
-pub struct Deposit<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    pub config: Account<'info, ProgramConfig>,
-
-    #[account(
-        mut,
-        seeds = [b"boring-vault", config.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
-        bump,
-    )]
-    pub boring_vault: Account<'info, BoringVault>,
-
-    /// The vault's share mint
-    #[account(
-            mut,
-            seeds = [b"share-token", boring_vault.key().as_ref()],
-            bump
-        )]
-    pub share_mint: InterfaceAccount<'info, Mint>,
-
-    /// The user's share token account
-    #[account(mut)]
-    pub user_shares: InterfaceAccount<'info, TokenAccount>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
-
-    /// User's JitoSOL account
-    #[account(mut)]
-    pub user_jito_sol: Option<InterfaceAccount<'info, TokenAccount>>,
-
-    /// Vault's JitoSOL account
-    #[account(mut)]
-    pub vault_jito_sol: Option<InterfaceAccount<'info, TokenAccount>>,
-
-    /// JitoSOL mint
-    pub jito_sol_mint: Option<InterfaceAccount<'info, Mint>>,
+#[account]
+pub struct AssetData {
+    pub decimals: u8,
+    pub allow_deposits: bool,
+    pub allow_withdrawals: bool,
+    pub share_premium_bps: u16,
+    pub price_feed: Pubkey,
+    pub inverse_price_feed: bool,
 }
