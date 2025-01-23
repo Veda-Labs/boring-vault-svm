@@ -372,6 +372,12 @@ pub struct Deposit<'info> {
     pub price_feed: AccountInfo<'info>,
 }
 
+#[derive(Accounts)]
+pub struct Manage<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+}
+
 //         // TODO: Mint JitoSOL using transferred SOL
 //         // This will require adding JitoSOL program accounts to the Deposit context
 //         // https://github.com/solana-program/stake-pool/blob/main/program/src/instruction.rs#L363C1-L378C21
