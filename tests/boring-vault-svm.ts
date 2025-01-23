@@ -343,7 +343,7 @@ describe("boring-vault-svm", () => {
           decimals: 9,
           allowDeposits: true,
           allowWithdrawals: true,
-          sharePremiumBps: 100,
+          sharePremiumBps: 0,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: true,
         }
@@ -370,7 +370,7 @@ describe("boring-vault-svm", () => {
     .deposit(
       {
         vaultId: new anchor.BN(0),
-        depositAmount: new anchor.BN(1000000),
+        depositAmount: new anchor.BN(1000000000),
         minMintAmount: new anchor.BN(0),
       }
     )
@@ -400,7 +400,7 @@ describe("boring-vault-svm", () => {
     expect(txResult_1.result).to.be.null;
 
     const userShareBalance = await getTokenBalance(client, userShareAta);
-    expect(userShareBalance.toString()).to.equal("1000000");
+    expect(userShareBalance.toString()).to.equal("1000000000");
   });
   
   it("Can deposit JitoSOL into a vault", async () => {
@@ -412,7 +412,7 @@ describe("boring-vault-svm", () => {
           decimals: 9,
           allowDeposits: true,
           allowWithdrawals: true,
-          sharePremiumBps: 100,
+          sharePremiumBps: 0,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
         }
@@ -439,7 +439,7 @@ describe("boring-vault-svm", () => {
     .deposit(
       {
         vaultId: new anchor.BN(0),
-        depositAmount: new anchor.BN(1000000),
+        depositAmount: new anchor.BN(1000000000),
         minMintAmount: new anchor.BN(0),
       }
     )
@@ -467,9 +467,9 @@ describe("boring-vault-svm", () => {
     // Expect the tx to succeed.
     expect(txResult_1.result).to.be.null;
 
-    // We expect this to be 2x the amount because of the prior test making a deposit.
+    // We expect this to be 1 share larger because of the previous deposit.
     const userShareBalance = await getTokenBalance(client, userShareAta);
-    expect(userShareBalance.toString()).to.equal("2000000");
+    expect(userShareBalance.toString()).to.equal("2161245657");
   });
 });
 

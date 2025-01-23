@@ -116,10 +116,22 @@ pub mod boring_vault_svm {
             }
         }
 
-        let shares_to_mint;
+        // TODO not a bad idea to use this Decimal logic for any math we are doing.
         let exchange_rate = ctx.accounts.boring_vault.teller.exchange_rate;
-        if deposit_is_base_asset {
-            shares_to_mint = args.deposit_amount / exchange_rate;
+        let mut deposit_amount = Decimal::from(args.deposit_amount);
+        deposit_amount
+            .set_scale(ctx.accounts.asset_data.decimals as u32)
+            .unwrap();
+        msg!("Deposit amount: {:?}", deposit_amount);
+        let mut exchange_rate = Decimal::from(exchange_rate);
+        exchange_rate
+            .set_scale(ctx.accounts.asset_data.decimals as u32)
+            .unwrap();
+        msg!("Exchange rate: {:?}", exchange_rate);
+
+        let mut shares_to_mint = if deposit_is_base_asset {
+            let res = deposit_amount.checked_mul(exchange_rate).unwrap();
+            res
         } else {
             // Query price feed.
             let feed_account = ctx.accounts.price_feed.data.borrow();
@@ -135,19 +147,30 @@ pub mod boring_vault_svm {
                 price = Decimal::from(PRECISION).checked_div(price).unwrap(); // 1 / price
             }
 
-            let mut deposit_amount = Decimal::from(args.deposit_amount);
-            deposit_amount.set_scale(ctx.accounts.asset_data.decimals as u32);
-            let mut exchange_rate = Decimal::from(exchange_rate);
-            exchange_rate.set_scale(ctx.accounts.asset_data.decimals as u32);
             let shares_to_mint = deposit_amount
-                .checked_div(price.checked_mul(exchange_rate).unwrap())
+                .checked_mul(price)
+                .unwrap()
+                .checked_div(exchange_rate)
                 .unwrap();
+            shares_to_mint
+        };
 
-            let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();
-            msg!("Shares to mint: {:?}", shares_to_mint);
+        // Factor in share premium.
+        if ctx.accounts.asset_data.share_premium_bps > 0 {
+            let mut premium_bps = Decimal::from(ctx.accounts.asset_data.share_premium_bps);
+            premium_bps.set_scale(4).unwrap();
+            let premium_amount = shares_to_mint.checked_mul(premium_bps).unwrap();
+            shares_to_mint = shares_to_mint.checked_sub(premium_amount).unwrap();
         }
 
-        let shares_to_mint = args.deposit_amount;
+        // Scale up to share decimals.
+        // TODO note this uses precision right now which just so happens to be the same as the share decimals, but this is not guaranteed.
+        let shares_to_mint = shares_to_mint
+            .checked_mul(Decimal::from(PRECISION))
+            .unwrap();
+
+        let shares_to_mint = shares_to_mint.try_into().unwrap();
+        msg!("Shares to mint: {:?}", shares_to_mint);
 
         // Verify minimum shares
         require!(
