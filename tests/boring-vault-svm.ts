@@ -195,7 +195,6 @@ describe("boring-vault-svm", () => {
     [boringVaultAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("boring-vault"),
-        programConfigAccount.toBuffer(),
         Buffer.from(new Array(8).fill(0))
       ],
       program.programId
@@ -309,8 +308,6 @@ describe("boring-vault-svm", () => {
       }
     )
     .accounts({
-      // @ts-ignore
-      config: programConfigAccount,
       signer: authority.publicKey,
       boringVault: boringVaultAccount,
       // @ts-ignore
@@ -350,8 +347,6 @@ describe("boring-vault-svm", () => {
       }
     )
     .accounts({
-      // @ts-ignore
-      config: programConfigAccount,
       signer: authority.publicKey,
       boringVault: boringVaultAccount,
       // @ts-ignore
@@ -377,7 +372,6 @@ describe("boring-vault-svm", () => {
     .accounts({
       // @ts-ignore
       signer: user.publicKey,
-      config: programConfigAccount,
       boringVault: boringVaultAccount,
       depositMint: null,
       // @ts-ignore
@@ -419,8 +413,6 @@ describe("boring-vault-svm", () => {
       }
     )
     .accounts({
-      // @ts-ignore
-      config: programConfigAccount,
       signer: authority.publicKey,
       boringVault: boringVaultAccount,
       // @ts-ignore
@@ -446,7 +438,6 @@ describe("boring-vault-svm", () => {
     .accounts({
       // @ts-ignore
       signer: user.publicKey,
-      config: programConfigAccount,
       boringVault: boringVaultAccount,
       depositMint: JITOSOL,
       // @ts-ignore

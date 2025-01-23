@@ -190,7 +190,6 @@ pub mod boring_vault_svm {
                 &[&[
                     // PDA signer seeds for vault
                     b"boring-vault",
-                    ctx.accounts.config.key().as_ref(),
                     &args.vault_id.to_le_bytes()[..],
                     &[ctx.bumps.boring_vault],
                 ]],
@@ -235,7 +234,7 @@ pub struct Deploy<'info> {
         init,
         payer = signer,
         space = 8 + std::mem::size_of::<BoringVault>(),
-        seeds = [b"boring-vault", config.key().as_ref(), &config.vault_count.to_le_bytes()[..]],
+        seeds = [b"boring-vault", &config.vault_count.to_le_bytes()[..]],
         bump,
     )]
     pub boring_vault: Account<'info, BoringVault>,
@@ -261,10 +260,9 @@ pub struct UpdateAssetData<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     // State
-    pub config: Account<'info, ProgramConfig>,
     #[account(
         mut,
-        seeds = [b"boring-vault", config.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
         bump,
         constraint = boring_vault.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
     )]
@@ -295,10 +293,9 @@ pub struct Deposit<'info> {
     pub signer: Signer<'info>,
 
     // State
-    pub config: Account<'info, ProgramConfig>,
     #[account(
         mut,
-        seeds = [b"boring-vault", config.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
         bump,
         constraint = boring_vault.config.paused == false @ BoringErrorCode::VaultPaused
     )]
