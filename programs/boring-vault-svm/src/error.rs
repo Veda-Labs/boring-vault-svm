@@ -20,4 +20,6 @@ pub enum BoringErrorCode {
     MathOverflow,
     #[msg("Invalid CPI digest")]
     InvalidCpiDigest,
+    #[msg("Invalid Account")]
+    InvalidAccounts,
 }

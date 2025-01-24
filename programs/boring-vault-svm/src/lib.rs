@@ -18,8 +18,7 @@ declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
 pub mod boring_vault_svm {
-    use anchor_lang::solana_program;
-    use switchboard_on_demand::prelude::{invoke, invoke_signed};
+    use switchboard_on_demand::prelude::invoke_signed;
 
     use super::*;
 
@@ -242,23 +241,24 @@ pub mod boring_vault_svm {
         msg!("Constructing CPI call");
 
         // Create new Vec<AccountInfo> with replacements
+        let bank_key = ctx.accounts.boring_vault_bank.key();
+        let vault_key = ctx.accounts.boring_vault.key();
         let accounts: Vec<AccountMeta> = ctx
             .remaining_accounts
             .iter()
             .map(|account| {
                 let key = account.key();
-                if key == crate::ID {
-                    if account.is_writable {
-                        AccountMeta::new(ctx.accounts.boring_vault.key(), true)
-                    } else {
-                        AccountMeta::new_readonly(ctx.accounts.boring_vault.key(), true)
-                    }
+                let is_signer = if key == bank_key || key == vault_key {
+                    true // default to true if key is bank or vault
                 } else {
-                    if account.is_writable {
-                        AccountMeta::new(key, account.is_signer)
-                    } else {
-                        AccountMeta::new_readonly(key, account.is_signer)
-                    }
+                    account.is_signer
+                };
+                let is_writable = account.is_writable;
+
+                if is_writable {
+                    AccountMeta::new(key, is_signer)
+                } else {
+                    AccountMeta::new_readonly(key, is_signer)
                 }
             })
             .collect();
@@ -270,19 +270,39 @@ pub mod boring_vault_svm {
             data: args.ix_data,
         };
 
+        msg!("Validating account keys match");
+        for (i, ix_account) in ix.accounts.iter().enumerate() {
+            let remaining_account = &ctx.remaining_accounts[i];
+            if ix_account.pubkey != remaining_account.key() {
+                msg!(
+                    "Account mismatch at index {}: ix account {} != remaining account {}",
+                    i,
+                    ix_account.pubkey,
+                    remaining_account.key()
+                );
+                return Err(BoringErrorCode::InvalidAccounts.into());
+            }
+        }
+
         msg!("Making CPI call");
 
+        let vault_seeds = &[
+            b"boring-vault",
+            &args.vault_id.to_le_bytes()[..],
+            &[ctx.bumps.boring_vault],
+        ];
+        let bank_seeds = &[
+            b"boring-vault-bank",
+            &args.vault_id.to_le_bytes()[..],
+            &[ctx.bumps.boring_vault_bank],
+        ];
+
+        // msg!("ix.accounts {:?}", ix.accounts);
+
+        // msg!("remaining_accounts {:?}", ctx.remaining_accounts);
+
         // Make the CPI call.
-        invoke_signed(
-            &ix,
-            &ctx.remaining_accounts,
-            &[&[
-                // PDA signer seeds for vault
-                b"boring-vault",
-                &args.vault_id.to_le_bytes()[..],
-                &[ctx.bumps.boring_vault],
-            ]],
-        )?;
+        invoke_signed(&ix, ctx.remaining_accounts, &[vault_seeds, bank_seeds])?;
 
         Ok(())
     }
@@ -558,6 +578,14 @@ pub struct Manage<'info> {
     )]
     pub boring_vault: Account<'info, BoringVault>,
 
+    #[account(
+        mut,
+        seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: Bank account used to hold SOL.
+    pub boring_vault_bank: AccountInfo<'info>,
+
     #[account()]
     /// CHECK: Checked in instruction
     pub cpi_digest: Account<'info, CpiDigest>,
@@ -587,7 +615,7 @@ pub struct DepositToBank<'info> {
         seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
         bump,
     )]
-    /// CHECK: bank
+    /// CHECK: Bank account used to hold SOL.
     pub boring_vault_bank: SystemAccount<'info>,
 
     pub system_program: Program<'info, System>,
@@ -604,7 +632,7 @@ pub struct TransferSol<'info> {
         seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
         bump,
     )]
-    /// CHECK: bank
+    /// CHECK: Bank account used to hold SOL.
     pub boring_vault_bank: AccountInfo<'info>,
 
     // /// CHECK: Just receiving SOL
