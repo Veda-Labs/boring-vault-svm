@@ -547,10 +547,21 @@ describe("boring-vault-svm", () => {
     .accounts({
       signer: authority.publicKey,
       boringVaultBank: boringVaultBankAccount,
-      recipient: user.publicKey,
       // @ts-ignore
       systemProgram: anchor.web3.SystemProgram.programId,
     })
+    .remainingAccounts([
+      {
+        pubkey: boringVaultBankAccount,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: user.publicKey,
+        isWritable: true,
+        isSigner: false,
+      }
+    ])
     .instruction();
 
     let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);

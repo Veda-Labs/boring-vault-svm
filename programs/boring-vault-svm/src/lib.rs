@@ -320,6 +320,10 @@ pub mod boring_vault_svm {
     }
 
     pub fn transfer_sol(ctx: Context<TransferSol>, args: TransferSolArgs) -> Result<()> {
+        // we expect remaining accounts to be of length 2
+        let from = &ctx.remaining_accounts[0];
+        let recipient = &ctx.remaining_accounts[1];
+
         // Create CPI context with PDA signer seeds
         let vault_seeds = &[
             b"boring-vault-bank",
@@ -329,33 +333,14 @@ pub mod boring_vault_svm {
         let seeds = &[&vault_seeds[..]];
 
         let ix = anchor_lang::solana_program::system_instruction::transfer(
-            &ctx.accounts.boring_vault_bank.key(),
-            &ctx.accounts.recipient.key(),
+            &from.key(),
+            &recipient.key(),
             args.amount,
         );
+        let is_bank_signer = ix.accounts[0].is_signer;
+        msg!("is_bank_signer: {}", is_bank_signer);
 
-        invoke_signed(
-            &ix,
-            &[
-                ctx.accounts.boring_vault_bank.to_account_info(),
-                ctx.accounts.recipient.to_account_info(),
-            ],
-            seeds,
-        )?;
-
-        // // Create transfer instruction
-        // let transfer_ix = anchor_lang::system_program::Transfer {
-        //     from: ctx.accounts.boring_vault.to_account_info(),
-        //     to: ctx.accounts.recipient.to_account_info(),
-        // };
-        // let cpi_ctx = CpiContext::new_with_signer(
-        //     ctx.accounts.system_program.to_account_info(),
-        //     transfer_ix,
-        //     seeds,
-        // );
-
-        // // Execute transfer
-        // anchor_lang::system_program::transfer(cpi_ctx, args.amount)?;
+        invoke_signed(&ix, ctx.remaining_accounts, seeds)?;
 
         Ok(())
     }
@@ -622,10 +607,9 @@ pub struct TransferSol<'info> {
     /// CHECK: bank
     pub boring_vault_bank: AccountInfo<'info>,
 
-    /// CHECK: Just receiving SOL
-    #[account(mut)]
-    pub recipient: AccountInfo<'info>,
-
+    // /// CHECK: Just receiving SOL
+    // #[account(mut)]
+    // pub recipient: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
