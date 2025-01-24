@@ -1,3 +1,4 @@
+use crate::utils::*;
 use anchor_lang::prelude::*;
 
 #[account]
@@ -77,4 +78,34 @@ pub struct AssetData {
     pub share_premium_bps: u16,
     pub price_feed: Pubkey,
     pub inverse_price_feed: bool,
+}
+
+// =============================== Manage ===============================
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct UpdateCpiDigestArgs {
+    pub vault_id: u64,
+    pub cpi_digest: [u8; 32],
+    pub is_valid: bool,
+}
+
+// TODO this could probs use a ViewCpiDigestArgs struct to prevernt repetition
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct ManageArgs {
+    pub vault_id: u64,
+    pub ix_program_id: Pubkey,
+    pub ix_data: Vec<u8>,
+    pub operators: Operators, // Could be stored in CpiDigest
+    pub expected_size: u16,   // Could be stored in CpiDigest
+}
+
+#[account]
+#[derive(Debug)]
+pub struct CpiDigest {
+    pub is_valid: bool,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct ViewCpiDigestReturn {
+    pub digest: [u8; 32],
 }

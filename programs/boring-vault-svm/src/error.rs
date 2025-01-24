@@ -18,4 +18,6 @@ pub enum BoringErrorCode {
     NotAuthorized,
     #[msg("Math overflow")]
     MathOverflow,
+    #[msg("Invalid CPI digest")]
+    InvalidCpiDigest,
 }

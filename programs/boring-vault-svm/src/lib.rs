@@ -12,11 +12,14 @@ mod constants;
 use constants::*;
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
+mod utils;
 
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
 pub mod boring_vault_svm {
+    use switchboard_on_demand::prelude::{invoke, invoke_signed};
+
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
@@ -198,6 +201,107 @@ pub mod boring_vault_svm {
         )?;
         Ok(())
     }
+
+    // TODO could have a function to close accounts
+    pub fn update_cpi_digest(
+        ctx: Context<UpdateCpiDigest>,
+        args: UpdateCpiDigestArgs,
+    ) -> Result<()> {
+        let cpi_digest = &mut ctx.accounts.cpi_digest;
+        cpi_digest.is_valid = args.is_valid;
+        Ok(())
+    }
+
+    // This code base is doing what I need to , passing in remaining accounts and then doing the CPI call with them.
+    // TODO: https://github.com/coral-xyz/multisig
+    // https://github.com/coral-xyz/multisig/blob/master/programs/multisig/src/lib.rs
+    pub fn manage(ctx: Context<Manage>, args: ManageArgs) -> Result<()> {
+        let cpi_digest = &ctx.accounts.cpi_digest;
+        require!(cpi_digest.is_valid, BoringErrorCode::InvalidCpiDigest);
+
+        let ix_accounts = ctx.remaining_accounts;
+
+        // Hash the CPI call down to a digest and confirm it matches the digest in the args.
+        let digest = args.operators.apply_operators(
+            &args.ix_program_id,
+            &ix_accounts,
+            &args.ix_data,
+            args.expected_size,
+        )?;
+
+        // Derive the expected PDA for this digest
+        let boring_vault_key = ctx.accounts.boring_vault.key();
+        let seeds = &[b"cpi-digest", boring_vault_key.as_ref(), digest.as_ref()];
+        let (expected_pda, _) = Pubkey::find_program_address(seeds, &crate::ID);
+        require!(
+            expected_pda == cpi_digest.key(),
+            BoringErrorCode::InvalidCpiDigest
+        );
+
+        msg!("Constructing CPI call");
+
+        // Create new Vec<AccountInfo> with replacements
+        let accounts: Vec<AccountMeta> = ctx
+            .remaining_accounts
+            .iter()
+            .map(|account| {
+                let key = account.key();
+                if key == crate::ID {
+                    if account.is_writable {
+                        AccountMeta::new(ctx.accounts.boring_vault.key(), true)
+                    } else {
+                        AccountMeta::new_readonly(ctx.accounts.boring_vault.key(), true)
+                    }
+                } else {
+                    if account.is_writable {
+                        AccountMeta::new(key, account.is_signer)
+                    } else {
+                        AccountMeta::new_readonly(key, account.is_signer)
+                    }
+                }
+            })
+            .collect();
+
+        // Create the instruction
+        let ix = anchor_lang::solana_program::instruction::Instruction {
+            program_id: args.ix_program_id,
+            accounts: accounts,
+            data: args.ix_data,
+        };
+
+        msg!("Making CPI call");
+
+        // Make the CPI call.
+        invoke_signed(
+            &ix,
+            &ctx.remaining_accounts,
+            &[&[
+                // PDA signer seeds for vault
+                b"boring-vault",
+                &args.vault_id.to_le_bytes()[..],
+                &[ctx.bumps.boring_vault],
+            ]],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn view_cpi_digest(
+        ctx: Context<ViewCpiDigest>,
+        args: ManageArgs,
+    ) -> Result<ViewCpiDigestReturn> {
+        // Hash the CPI call down to a digest
+        let digest = args.operators.apply_operators(
+            &args.ix_program_id,
+            ctx.remaining_accounts,
+            &args.ix_data,
+            args.expected_size,
+        )?;
+
+        msg!("Digest: {:?}", digest);
+
+        Ok(ViewCpiDigestReturn { digest })
+    }
 }
 
 #[derive(Accounts)]
@@ -370,9 +474,64 @@ pub struct Deposit<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(args: UpdateCpiDigestArgs)]
+pub struct UpdateCpiDigest<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+
+    #[account(
+        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = signer.key() == boring_vault.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault: Account<'info, BoringVault>,
+
+    #[account(
+        init_if_needed,
+        payer = signer,
+        space = 8 + std::mem::size_of::<CpiDigest>(),
+        seeds = [
+            b"cpi-digest",
+            boring_vault.key().as_ref(),
+            args.cpi_digest.as_ref(),
+        ],
+        bump,
+    )]
+    pub cpi_digest: Account<'info, CpiDigest>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: ManageArgs)]
 pub struct Manage<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+
+    #[account(
+        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = signer.key() == boring_vault.config.authority.key() @ BoringErrorCode::NotAuthorized // TODO make this strategist
+    )]
+    pub boring_vault: Account<'info, BoringVault>,
+
+    #[account()]
+    /// CHECK: Checked in instruction
+    pub cpi_digest: Account<'info, CpiDigest>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: ManageArgs)]
+pub struct ViewCpiDigest<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    pub boring_vault: Account<'info, BoringVault>,
 }
 
 //         // TODO: Mint JitoSOL using transferred SOL

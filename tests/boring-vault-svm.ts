@@ -44,15 +44,31 @@ describe("boring-vault-svm", () => {
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
   let solAssetDataPda: anchor.web3.PublicKey;
   let userShareAta: anchor.web3.PublicKey;
+
+  let vaultWritable: anchor.web3.PublicKey;
+  let vaultSigner: anchor.web3.PublicKey;
+  let vaultWritableSigner: anchor.web3.PublicKey;
+  let cpiDigestAccount: anchor.web3.PublicKey;
   
   const PROJECT_DIRECTORY = "";
   const SWITCHBOARD_ON_DEMAND_PROGRAM_ID = new anchor.web3.PublicKey("SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv");
+  const STAKE_POOL_PROGRAM_ID = new anchor.web3.PublicKey("SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy");
+  const JITO_SOL_STAKE_POOL = new anchor.web3.PublicKey("Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb");
+  const JITO_SOL_STAKE_POOL_WITHDRAW_AUTH = new anchor.web3.PublicKey("6iQKfEyhr3bZMotVkW6beNZz5CPAkiwvgV2CTje9pVSS");
+  const JITO_SOL_STAKE_POOL_RESERVE = new anchor.web3.PublicKey("BgKUXdS29YcHCFrPm5M8oLHiTzZaMDjsebggjoaQ6KFL");
+  const JITO_SOL_STAKE_POOL_FEE = new anchor.web3.PublicKey("feeeFLLsam6xZJFc6UQFrHqkvVt4jfmVvi2BRLkUZ4i");
+
   const JITOSOL_SOL_ORACLE = new anchor.web3.PublicKey("4Z1SLH9g4ikNBV8uP2ZctEouqjYmVqB2Tz5SZxKYBN7z");
   const JITOSOL = new anchor.web3.PublicKey("J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn");
 
+
   const ACCOUNTS_TO_CLONE = [
+    JITO_SOL_STAKE_POOL.toString(),
+    JITO_SOL_STAKE_POOL_WITHDRAW_AUTH.toString(),
+    JITO_SOL_STAKE_POOL_RESERVE.toString(),
+    JITO_SOL_STAKE_POOL_FEE.toString(),
     JITOSOL_SOL_ORACLE.toString(),
-    JITOSOL.toString()
+    JITOSOL.toString(),
   ];
 
   async function createAndProcessTransaction(
@@ -172,6 +188,10 @@ describe("boring-vault-svm", () => {
         {
           name: "switchboard_on_demand",
           programId: SWITCHBOARD_ON_DEMAND_PROGRAM_ID
+        },
+        {
+          name: "sol_stake_pool",
+          programId: STAKE_POOL_PROGRAM_ID
         }
       ],
       allAccounts
@@ -222,6 +242,27 @@ describe("boring-vault-svm", () => {
         Buffer.from("asset-data"),
         boringVaultAccount.toBuffer(),
         anchor.web3.PublicKey.default.toBuffer(),
+      ],
+      program.programId
+    );
+
+    [vaultWritable, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("vault-writable"),
+      ],
+      program.programId
+    );
+
+    [vaultSigner, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("vault-signer"),
+      ],
+      program.programId
+    );
+
+    [vaultWritableSigner, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("vault-writable-signer"),
       ],
       program.programId
     );
@@ -460,7 +501,213 @@ describe("boring-vault-svm", () => {
 
     // We expect this to be 1 share larger because of the previous deposit.
     const userShareBalance = await getTokenBalance(client, userShareAta);
-    expect(userShareBalance.toString()).to.equal("2161245657");
+    expect(userShareBalance.toString()).to.equal("2171923747");
+  });
+
+  it("Vault can deposit SOL into JitoSOL stake pool", async () => {
+
+    // Transfer SOL from user to vault.
+    const transferIx = anchor.web3.SystemProgram.transfer({
+      fromPubkey: user.publicKey,
+      toPubkey: boringVaultAccount,
+      lamports: 100_000_000, // 0.1 SOL
+    });
+  
+  let transferTxResult = await createAndProcessTransaction(
+      client, 
+      user,  // user needs to sign since they're sending SOL
+      transferIx
+    );
+
+    // Expect the tx to succeed.
+    expect(transferTxResult.result).to.be.null;
+
+    // Preview the cpi digest.
+    const view_ix = await program.methods
+    .viewCpiDigest(
+      {
+          vaultId: new anchor.BN(0),
+          ixProgramId: STAKE_POOL_PROGRAM_ID,
+          ixData: Buffer.from("0e40420f0000000000", "hex"),
+          operators: {
+            operators: [],
+          },
+          expectedSize: 32,
+      }
+    )
+    .accounts({
+      signer: deployer.publicKey,
+      boringVault: boringVaultAccount,
+    })
+    .remainingAccounts([
+      {
+        pubkey: JITO_SOL_STAKE_POOL,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
+        isWritable: false,
+        isSigner: false
+      },
+      {
+        pubkey: JITO_SOL_STAKE_POOL_RESERVE,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: boringVaultAccount,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: vaultJitoSolAta,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: JITO_SOL_STAKE_POOL_FEE,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: vaultJitoSolAta,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: JITOSOL,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: anchor.web3.SystemProgram.programId,
+        isWritable: false,
+        isSigner: false
+      },
+      {
+        pubkey: TOKEN_2022_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false
+      }
+    ])
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, view_ix, [deployer]);
+
+    // Expect the tx to succeed.
+    expect(txResult.result).to.be.null;
+
+    let digest = [86, 220, 10, 71, 218, 33, 183, 2, 80, 116, 105, 213, 99, 54, 90, 28, 101, 127, 111, 7, 64, 51, 74, 254, 42, 21, 39, 52, 179, 124, 251, 121];
+    
+    let bump;
+    [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("cpi-digest"),
+        boringVaultAccount.toBuffer(),
+        Buffer.from(digest),
+      ],
+      program.programId
+    );
+
+    const ix_0 = await program.methods.updateCpiDigest(
+      {
+        vaultId: new anchor.BN(0),
+        cpiDigest: digest,
+        isValid: true,
+      }
+    )
+    .accounts({
+      signer: authority.publicKey,
+      boringVault: boringVaultAccount,
+      // @ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
+      cpiDigest: cpiDigestAccount,
+    })
+    .instruction();
+
+    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_0.result).to.be.null;
+    
+    console.log("ix: ", Buffer.from("0e40420f0000000000", "hex"));
+
+    const ix_1 = await program.methods
+    .manage(
+        {
+          vaultId: new anchor.BN(0),
+          ixProgramId: STAKE_POOL_PROGRAM_ID,
+          ixData: Buffer.from("0e40420f0000000000", "hex"),
+          operators: {
+            operators: [],
+          },
+          expectedSize: 32,
+      }
+    )
+    .accounts({
+      signer: authority.publicKey,
+      boringVault: boringVaultAccount,
+      cpiDigest: cpiDigestAccount,
+    })
+    .remainingAccounts([
+      {
+        pubkey: JITO_SOL_STAKE_POOL,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
+        isWritable: false,
+        isSigner: false
+      },
+      {
+        pubkey: JITO_SOL_STAKE_POOL_RESERVE,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: boringVaultAccount,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: vaultJitoSolAta,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: JITO_SOL_STAKE_POOL_FEE,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: vaultJitoSolAta,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: JITOSOL,
+        isWritable: true,
+        isSigner: false
+      },
+      {
+        pubkey: anchor.web3.SystemProgram.programId,
+        isWritable: false,
+        isSigner: false
+      },
+      {
+        pubkey: TOKEN_2022_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false
+      }
+    ])
+    .instruction();
+
+    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_1.result).to.be.null;
   });
 });
 
