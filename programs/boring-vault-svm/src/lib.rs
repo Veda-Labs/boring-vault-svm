@@ -1,7 +1,10 @@
+#![allow(unexpected_cfgs)]
+
 use anchor_lang::prelude::*;
 mod state;
 use anchor_lang::system_program;
 use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token::Token;
 use anchor_spl::token_2022::Token2022;
 use anchor_spl::token_interface;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
@@ -73,7 +76,7 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
-    // TODO so Option accounts still take up TX space, so maybe it would be better to have 2 deposit functions?
+    // TODO Create deposit functions for Sol, Token2022, and Token.
     pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
         // Handle transferring the deposit asset into the vault.
         let mut deposit_is_base_asset = false;
@@ -184,7 +187,7 @@ pub mod boring_vault_svm {
         // Mint shares to user
         token_interface::mint_to(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program_2022.to_account_info(),
                 token_interface::MintTo {
                     mint: ctx.accounts.share_mint.to_account_info(),
                     to: ctx.accounts.user_shares.to_account_info(),
@@ -484,7 +487,7 @@ pub struct Deposit<'info> {
     )]
     pub asset_data: Account<'info, AssetData>,
 
-    /// User's Token2022 associated token account
+    /// User's Token associated token account
     #[account(
             mut,
             associated_token::mint = deposit_mint.as_ref().unwrap(),
@@ -493,7 +496,7 @@ pub struct Deposit<'info> {
         )]
     pub user_ata: Option<InterfaceAccount<'info, TokenAccount>>,
 
-    /// Vault's Token2022 associated token account
+    /// Vault's Token associated token account
     #[account(
             mut,
             associated_token::mint = deposit_mint.as_ref().unwrap(),
@@ -503,7 +506,8 @@ pub struct Deposit<'info> {
     pub vault_ata: Option<InterfaceAccount<'info, TokenAccount>>,
 
     // Programs
-    pub token_program: Program<'info, Token2022>,
+    pub token_program: Program<'info, Token>,
+    pub token_program_2022: Program<'info, Token2022>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 
@@ -517,13 +521,13 @@ pub struct Deposit<'info> {
         )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    /// The user's share token account
+    /// The user's share token 2022 account
     #[account(
         init_if_needed,
         payer = signer,
         associated_token::mint = share_mint,
         associated_token::authority = signer,
-        associated_token::token_program = token_program,
+        associated_token::token_program = token_program_2022,
     )]
     pub user_shares: InterfaceAccount<'info, TokenAccount>,
 

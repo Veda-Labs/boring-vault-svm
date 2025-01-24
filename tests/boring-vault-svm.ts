@@ -46,6 +46,7 @@ describe("boring-vault-svm", () => {
   let solAssetDataPda: anchor.web3.PublicKey;
   let userShareAta: anchor.web3.PublicKey;
   let boringVaultBankAccount: anchor.web3.PublicKey;
+  let bankJitoSolAta: anchor.web3.PublicKey;
 
   let cpiDigestAccount: anchor.web3.PublicKey;
   
@@ -114,11 +115,13 @@ describe("boring-vault-svm", () => {
       tokenAccData,
     );
   
-    const ata = getAssociatedTokenAddressSync(mintAccount, owner, true, TOKEN_2022_PROGRAM_ID);
+    // Use TOKEN_PROGRAM_ID for JitoSOL-related accounts
+    const programId = mintAccount.equals(JITOSOL) ? TOKEN_PROGRAM_ID : TOKEN_2022_PROGRAM_ID;
+    const ata = getAssociatedTokenAddressSync(mintAccount, owner, true, programId);
     const ataAccountInfo = {
       lamports: 1_000_000_000,
       data: tokenAccData,
-      owner: TOKEN_2022_PROGRAM_ID,
+      owner: programId,
       executable: false,
     };
   
@@ -257,9 +260,8 @@ describe("boring-vault-svm", () => {
     userJitoSolAta = await setupATA(context, JITOSOL, user.publicKey, 1000000000000000000);
     vaultJitoSolAta = await setupATA(context, JITOSOL, boringVaultAccount, 0);
     userShareAta = await setupATA(context, boringVaultShareMint, user.publicKey, 0);
+    bankJitoSolAta = await setupATA(context, JITOSOL, boringVaultBankAccount, 0);
 
-    console.log("boringVaultBankAccount", boringVaultBankAccount.toString());
-    console.log("vaultJitoSolAta", vaultJitoSolAta.toString());
   });
 
   it("Is initialized", async () => {
@@ -410,7 +412,8 @@ describe("boring-vault-svm", () => {
       vaultAta: null,
       // @ts-ignore
       assetData: solAssetDataPda,
-      tokenProgram: TOKEN_2022_PROGRAM_ID,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
       systemProgram: anchor.web3.SystemProgram.programId,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       shareMint: boringVaultShareMint,
@@ -475,7 +478,8 @@ describe("boring-vault-svm", () => {
       assetData: jitoSolAssetDataPda,
       userAta: userJitoSolAta,
       vaultAta: vaultJitoSolAta,
-      tokenProgram: TOKEN_2022_PROGRAM_ID,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
       systemProgram: anchor.web3.SystemProgram.programId,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       shareMint: boringVaultShareMint,
@@ -513,8 +517,6 @@ describe("boring-vault-svm", () => {
 
     let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
 
-    console.log(txResult_0.result);
-
     expect(txResult_0.result).to.be.null;
 
     // Transfer sol from vault to user.
@@ -547,8 +549,6 @@ describe("boring-vault-svm", () => {
 
     let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
 
-    console.log(txResult_1.result);
-
     expect(txResult_1.result).to.be.null;
   });
 
@@ -578,14 +578,27 @@ describe("boring-vault-svm", () => {
     // Preview the cpi digest.
     const view_ix = await program.methods
     .viewCpiDigest(
+      //@ts-ignore
       {
           vaultId: new anchor.BN(0),
           ixProgramId: STAKE_POOL_PROGRAM_ID,
           ixData: Buffer.from("0e40420f0000000000", "hex"),
           operators: {
-            operators: [],
+            operators: [
+              { ingestInstruction: {0: 0, 1: 1}},
+              { ingestAccount: 0},
+              { ingestAccount: 1},
+              { ingestAccount: 2},
+              { ingestAccount: 3},
+              { ingestAccount: 4},
+              { ingestAccount: 5},
+              { ingestAccount: 6},
+              { ingestAccount: 7},
+              { ingestAccount: 8},
+              { ingestAccount: 9}
+            ],
           },
-          expectedSize: 32,
+          expectedSize: 399,
       }
     )
     .accounts({
@@ -609,7 +622,7 @@ describe("boring-vault-svm", () => {
         isSigner: false
       },
       {
-        pubkey: boringVaultAccount,
+        pubkey: boringVaultBankAccount,
         isWritable: true,
         isSigner: false
       },
@@ -642,6 +655,11 @@ describe("boring-vault-svm", () => {
         pubkey: TOKEN_2022_PROGRAM_ID,
         isWritable: false,
         isSigner: false
+      },
+      { // MASSIVELY IMPORTANT TO INCLUDE THIS
+        pubkey: STAKE_POOL_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false
       }
     ])
     .instruction();
@@ -651,7 +669,7 @@ describe("boring-vault-svm", () => {
     // Expect the tx to succeed.
     expect(txViewResult.result).to.be.null;
 
-    let digest = [86, 220, 10, 71, 218, 33, 183, 2, 80, 116, 105, 213, 99, 54, 90, 28, 101, 127, 111, 7, 64, 51, 74, 254, 42, 21, 39, 52, 179, 124, 251, 121];
+    let digest = [58, 248, 15, 141, 34, 239, 71, 135, 152, 76, 78, 227, 122, 44, 232, 173, 207, 212, 226, 71, 94, 232, 238, 164, 98, 103, 3, 118, 128, 171, 107, 22];
     
     let bump;
     [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -684,18 +702,29 @@ describe("boring-vault-svm", () => {
     // Expect the tx to succeed.
     expect(txResult_0.result).to.be.null;
     
-    console.log("ix: ", Buffer.from("0e40420f0000000000", "hex"));
-
     const ix_1 = await program.methods
     .manage(
+      //@ts-ignore
         {
           vaultId: new anchor.BN(0),
           ixProgramId: STAKE_POOL_PROGRAM_ID,
           ixData: Buffer.from("0e40420f0000000000", "hex"),
           operators: {
-            operators: [],
+            operators: [
+              { ingestInstruction: {0: 0, 1: 1}},
+              { ingestAccount: 0},
+              { ingestAccount: 1},
+              { ingestAccount: 2},
+              { ingestAccount: 3},
+              { ingestAccount: 4},
+              { ingestAccount: 5},
+              { ingestAccount: 6},
+              { ingestAccount: 7},
+              { ingestAccount: 8},
+              { ingestAccount: 9}
+            ],
           },
-          expectedSize: 32,
+          expectedSize: 399,
       }
     )
     .accounts({
@@ -736,7 +765,7 @@ describe("boring-vault-svm", () => {
         isSigner: false
       },
       {
-        pubkey: JITO_SOL_STAKE_POOL_FEE,
+        pubkey: vaultJitoSolAta,
         isWritable: true,
         isSigner: false
       },
@@ -752,6 +781,11 @@ describe("boring-vault-svm", () => {
       },
       {
         pubkey: TOKEN_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false
+      },
+      { // MASSIVELY IMPORTANT TO INCLUDE THIS
+        pubkey: STAKE_POOL_PROGRAM_ID,
         isWritable: false,
         isSigner: false
       }

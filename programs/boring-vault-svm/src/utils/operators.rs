@@ -61,6 +61,8 @@ impl Operators {
                 .flat_map(|operator| operator.to_bytes()),
         );
 
+        msg!("Hash data length: {}", hash_data.len());
+
         require!(
             hash_data.len() == expected_size as usize,
             OperatorError::ExpectedSizeMismatch
