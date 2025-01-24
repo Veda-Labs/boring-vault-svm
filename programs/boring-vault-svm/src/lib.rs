@@ -18,6 +18,7 @@ declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
 pub mod boring_vault_svm {
+    use anchor_lang::solana_program;
     use switchboard_on_demand::prelude::{invoke, invoke_signed};
 
     use super::*;
@@ -302,6 +303,62 @@ pub mod boring_vault_svm {
 
         Ok(ViewCpiDigestReturn { digest })
     }
+
+    pub fn deposit_to_bank(ctx: Context<DepositToBank>, args: TransferSolArgs) -> Result<()> {
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.signer.to_account_info(),
+                    to: ctx.accounts.boring_vault_bank.to_account_info(),
+                },
+            ),
+            args.amount,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn transfer_sol(ctx: Context<TransferSol>, args: TransferSolArgs) -> Result<()> {
+        // Create CPI context with PDA signer seeds
+        let vault_seeds = &[
+            b"boring-vault-bank",
+            &args.vault_id.to_le_bytes()[..],
+            &[ctx.bumps.boring_vault_bank],
+        ];
+        let seeds = &[&vault_seeds[..]];
+
+        let ix = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.boring_vault_bank.key(),
+            &ctx.accounts.recipient.key(),
+            args.amount,
+        );
+
+        invoke_signed(
+            &ix,
+            &[
+                ctx.accounts.boring_vault_bank.to_account_info(),
+                ctx.accounts.recipient.to_account_info(),
+            ],
+            seeds,
+        )?;
+
+        // // Create transfer instruction
+        // let transfer_ix = anchor_lang::system_program::Transfer {
+        //     from: ctx.accounts.boring_vault.to_account_info(),
+        //     to: ctx.accounts.recipient.to_account_info(),
+        // };
+        // let cpi_ctx = CpiContext::new_with_signer(
+        //     ctx.accounts.system_program.to_account_info(),
+        //     transfer_ix,
+        //     seeds,
+        // );
+
+        // // Execute transfer
+        // anchor_lang::system_program::transfer(cpi_ctx, args.amount)?;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -534,6 +591,49 @@ pub struct ViewCpiDigest<'info> {
     pub boring_vault: Account<'info, BoringVault>,
 }
 
+#[derive(Accounts)]
+#[instruction(args: TransferSolArgs)]
+pub struct DepositToBank<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: bank
+    pub boring_vault_bank: SystemAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: TransferSolArgs)]
+pub struct TransferSol<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: bank
+    pub boring_vault_bank: AccountInfo<'info>,
+
+    /// CHECK: Just receiving SOL
+    #[account(mut)]
+    pub recipient: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct TransferSolArgs {
+    pub vault_id: u64,
+    pub amount: u64,
+}
 //         // TODO: Mint JitoSOL using transferred SOL
 //         // This will require adding JitoSOL program accounts to the Deposit context
 //         // https://github.com/solana-program/stake-pool/blob/main/program/src/instruction.rs#L363C1-L378C21

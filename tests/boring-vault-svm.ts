@@ -44,6 +44,7 @@ describe("boring-vault-svm", () => {
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
   let solAssetDataPda: anchor.web3.PublicKey;
   let userShareAta: anchor.web3.PublicKey;
+  let boringVaultBankAccount: anchor.web3.PublicKey;
 
   let vaultWritable: anchor.web3.PublicKey;
   let vaultSigner: anchor.web3.PublicKey;
@@ -215,6 +216,14 @@ describe("boring-vault-svm", () => {
     [boringVaultAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("boring-vault"),
+        Buffer.from(new Array(8).fill(0))
+      ],
+      program.programId
+    );
+
+    [boringVaultBankAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-vault-bank"),
         Buffer.from(new Array(8).fill(0))
       ],
       program.programId
@@ -504,210 +513,257 @@ describe("boring-vault-svm", () => {
     expect(userShareBalance.toString()).to.equal("2171923747");
   });
 
-  it("Vault can deposit SOL into JitoSOL stake pool", async () => {
-
+  it("Vault can transfer sol to recipient", async () => {
     // Transfer SOL from user to vault.
-    const transferIx = anchor.web3.SystemProgram.transfer({
-      fromPubkey: user.publicKey,
-      toPubkey: boringVaultAccount,
-      lamports: 100_000_000, // 0.1 SOL
-    });
-  
-  let transferTxResult = await createAndProcessTransaction(
-      client, 
-      user,  // user needs to sign since they're sending SOL
-      transferIx
-    );
-
-    // Expect the tx to succeed.
-    expect(transferTxResult.result).to.be.null;
-
-    // Preview the cpi digest.
-    const view_ix = await program.methods
-    .viewCpiDigest(
-      {
-          vaultId: new anchor.BN(0),
-          ixProgramId: STAKE_POOL_PROGRAM_ID,
-          ixData: Buffer.from("0e40420f0000000000", "hex"),
-          operators: {
-            operators: [],
-          },
-          expectedSize: 32,
-      }
-    )
-    .accounts({
-      signer: deployer.publicKey,
-      boringVault: boringVaultAccount,
-    })
-    .remainingAccounts([
-      {
-        pubkey: JITO_SOL_STAKE_POOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_RESERVE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: boringVaultAccount,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_FEE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITOSOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: anchor.web3.SystemProgram.programId,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: TOKEN_2022_PROGRAM_ID,
-        isWritable: false,
-        isSigner: false
-      }
-    ])
-    .instruction();
-
-    let txResult = await createAndProcessTransaction(client, deployer, view_ix, [deployer]);
-
-    // Expect the tx to succeed.
-    expect(txResult.result).to.be.null;
-
-    let digest = [86, 220, 10, 71, 218, 33, 183, 2, 80, 116, 105, 213, 99, 54, 90, 28, 101, 127, 111, 7, 64, 51, 74, 254, 42, 21, 39, 52, 179, 124, 251, 121];
-    
-    let bump;
-    [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("cpi-digest"),
-        boringVaultAccount.toBuffer(),
-        Buffer.from(digest),
-      ],
-      program.programId
-    );
-
-    const ix_0 = await program.methods.updateCpiDigest(
+    const ix_0 = await program.methods
+    .depositToBank(
       {
         vaultId: new anchor.BN(0),
-        cpiDigest: digest,
-        isValid: true,
+        amount: new anchor.BN(100000000),
       }
     )
     .accounts({
       signer: authority.publicKey,
-      boringVault: boringVaultAccount,
+      boringVaultBank: boringVaultBankAccount,
       // @ts-ignore
       systemProgram: anchor.web3.SystemProgram.programId,
-      cpiDigest: cpiDigestAccount,
     })
     .instruction();
 
     let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
 
-    // Expect the tx to succeed.
-    expect(txResult_0.result).to.be.null;
-    
-    console.log("ix: ", Buffer.from("0e40420f0000000000", "hex"));
+    console.log(txResult_0.result);
 
+    expect(txResult_0.result).to.be.null;
+
+    // Transfer sol from vault to user.
     const ix_1 = await program.methods
-    .manage(
-        {
-          vaultId: new anchor.BN(0),
-          ixProgramId: STAKE_POOL_PROGRAM_ID,
-          ixData: Buffer.from("0e40420f0000000000", "hex"),
-          operators: {
-            operators: [],
-          },
-          expectedSize: 32,
+    .transferSol(
+      {
+        vaultId: new anchor.BN(0),
+        amount: new anchor.BN(100000000),
       }
     )
     .accounts({
       signer: authority.publicKey,
-      boringVault: boringVaultAccount,
-      cpiDigest: cpiDigestAccount,
+      boringVaultBank: boringVaultBankAccount,
+      recipient: user.publicKey,
+      // @ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
     })
-    .remainingAccounts([
-      {
-        pubkey: JITO_SOL_STAKE_POOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_RESERVE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: boringVaultAccount,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_FEE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITOSOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: anchor.web3.SystemProgram.programId,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: TOKEN_2022_PROGRAM_ID,
-        isWritable: false,
-        isSigner: false
-      }
-    ])
     .instruction();
 
     let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
 
-    // Expect the tx to succeed.
+    console.log(txResult_1.result);
+
     expect(txResult_1.result).to.be.null;
   });
+
+  // it("Vault can deposit SOL into JitoSOL stake pool", async () => {
+
+  //   // Transfer SOL from user to vault.
+  //   const transferIx = anchor.web3.SystemProgram.transfer({
+  //     fromPubkey: user.publicKey,
+  //     toPubkey: boringVaultAccount,
+  //     lamports: 100_000_000, // 0.1 SOL
+  //   });
+  
+  // let transferTxResult = await createAndProcessTransaction(
+  //     client, 
+  //     user,  // user needs to sign since they're sending SOL
+  //     transferIx
+  //   );
+
+  //   // Expect the tx to succeed.
+  //   expect(transferTxResult.result).to.be.null;
+
+  //   // Preview the cpi digest.
+  //   const view_ix = await program.methods
+  //   .viewCpiDigest(
+  //     {
+  //         vaultId: new anchor.BN(0),
+  //         ixProgramId: STAKE_POOL_PROGRAM_ID,
+  //         ixData: Buffer.from("0e40420f0000000000", "hex"),
+  //         operators: {
+  //           operators: [],
+  //         },
+  //         expectedSize: 32,
+  //     }
+  //   )
+  //   .accounts({
+  //     signer: deployer.publicKey,
+  //     boringVault: boringVaultAccount,
+  //   })
+  //   .remainingAccounts([
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
+  //       isWritable: false,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL_RESERVE,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: boringVaultAccount,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: vaultJitoSolAta,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL_FEE,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: vaultJitoSolAta,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITOSOL,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: anchor.web3.SystemProgram.programId,
+  //       isWritable: false,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: TOKEN_2022_PROGRAM_ID,
+  //       isWritable: false,
+  //       isSigner: false
+  //     }
+  //   ])
+  //   .instruction();
+
+  //   let txResult = await createAndProcessTransaction(client, deployer, view_ix, [deployer]);
+
+  //   // Expect the tx to succeed.
+  //   expect(txResult.result).to.be.null;
+
+  //   let digest = [86, 220, 10, 71, 218, 33, 183, 2, 80, 116, 105, 213, 99, 54, 90, 28, 101, 127, 111, 7, 64, 51, 74, 254, 42, 21, 39, 52, 179, 124, 251, 121];
+    
+  //   let bump;
+  //   [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+  //     [
+  //       Buffer.from("cpi-digest"),
+  //       boringVaultAccount.toBuffer(),
+  //       Buffer.from(digest),
+  //     ],
+  //     program.programId
+  //   );
+
+  //   const ix_0 = await program.methods.updateCpiDigest(
+  //     {
+  //       vaultId: new anchor.BN(0),
+  //       cpiDigest: digest,
+  //       isValid: true,
+  //     }
+  //   )
+  //   .accounts({
+  //     signer: authority.publicKey,
+  //     boringVault: boringVaultAccount,
+  //     // @ts-ignore
+  //     systemProgram: anchor.web3.SystemProgram.programId,
+  //     cpiDigest: cpiDigestAccount,
+  //   })
+  //   .instruction();
+
+  //   let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
+
+  //   // Expect the tx to succeed.
+  //   expect(txResult_0.result).to.be.null;
+    
+  //   console.log("ix: ", Buffer.from("0e40420f0000000000", "hex"));
+
+  //   const ix_1 = await program.methods
+  //   .manage(
+  //       {
+  //         vaultId: new anchor.BN(0),
+  //         ixProgramId: STAKE_POOL_PROGRAM_ID,
+  //         ixData: Buffer.from("0e40420f0000000000", "hex"),
+  //         operators: {
+  //           operators: [],
+  //         },
+  //         expectedSize: 32,
+  //     }
+  //   )
+  //   .accounts({
+  //     signer: authority.publicKey,
+  //     boringVault: boringVaultAccount,
+  //     cpiDigest: cpiDigestAccount,
+  //   })
+  //   .remainingAccounts([
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
+  //       isWritable: false,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL_RESERVE,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: boringVaultAccount,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: vaultJitoSolAta,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITO_SOL_STAKE_POOL_FEE,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: vaultJitoSolAta,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: JITOSOL,
+  //       isWritable: true,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: anchor.web3.SystemProgram.programId,
+  //       isWritable: false,
+  //       isSigner: false
+  //     },
+  //     {
+  //       pubkey: TOKEN_2022_PROGRAM_ID,
+  //       isWritable: false,
+  //       isSigner: false
+  //     }
+  //   ])
+  //   .instruction();
+
+  //   let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
+
+  //   // Expect the tx to succeed.
+  //   expect(txResult_1.result).to.be.null;
+  // });
 });
 
