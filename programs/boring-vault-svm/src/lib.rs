@@ -322,8 +322,6 @@ pub mod boring_vault_svm {
             args.expected_size,
         )?;
 
-        msg!("Digest: {:?}", digest);
-
         Ok(ViewCpiDigestReturn { digest })
     }
 
@@ -596,17 +594,7 @@ pub struct Manage<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args: ManageArgs)]
-pub struct ViewCpiDigest<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    #[account(
-        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
-        bump,
-    )]
-    pub boring_vault: Account<'info, BoringVault>,
-}
+pub struct ViewCpiDigest {}
 
 #[derive(Accounts)]
 #[instruction(args: TransferSolArgs)]

@@ -601,10 +601,7 @@ describe("boring-vault-svm", () => {
           expectedSize: 399,
       }
     )
-    .accounts({
-      signer: deployer.publicKey,
-      boringVault: boringVaultAccount,
-    })
+    .signers([deployer])
     .remainingAccounts([
       {
         pubkey: JITO_SOL_STAKE_POOL,
@@ -662,14 +659,9 @@ describe("boring-vault-svm", () => {
         isSigner: false
       }
     ])
-    .instruction();
+    .view();
 
-    let txViewResult = await createAndProcessTransaction(client, deployer, view_ix, [deployer]);
-
-    // Expect the tx to succeed.
-    expect(txViewResult.result).to.be.null;
-
-    let digest = [58, 248, 15, 141, 34, 239, 71, 135, 152, 76, 78, 227, 122, 44, 232, 173, 207, 212, 226, 71, 94, 232, 238, 164, 98, 103, 3, 118, 128, 171, 107, 22];
+    let digest = view_ix.digest;
     
     let bump;
     [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
