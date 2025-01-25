@@ -38,6 +38,7 @@ describe("boring-vault-svm", () => {
   let user: anchor.web3.Keypair = anchor.web3.Keypair.generate();
 
   let programConfigAccount: anchor.web3.PublicKey;
+  let boringVaultStateAccount: anchor.web3.PublicKey;
   let boringVaultAccount: anchor.web3.PublicKey;
   let boringVaultShareMint: anchor.web3.PublicKey;
   let userJitoSolAta: anchor.web3.PublicKey;
@@ -45,13 +46,10 @@ describe("boring-vault-svm", () => {
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
   let solAssetDataPda: anchor.web3.PublicKey;
   let userShareAta: anchor.web3.PublicKey;
-  let boringVaultBankAccount: anchor.web3.PublicKey;
-  let bankJitoSolAta: anchor.web3.PublicKey;
 
   let cpiDigestAccount: anchor.web3.PublicKey;
   
   const PROJECT_DIRECTORY = "";
-  const SWITCHBOARD_ON_DEMAND_PROGRAM_ID = new anchor.web3.PublicKey('SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv');
   const STAKE_POOL_PROGRAM_ID = new anchor.web3.PublicKey('SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy');
   const JITO_SOL_STAKE_POOL = new anchor.web3.PublicKey('Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb');
   const JITO_SOL_STAKE_POOL_WITHDRAW_AUTH = new anchor.web3.PublicKey('6iQKfEyhr3bZMotVkW6beNZz5CPAkiwvgV2CTje9pVSS');
@@ -168,7 +166,7 @@ describe("boring-vault-svm", () => {
       {
         address: user.publicKey,
         info: {
-          lamports: 2_000_000_000,
+          lamports: 100_000_000_000,
           data: Buffer.alloc(0),
           owner: anchor.web3.SystemProgram.programId,
           executable: false,
@@ -188,10 +186,6 @@ describe("boring-vault-svm", () => {
     context = await startAnchor(
       PROJECT_DIRECTORY,
       [
-        // {
-        //   name: "switchboard_on_demand",
-        //   programId: SWITCHBOARD_ON_DEMAND_PROGRAM_ID
-        // },
         {
           name: "sol_stake_pool",
           programId: STAKE_POOL_PROGRAM_ID
@@ -215,6 +209,14 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
+    [boringVaultStateAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-vault-state"),
+        Buffer.from(new Array(8).fill(0))
+      ],
+      program.programId
+    );
+
     [boringVaultAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("boring-vault"),
@@ -223,18 +225,11 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
-    [boringVaultBankAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("boring-vault-bank"),
-        Buffer.from(new Array(8).fill(0))
-      ],
-      program.programId
-    );
     
     [boringVaultShareMint, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("share-token"),
-        boringVaultAccount.toBuffer(),
+        boringVaultStateAccount.toBuffer(),
       ],
       program.programId
     );
@@ -242,7 +237,7 @@ describe("boring-vault-svm", () => {
     [jitoSolAssetDataPda, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("asset-data"),
-        boringVaultAccount.toBuffer(),
+        boringVaultStateAccount.toBuffer(),
         JITOSOL.toBuffer(),
       ],
       program.programId
@@ -251,7 +246,7 @@ describe("boring-vault-svm", () => {
     [solAssetDataPda, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("asset-data"),
-        boringVaultAccount.toBuffer(),
+        boringVaultStateAccount.toBuffer(),
         anchor.web3.PublicKey.default.toBuffer(),
       ],
       program.programId
@@ -260,7 +255,6 @@ describe("boring-vault-svm", () => {
     userJitoSolAta = await setupATA(context, JITOSOL, user.publicKey, 1000000000000000000);
     vaultJitoSolAta = await setupATA(context, JITOSOL, boringVaultAccount, 0);
     userShareAta = await setupATA(context, boringVaultShareMint, user.publicKey, 0);
-    bankJitoSolAta = await setupATA(context, JITOSOL, boringVaultBankAccount, 0);
 
   });
 
@@ -300,6 +294,7 @@ describe("boring-vault-svm", () => {
     .accounts({
       // @ts-ignore
       config: programConfigAccount,
+      boringVaultState: boringVaultStateAccount,
       boringVault: boringVaultAccount,
       shareMint: boringVaultShareMint,
       signer: authority.publicKey,
@@ -316,7 +311,7 @@ describe("boring-vault-svm", () => {
     const programConfig = await program.account.programConfig.fetch(programConfigAccount);
     expect(programConfig.vaultCount.toNumber()).to.equal(1);
 
-    const boringVault = await program.account.boringVault.fetch(boringVaultAccount);
+    const boringVault = await program.account.boringVault.fetch(boringVaultStateAccount);
     expect(boringVault.config.vaultId.toNumber()).to.equal(0);
     expect(boringVault.config.authority.equals(authority.publicKey)).to.be.true;
     expect(boringVault.config.shareMint.equals(boringVaultShareMint)).to.be.true;
@@ -342,7 +337,7 @@ describe("boring-vault-svm", () => {
     )
     .accounts({
       signer: authority.publicKey,
-      boringVault: boringVaultAccount,
+      boringVaultState: boringVaultStateAccount,
       // @ts-ignore
       systemProgram: anchor.web3.SystemProgram.programId,
       asset: JITOSOL,
@@ -381,7 +376,7 @@ describe("boring-vault-svm", () => {
     )
     .accounts({
       signer: authority.publicKey,
-      boringVault: boringVaultAccount,
+      boringVaultState: boringVaultStateAccount,
       // @ts-ignore
       systemProgram: anchor.web3.SystemProgram.programId,
       asset: anchor.web3.PublicKey.default,
@@ -405,6 +400,7 @@ describe("boring-vault-svm", () => {
     .accounts({
       // @ts-ignore
       signer: user.publicKey,
+      boringVaultState: boringVaultStateAccount,
       boringVault: boringVaultAccount,
       depositMint: null,
       // @ts-ignore
@@ -448,7 +444,7 @@ describe("boring-vault-svm", () => {
     )
     .accounts({
       signer: authority.publicKey,
-      boringVault: boringVaultAccount,
+      boringVaultState: boringVaultStateAccount,
       // @ts-ignore
       systemProgram: anchor.web3.SystemProgram.programId,
       asset: JITOSOL,
@@ -472,6 +468,7 @@ describe("boring-vault-svm", () => {
     .accounts({
       // @ts-ignore
       signer: user.publicKey,
+      boringVaultState: boringVaultStateAccount,
       boringVault: boringVaultAccount,
       depositMint: JITOSOL,
       // @ts-ignore
@@ -498,82 +495,24 @@ describe("boring-vault-svm", () => {
     expect(userShareBalance.toString()).to.equal("2171923747");
   });
 
-  it("Vault can transfer sol to recipient", async () => {
-    // Transfer SOL from user to vault.
-    const ix_0 = await program.methods
-    .depositToBank(
-      {
-        vaultId: new anchor.BN(0),
-        amount: new anchor.BN(100000000),
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultBank: boringVaultBankAccount,
-      // @ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-    })
-    .instruction();
-
-    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
-
-    expect(txResult_0.result).to.be.null;
-
-    // Transfer sol from vault to user.
-    const ix_1 = await program.methods
-    .transferSol(
-      {
-        vaultId: new anchor.BN(0),
-        amount: new anchor.BN(100000000),
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultBank: boringVaultBankAccount,
-      // @ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-    })
-    .remainingAccounts([
-      {
-        pubkey: boringVaultBankAccount,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: user.publicKey,
-        isWritable: true,
-        isSigner: false,
-      }
-    ])
-    .instruction();
-
-    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
-
-    expect(txResult_1.result).to.be.null;
-  });
-
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
 
     // Transfer SOL from user to vault.
-    const ix = await program.methods
-    .depositToBank(
-      {
-        vaultId: new anchor.BN(0),
-        amount: new anchor.BN(100000000),
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultBank: boringVaultBankAccount,
-      // @ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-    })
-    .instruction();
+    const transferSolIx = anchor.web3.SystemProgram.transfer({
+      fromPubkey: user.publicKey,
+      toPubkey: boringVaultAccount,
+      lamports: 100_000_000, // 0.1 SOL in lamports
+    });
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [authority]);
+    let transferTxResult = await createAndProcessTransaction(
+      client, 
+      deployer, 
+      transferSolIx, 
+      [user] // user needs to sign since they're sending the SOL
+    );
 
-
-    expect(txResult.result).to.be.null;
+  // Expect the transfer to succeed
+  expect(transferTxResult.result).to.be.null;
 
     // Preview the cpi digest.
     const view_ix = await program.methods
@@ -619,7 +558,7 @@ describe("boring-vault-svm", () => {
         isSigner: false
       },
       {
-        pubkey: boringVaultBankAccount,
+        pubkey: boringVaultAccount,
         isWritable: true,
         isSigner: false
       },
@@ -667,7 +606,7 @@ describe("boring-vault-svm", () => {
     [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("cpi-digest"),
-        boringVaultAccount.toBuffer(),
+        boringVaultStateAccount.toBuffer(),
         Buffer.from(digest),
       ],
       program.programId
@@ -682,7 +621,7 @@ describe("boring-vault-svm", () => {
     )
     .accounts({
       signer: authority.publicKey,
-      boringVault: boringVaultAccount,
+      boringVaultState: boringVaultStateAccount,
       // @ts-ignore
       systemProgram: anchor.web3.SystemProgram.programId,
       cpiDigest: cpiDigestAccount,
@@ -721,8 +660,8 @@ describe("boring-vault-svm", () => {
     )
     .accounts({
       signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
       boringVault: boringVaultAccount,
-      boringVaultBank: boringVaultBankAccount,
       cpiDigest: cpiDigestAccount,
     })
     .remainingAccounts([
@@ -742,7 +681,7 @@ describe("boring-vault-svm", () => {
         isSigner: false
       },
       {
-        pubkey: boringVaultBankAccount,
+        pubkey: boringVaultAccount,
         isWritable: true,
         isSigner: false
       },

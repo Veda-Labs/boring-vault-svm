@@ -42,7 +42,7 @@ pub mod boring_vault_svm {
         require_keys_neq!(args.authority, Pubkey::default());
 
         // Initialize vault.
-        let vault = &mut ctx.accounts.boring_vault;
+        let vault = &mut ctx.accounts.boring_vault_state;
         vault.config.vault_id = ctx.accounts.config.vault_count;
         vault.config.authority = args.authority;
         vault.config.share_mint = ctx.accounts.share_mint.key();
@@ -77,12 +77,13 @@ pub mod boring_vault_svm {
     }
 
     // TODO Create deposit functions for Sol, Token2022, and Token.
+    // Then I guess we just functionize it for minting the shares, and maybe the oracle stuff too?
     pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
         // Handle transferring the deposit asset into the vault.
         let mut deposit_is_base_asset = false;
         match &ctx.accounts.deposit_mint {
             Some(mint) => {
-                if mint.key() == ctx.accounts.boring_vault.teller.base_asset.key() {
+                if mint.key() == ctx.accounts.boring_vault_state.teller.base_asset.key() {
                     deposit_is_base_asset = true;
                 }
                 let user_ata = ctx.accounts.user_ata.as_ref().unwrap();
@@ -104,7 +105,7 @@ pub mod boring_vault_svm {
                 )?;
             }
             None => {
-                if NATIVE.key() == ctx.accounts.boring_vault.teller.base_asset.key() {
+                if NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key() {
                     deposit_is_base_asset = true;
                 }
                 // Accepting native SOL
@@ -123,7 +124,7 @@ pub mod boring_vault_svm {
         }
 
         // TODO not a bad idea to use this Decimal logic for any math we are doing.
-        let exchange_rate = ctx.accounts.boring_vault.teller.exchange_rate;
+        let exchange_rate = ctx.accounts.boring_vault_state.teller.exchange_rate;
         let mut deposit_amount = Decimal::from(args.deposit_amount);
         deposit_amount
             .set_scale(ctx.accounts.asset_data.decimals as u32)
@@ -175,7 +176,7 @@ pub mod boring_vault_svm {
             .checked_mul(Decimal::from(PRECISION))
             .unwrap();
 
-        let shares_to_mint = shares_to_mint.try_into().unwrap();
+        let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();
         msg!("Shares to mint: {:?}", shares_to_mint);
 
         // Verify minimum shares
@@ -191,13 +192,13 @@ pub mod boring_vault_svm {
                 token_interface::MintTo {
                     mint: ctx.accounts.share_mint.to_account_info(),
                     to: ctx.accounts.user_shares.to_account_info(),
-                    authority: ctx.accounts.boring_vault.to_account_info(),
+                    authority: ctx.accounts.boring_vault_state.to_account_info(),
                 },
                 &[&[
-                    // PDA signer seeds for vault
-                    b"boring-vault",
+                    // PDA signer seeds for vault state
+                    b"boring-vault-state",
                     &args.vault_id.to_le_bytes()[..],
-                    &[ctx.bumps.boring_vault],
+                    &[ctx.bumps.boring_vault_state],
                 ]],
             ),
             shares_to_mint,
@@ -233,8 +234,12 @@ pub mod boring_vault_svm {
         )?;
 
         // Derive the expected PDA for this digest
-        let boring_vault_key = ctx.accounts.boring_vault.key();
-        let seeds = &[b"cpi-digest", boring_vault_key.as_ref(), digest.as_ref()];
+        let boring_vault_state_key = ctx.accounts.boring_vault_state.key();
+        let seeds = &[
+            b"cpi-digest",
+            boring_vault_state_key.as_ref(),
+            digest.as_ref(),
+        ];
         let (expected_pda, _) = Pubkey::find_program_address(seeds, &crate::ID);
         require!(
             expected_pda == cpi_digest.key(),
@@ -244,15 +249,14 @@ pub mod boring_vault_svm {
         msg!("Constructing CPI call");
 
         // Create new Vec<AccountInfo> with replacements
-        let bank_key = ctx.accounts.boring_vault_bank.key();
         let vault_key = ctx.accounts.boring_vault.key();
         let accounts: Vec<AccountMeta> = ctx
             .remaining_accounts
             .iter()
             .map(|account| {
                 let key = account.key();
-                let is_signer = if key == bank_key || key == vault_key {
-                    true // default to true if key is bank or vault
+                let is_signer = if key == vault_key {
+                    true // default to true if key is vault
                 } else {
                     account.is_signer
                 };
@@ -273,20 +277,6 @@ pub mod boring_vault_svm {
             data: args.ix_data,
         };
 
-        msg!("Validating account keys match");
-        for (i, ix_account) in ix.accounts.iter().enumerate() {
-            let remaining_account = &ctx.remaining_accounts[i];
-            if ix_account.pubkey != remaining_account.key() {
-                msg!(
-                    "Account mismatch at index {}: ix account {} != remaining account {}",
-                    i,
-                    ix_account.pubkey,
-                    remaining_account.key()
-                );
-                return Err(BoringErrorCode::InvalidAccounts.into());
-            }
-        }
-
         msg!("Making CPI call");
 
         let vault_seeds = &[
@@ -294,18 +284,13 @@ pub mod boring_vault_svm {
             &args.vault_id.to_le_bytes()[..],
             &[ctx.bumps.boring_vault],
         ];
-        let bank_seeds = &[
-            b"boring-vault-bank",
-            &args.vault_id.to_le_bytes()[..],
-            &[ctx.bumps.boring_vault_bank],
-        ];
 
         // msg!("ix.accounts {:?}", ix.accounts);
 
         // msg!("remaining_accounts {:?}", ctx.remaining_accounts);
 
         // Make the CPI call.
-        invoke_signed(&ix, ctx.remaining_accounts, &[vault_seeds, bank_seeds])?;
+        invoke_signed(&ix, ctx.remaining_accounts, &[vault_seeds])?;
 
         Ok(())
     }
@@ -323,47 +308,6 @@ pub mod boring_vault_svm {
         )?;
 
         Ok(ViewCpiDigestReturn { digest })
-    }
-
-    pub fn deposit_to_bank(ctx: Context<DepositToBank>, args: TransferSolArgs) -> Result<()> {
-        system_program::transfer(
-            CpiContext::new(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::Transfer {
-                    from: ctx.accounts.signer.to_account_info(),
-                    to: ctx.accounts.boring_vault_bank.to_account_info(),
-                },
-            ),
-            args.amount,
-        )?;
-
-        Ok(())
-    }
-
-    pub fn transfer_sol(ctx: Context<TransferSol>, args: TransferSolArgs) -> Result<()> {
-        // we expect remaining accounts to be of length 2
-        let from = &ctx.remaining_accounts[0];
-        let recipient = &ctx.remaining_accounts[1];
-
-        // Create CPI context with PDA signer seeds
-        let vault_seeds = &[
-            b"boring-vault-bank",
-            &args.vault_id.to_le_bytes()[..],
-            &[ctx.bumps.boring_vault_bank],
-        ];
-        let seeds = &[&vault_seeds[..]];
-
-        let ix = anchor_lang::solana_program::system_instruction::transfer(
-            &from.key(),
-            &recipient.key(),
-            args.amount,
-        );
-        let is_bank_signer = ix.accounts[0].is_signer;
-        msg!("is_bank_signer: {}", is_bank_signer);
-
-        invoke_signed(&ix, ctx.remaining_accounts, seeds)?;
-
-        Ok(())
     }
 }
 
@@ -401,18 +345,26 @@ pub struct Deploy<'info> {
         init,
         payer = signer,
         space = 8 + std::mem::size_of::<BoringVault>(),
+        seeds = [b"boring-vault-state", &config.vault_count.to_le_bytes()[..]],
+        bump,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
         seeds = [b"boring-vault", &config.vault_count.to_le_bytes()[..]],
         bump,
     )]
-    pub boring_vault: Account<'info, BoringVault>,
+    /// CHECK: Account used to hold assets.
+    pub boring_vault: SystemAccount<'info>,
 
     /// The mint of the share token.
     #[account(
         init,
         payer = signer,
         mint::decimals = args.decimals,
-        mint::authority = boring_vault.key(),
-        seeds = [b"share-token", boring_vault.key().as_ref()],
+        mint::authority = boring_vault_state.key(),
+        seeds = [b"share-token", boring_vault_state.key().as_ref()],
         bump,
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
@@ -428,12 +380,11 @@ pub struct UpdateAssetData<'info> {
     pub signer: Signer<'info>,
     // State
     #[account(
-        mut,
-        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
+        seeds = [b"boring-vault-state", &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
     )]
-    pub boring_vault: Account<'info, BoringVault>,
+    pub boring_vault_state: Account<'info, BoringVault>,
     pub system_program: Program<'info, System>,
 
     /// CHECK: can be zero account, or a Token2022 mint
@@ -445,7 +396,7 @@ pub struct UpdateAssetData<'info> {
         space = 8 + std::mem::size_of::<AssetData>(),
         seeds = [
             b"asset-data",
-            boring_vault.key().as_ref(),
+            boring_vault_state.key().as_ref(),
             asset.key().as_ref(),
         ],
         bump
@@ -461,12 +412,20 @@ pub struct Deposit<'info> {
 
     // State
     #[account(
+        // mut, // FOR WHATEVER REASON THIS CAUSES THE DEPOSIT PDA SIGNING TO REVERT? IT DOESNT NEED TO BE MUTABLE BUT STILL WHY DOES THAT MAKE IT REVERT???
+        seeds = [b"boring-vault-state", &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
         mut,
         seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault.config.paused == false @ BoringErrorCode::VaultPaused
     )]
-    pub boring_vault: Account<'info, BoringVault>,
+    /// CHECK: Account used to hold assets.
+    pub boring_vault: SystemAccount<'info>,
 
     // Deposit asset accounts
     // Optional Deposit asset mint accont
@@ -477,7 +436,7 @@ pub struct Deposit<'info> {
     #[account(
         seeds = [
             b"asset-data",
-            boring_vault.key().as_ref(),
+            boring_vault_state.key().as_ref(),
             deposit_mint.as_ref().map_or(NATIVE, |mint| mint.key()).as_ref(),
         ],
         bump,
@@ -513,9 +472,9 @@ pub struct Deposit<'info> {
     /// The vault's share mint
     #[account(
             mut,
-            seeds = [b"share-token", boring_vault.key().as_ref()],
+            seeds = [b"share-token", boring_vault_state.key().as_ref()],
             bump,
-            constraint = share_mint.key() == boring_vault.config.share_mint @ BoringErrorCode::InvalidShareMint
+            constraint = share_mint.key() == boring_vault_state.config.share_mint @ BoringErrorCode::InvalidShareMint
         )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
@@ -545,12 +504,12 @@ pub struct UpdateCpiDigest<'info> {
     pub system_program: Program<'info, System>,
 
     #[account(
-        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
+        seeds = [b"boring-vault-state", &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault.config.paused == false @ BoringErrorCode::VaultPaused,
-        constraint = signer.key() == boring_vault.config.authority.key() @ BoringErrorCode::NotAuthorized
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
-    pub boring_vault: Account<'info, BoringVault>,
+    pub boring_vault_state: Account<'info, BoringVault>,
 
     #[account(
         init_if_needed,
@@ -558,7 +517,7 @@ pub struct UpdateCpiDigest<'info> {
         space = 8 + std::mem::size_of::<CpiDigest>(),
         seeds = [
             b"cpi-digest",
-            boring_vault.key().as_ref(),
+            boring_vault_state.key().as_ref(),
             args.cpi_digest.as_ref(),
         ],
         bump,
@@ -573,20 +532,20 @@ pub struct Manage<'info> {
     pub signer: Signer<'info>,
 
     #[account(
-        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
+        seeds = [b"boring-vault-state", &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault.config.paused == false @ BoringErrorCode::VaultPaused,
-        constraint = signer.key() == boring_vault.config.authority.key() @ BoringErrorCode::NotAuthorized // TODO make this strategist
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized // TODO make this strategist
     )]
-    pub boring_vault: Account<'info, BoringVault>,
+    pub boring_vault_state: Account<'info, BoringVault>,
 
     #[account(
         mut,
-        seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
+        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
         bump,
     )]
-    /// CHECK: Bank account used to hold SOL.
-    pub boring_vault_bank: AccountInfo<'info>,
+    /// CHECK: Account used to hold assets.
+    pub boring_vault: AccountInfo<'info>,
 
     #[account()]
     /// CHECK: Checked in instruction
@@ -595,71 +554,3 @@ pub struct Manage<'info> {
 
 #[derive(Accounts)]
 pub struct ViewCpiDigest {}
-
-#[derive(Accounts)]
-#[instruction(args: TransferSolArgs)]
-pub struct DepositToBank<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    #[account(
-        mut,
-        seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
-        bump,
-    )]
-    /// CHECK: Bank account used to hold SOL.
-    pub boring_vault_bank: SystemAccount<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-#[instruction(args: TransferSolArgs)]
-pub struct TransferSol<'info> {
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    #[account(
-        mut,
-        seeds = [b"boring-vault-bank", &args.vault_id.to_le_bytes()[..]],
-        bump,
-    )]
-    /// CHECK: Bank account used to hold SOL.
-    pub boring_vault_bank: AccountInfo<'info>,
-
-    // /// CHECK: Just receiving SOL
-    // #[account(mut)]
-    // pub recipient: AccountInfo<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct TransferSolArgs {
-    pub vault_id: u64,
-    pub amount: u64,
-}
-//         // TODO: Mint JitoSOL using transferred SOL
-//         // This will require adding JitoSOL program accounts to the Deposit context
-//         // https://github.com/solana-program/stake-pool/blob/main/program/src/instruction.rs#L363C1-L378C21
-//         // example tx https://solscan.io/tx/2xo7GGcUtcz79viby1WW5GXimUW5ctSfynRyXtSardN73ZeUG7gmrZqjTQorNY67hQ5LTWSihyLs2nc5sDYd2eqm
-//         // Looks like we litearlly just serialize a 14 u8, then an amount as a u64
-//         // 0e40420f0000000000 example instruction
-
-//         const DEPOSIT_SOL_IX: u8 = 14; // 0x0e in hex
-//         let mut instruction_data = vec![DEPOSIT_SOL_IX];
-//         instruction_data.extend_from_slice(&args.deposit_amount.to_le_bytes());
-
-//         // Make CPI call to Jito's stake pool program
-//         // anchor_lang::solana_program::program::invoke(
-//         //     &anchor_lang::solana_program::instruction::Instruction {
-//         //         program_id: jito_stake_pool_program_id, // You'll need to add this as a constant
-//         //         accounts: vec![
-//         //             // Add required accounts based on Jito's DepositSol instruction
-//         //             // You'll need to add these to your Deposit context
-//         //         ],
-//         //         data: instruction_data,
-//         //     },
-//         //     &[/* Add account infos */],
-//         // )?;
-//         let amount = 0;
-//         amount
