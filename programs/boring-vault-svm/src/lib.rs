@@ -16,7 +16,7 @@ use constants::*;
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 mod utils;
-
+use utils::math::*;
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
@@ -76,6 +76,85 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<()> {
+        let deposit_is_base_asset =
+            if NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key() {
+                true
+            } else {
+                false
+            };
+
+        // Transfer SOL from user to vault
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.signer.to_account_info(),
+                    to: ctx.accounts.boring_vault.to_account_info(),
+                },
+            ),
+            args.deposit_amount,
+        )?;
+
+        let shares_to_mint = if deposit_is_base_asset {
+            calculate_shares_to_mint_using_base_asset(
+                args.deposit_amount,
+                ctx.accounts.boring_vault_state.teller.exchange_rate,
+                ctx.accounts.asset_data.decimals,
+                ctx.accounts.share_mint.decimals,
+                ctx.accounts.asset_data.share_premium_bps,
+            )?
+        } else {
+            // Query price feed.
+            let feed_account = ctx.accounts.price_feed.data.borrow();
+            let feed = PullFeedAccountData::parse(feed_account).unwrap();
+
+            let price = match feed.value() {
+                Some(value) => value,
+                None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
+            };
+
+            calculate_shares_to_mint_using_deposit_asset(
+                args.deposit_amount,
+                ctx.accounts.boring_vault_state.teller.exchange_rate,
+                price,
+                ctx.accounts.asset_data.inverse_price_feed,
+                ctx.accounts.asset_data.decimals,
+                ctx.accounts.share_mint.decimals,
+                ctx.accounts.asset_data.share_premium_bps,
+            )?
+        };
+
+        // Verify minimum shares
+        require!(
+            shares_to_mint >= args.min_mint_amount,
+            BoringErrorCode::SlippageExceeded
+        );
+
+        // Mint shares to user
+        token_interface::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program_2022.to_account_info(),
+                token_interface::MintTo {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    to: ctx.accounts.user_shares.to_account_info(),
+                    authority: ctx.accounts.boring_vault_state.to_account_info(),
+                },
+                &[&[
+                    // PDA signer seeds for vault state
+                    b"boring-vault-state",
+                    &args.vault_id.to_le_bytes()[..],
+                    &[ctx.bumps.boring_vault_state],
+                ]],
+            ),
+            shares_to_mint,
+        )?;
+
+        Ok(())
+    }
+
+    // TODO Error: Function _ZN105_$LT$boring_vault_svm..Deposit$u20$as$u20$anchor_lang..Accounts$LT$boring_vault_svm..DepositBumps$GT$$GT$12try_accounts17hf67808aa77ce4371E Stack offset of 4104 exceeded max offset of 4096 by 8 bytes, please minimize large stack variables. Estimated function frame size: 4136 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+    // Got the above error, wondering if that is why it was behaving so weird
     // TODO Create deposit functions for Sol, Token2022, and Token.
     // Then I guess we just functionize it for minting the shares, and maybe the oracle stuff too?
     pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
@@ -402,6 +481,71 @@ pub struct UpdateAssetData<'info> {
         bump
     )]
     pub asset_data: Account<'info, AssetData>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: DepositArgs)]
+pub struct DepositSol<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    pub token_program_2022: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    // State
+    #[account(
+        seeds = [b"boring-vault-state", &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [b"boring-vault", &args.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: Account used to hold assets.
+    pub boring_vault: SystemAccount<'info>,
+
+    #[account(
+        seeds = [
+            b"asset-data",
+            boring_vault_state.key().as_ref(),
+            NATIVE.as_ref(),
+        ],
+        bump,
+        constraint = asset_data.allow_deposits @ BoringErrorCode::AssetNotAllowed
+    )]
+    pub asset_data: Account<'info, AssetData>,
+
+    // Share Token
+    /// The vault's share mint
+    #[account(
+        mut,
+        seeds = [b"share-token", boring_vault_state.key().as_ref()],
+        bump,
+        constraint = share_mint.key() == boring_vault_state.config.share_mint @ BoringErrorCode::InvalidShareMint
+    )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    /// The user's share token 2022 account
+    #[account(
+            init_if_needed,
+            payer = signer,
+            associated_token::mint = share_mint,
+            associated_token::authority = signer,
+            associated_token::token_program = token_program_2022,
+        )]
+    pub user_shares: InterfaceAccount<'info, TokenAccount>,
+
+    // Pricing
+    #[account(
+            constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
+        )]
+    /// CHECK: Checked in the constraint
+    pub price_feed: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
