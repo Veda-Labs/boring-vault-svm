@@ -197,6 +197,9 @@ pub mod boring_vault_svm {
     }
 
     pub fn manage(ctx: Context<Manage>, args: ManageArgs) -> Result<()> {
+        let current_slot = ctx.accounts.clock.slot;
+        msg!("Current slot: {}", current_slot); // This will log the current slot
+
         let cpi_digest = &ctx.accounts.cpi_digest;
         require!(cpi_digest.is_valid, BoringErrorCode::InvalidCpiDigest);
 
@@ -573,6 +576,8 @@ pub struct Manage<'info> {
     #[account()]
     /// CHECK: Checked in instruction
     pub cpi_digest: Account<'info, CpiDigest>,
+
+    pub clock: Sysvar<'info, Clock>,
 }
 
 #[derive(Accounts)]

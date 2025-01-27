@@ -3,7 +3,7 @@ import { BankrunProvider, startAnchor } from "anchor-bankrun";
 import { Program } from "@coral-xyz/anchor";
 import { BoringVaultSvm } from "../target/types/boring_vault_svm";
 import { expect } from "chai";
-import { ComputeBudgetProgram } from "@solana/web3.js";
+import { ComputeBudgetProgram, AddressLookupTableProgram } from "@solana/web3.js";
 import {
   ACCOUNT_SIZE,
   AccountLayout,
@@ -61,6 +61,13 @@ describe("boring-vault-svm", () => {
   const JITOSOL_SOL_ORACLE = new anchor.web3.PublicKey('4Z1SLH9g4ikNBV8uP2ZctEouqjYmVqB2Tz5SZxKYBN7z');
   const JITOSOL = new anchor.web3.PublicKey('J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn');
 
+  const ADDRESS_LOOKUP_TABLE_PROGRAM_ID = new anchor.web3.PublicKey('AddressLookupTab1e1111111111111111111111111');
+
+  const KAMINO_LEND_PROGRAM_ID = new anchor.web3.PublicKey('KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD');
+  const KAMINO_LEND_JITO_SOL_OBLIGATION = new anchor.web3.PublicKey('95XivWGu4By7b7B6upK5ThXrYSsKKtNGrcpcgucTStNU');
+  const KAMINO_LEND_JITO_SOL_MARKET = new anchor.web3.PublicKey('7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF');
+
+
   const WSOL = new anchor.web3.PublicKey('So11111111111111111111111111111111111111112');
 
   const ACCOUNTS_TO_CLONE = [
@@ -71,6 +78,8 @@ describe("boring-vault-svm", () => {
     JITOSOL_SOL_ORACLE.toString(),
     JITOSOL.toString(),
     WSOL.toString(),
+    KAMINO_LEND_JITO_SOL_OBLIGATION.toString(),
+    KAMINO_LEND_JITO_SOL_MARKET.toString(),
   ];
 
   async function createAndProcessTransaction(
@@ -197,6 +206,10 @@ describe("boring-vault-svm", () => {
         {
           name: "sol_stake_pool",
           programId: STAKE_POOL_PROGRAM_ID
+        },
+        {
+          name: "kamino_lend",
+          programId: KAMINO_LEND_PROGRAM_ID
         }
       ],
       allAccounts
@@ -261,9 +274,9 @@ describe("boring-vault-svm", () => {
     );
 
     userJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, user.publicKey, 1000000000000000000);
-    vaultJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, boringVaultAccount, 0);
+    vaultJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, boringVaultAccount, 1000000000); // 1 JitoSOL
     userShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, user.publicKey, 0);
-    vaultWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, boringVaultAccount, 0);
+    vaultWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, boringVaultAccount, 1000000000); // Start with 1 wSOL.
 
     let dev = new anchor.web3.PublicKey("DuheUFDBEGh1xKKvCvcTPQwA8eR3oo58kzVpB54TW5TP");
     let devWSolAta: anchor.web3.PublicKey;
@@ -501,6 +514,7 @@ describe("boring-vault-svm", () => {
 
     let userShareStartBalance = await getTokenBalance(client, userShareAta);
     let userJitoSolStartBalance = await getTokenBalance(client, userJitoSolAta);
+    let vaultJitoSolStartBalance = await getTokenBalance(client, vaultJitoSolAta);
 
     let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [user]);
 
@@ -510,8 +524,10 @@ describe("boring-vault-svm", () => {
     // We expect this to be 1 share larger because of the previous deposit.
     let userShareEndBalance = await getTokenBalance(client, userShareAta);
     let userJitoSolEndBalance = await getTokenBalance(client, userJitoSolAta);
+    let vaultJitoSolEndBalance = await getTokenBalance(client, vaultJitoSolAta);
     expect(BigInt(userShareEndBalance - userShareStartBalance) > BigInt(1171923747)); // Should mint more than 1 share since JitoSol is more valuable than a share.
     expect((userJitoSolStartBalance - userJitoSolEndBalance).toString()).to.equal(depositAmount.toString());
+    expect((vaultJitoSolEndBalance - vaultJitoSolStartBalance).toString()).to.equal(depositAmount.toString());
   });
 
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
@@ -530,95 +546,43 @@ describe("boring-vault-svm", () => {
       [user] // user needs to sign since they're sending the SOL
     );
 
-  // Expect the transfer to succeed
-  expect(transferTxResult.result).to.be.null;
+    // Expect the transfer to succeed
+    expect(transferTxResult.result).to.be.null;
 
-  const remainingAccounts = CpiService.getJitoSolDepositAccounts({
-    stakePool: JITO_SOL_STAKE_POOL,
-    withdrawAuth: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
-    reserve: JITO_SOL_STAKE_POOL_RESERVE,
-    vault: boringVaultAccount,
-    vaultAta: vaultJitoSolAta,
-    fee: JITO_SOL_STAKE_POOL_FEE,
-    jitoSol: JITOSOL,
-    systemProgram: anchor.web3.SystemProgram.programId,
-    tokenProgram: TOKEN_PROGRAM_ID,
-    stakePoolProgram: STAKE_POOL_PROGRAM_ID,
-  });
+    const remainingAccounts = CpiService.getJitoSolDepositAccounts({
+      stakePool: JITO_SOL_STAKE_POOL,
+      withdrawAuth: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
+      reserve: JITO_SOL_STAKE_POOL_RESERVE,
+      vault: boringVaultAccount,
+      vaultAta: vaultJitoSolAta,
+      fee: JITO_SOL_STAKE_POOL_FEE,
+      jitoSol: JITOSOL,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      stakePoolProgram: STAKE_POOL_PROGRAM_ID,
+    });
 
-    // Preview the cpi digest.
-    const view_ix = await program.methods
-    .viewCpiDigest(
-      //@ts-ignore
+    let txResult_0 = await CpiService.executeCpi(
       {
-          vaultId: new anchor.BN(0),
-          ixProgramId: STAKE_POOL_PROGRAM_ID,
-          ixData: Buffer.from("0e40420f0000000000", "hex"),
-          operators: CpiService.getJitoSolDepositOperators(),
-          expectedSize: 399,
-      }
-    )
-    .signers([deployer])
-    .remainingAccounts(remainingAccounts)
-    .view();
-
-    let digest = view_ix.digest;
-    
-    let bump;
-    [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("cpi-digest"),
-        boringVaultStateAccount.toBuffer(),
-        Buffer.from(digest),
-      ],
-      program.programId
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
+        vaultId: new anchor.BN(0),
+        ixProgramId: STAKE_POOL_PROGRAM_ID,
+        ixData: Buffer.from("0e40420f0000000000", "hex"),
+        // @ts-ignore
+        operators: CpiService.getJitoSolDepositOperators(),
+        expectedSize: 399,
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      remainingAccounts
     );
 
-    const ix_0 = await program.methods.updateCpiDigest(
-      {
-        vaultId: new anchor.BN(0),
-        cpiDigest: digest,
-        isValid: true,
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultState: boringVaultStateAccount,
-      // @ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-      cpiDigest: cpiDigestAccount,
-    })
-    .instruction();
-
-    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
-
-    // Expect the tx to succeed.
     expect(txResult_0.result).to.be.null;
-    
-    const ix_1 = await program.methods
-    .manage(
-      //@ts-ignore
-        {
-          vaultId: new anchor.BN(0),
-          ixProgramId: STAKE_POOL_PROGRAM_ID,
-          ixData: Buffer.from("0e40420f0000000000", "hex"),
-          operators: CpiService.getJitoSolDepositOperators(),
-          expectedSize: 399,
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultState: boringVaultStateAccount,
-      boringVault: boringVaultAccount,
-      cpiDigest: cpiDigestAccount,
-    })
-    .remainingAccounts(remainingAccounts)
-    .instruction();
-
-    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
-
-    // Expect the tx to succeed.
-    expect(txResult_1.result).to.be.null;
   });
 
   it("Can transfer sol and wrap it", async () => {
@@ -632,79 +596,27 @@ describe("boring-vault-svm", () => {
       { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false }, // system program
     ];
 
-    // Preview the cpi digest.
-    const view_ix = await program.methods
-    .viewCpiDigest(
-      //@ts-ignore
+    const txResult_0 = await CpiService.executeCpi(
       {
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
         vaultId: new anchor.BN(0),
         ixProgramId: anchor.web3.SystemProgram.programId,
         ixData: transferIxData,
+        // @ts-ignore
         operators: CpiService.getWSolTransferOperators(),
         expectedSize: 104,
-      }
-    )
-    .signers([deployer])
-    .remainingAccounts(transferAccounts)
-    .view();
-
-    let digest = view_ix.digest;
-
-    let bump;
-    [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("cpi-digest"),
-        boringVaultStateAccount.toBuffer(),
-        Buffer.from(digest),
-      ],
-      program.programId
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      transferAccounts
     );
 
-    const ix_0 = await program.methods.updateCpiDigest(
-      {
-        vaultId: new anchor.BN(0),
-        cpiDigest: digest,
-        isValid: true,
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultState: boringVaultStateAccount,
-      // @ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-      cpiDigest: cpiDigestAccount,
-    })
-    .instruction();
-
-    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
-
-    // Expect the tx to succeed.
     expect(txResult_0.result).to.be.null;
-
-    const ix_1 = await program.methods
-    .manage(
-      // @ts-ignore
-      {
-        vaultId: new anchor.BN(0),
-        ixProgramId: anchor.web3.SystemProgram.programId,
-        ixData: transferIxData,
-        operators: CpiService.getWSolTransferOperators(),
-        expectedSize: 104,
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultState: boringVaultStateAccount,
-      boringVault: boringVaultAccount,
-      cpiDigest: cpiDigestAccount,
-    })
-    .remainingAccounts(transferAccounts)
-    .instruction();
-
-    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
-
-    // Expect the tx to succeed.
-    expect(txResult_1.result).to.be.null;
 
     // Now that our wSOL ata has SOL, we can wrap it.
     // Create the transfer instruction data
@@ -716,82 +628,134 @@ describe("boring-vault-svm", () => {
       { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false }, // token program
     ];
 
-    // Preview the cpi digest.
-    const view_ix_0 = await program.methods
-    .viewCpiDigest(
-      //@ts-ignore
-      {
-        vaultId: new anchor.BN(0),
-        ixProgramId: TOKEN_PROGRAM_ID,
-        ixData: wrapIxData,
-        operators: CpiService.getWSolWrapOperators(),
-        expectedSize: 75,
-      }
-    )
-    .signers([deployer])
-    .remainingAccounts(wrapAccounts)
-    .view();
-
-    let digest_0 = view_ix_0.digest;
-
-    [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("cpi-digest"),
-        boringVaultStateAccount.toBuffer(),
-        Buffer.from(digest_0),
-      ],
-      program.programId
-    );
-
-    const ix_2 = await program.methods.updateCpiDigest(
-      {
-        vaultId: new anchor.BN(0),
-        cpiDigest: digest_0,
-        isValid: true,
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultState: boringVaultStateAccount,
-      // @ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-      cpiDigest: cpiDigestAccount,
-    })
-    .instruction();
-
-    let txResult_2 = await createAndProcessTransaction(client, deployer, ix_2, [authority]);
-
-    // Expect the tx to succeed.
-    expect(txResult_2.result).to.be.null;
-
-    const ix_3 = await program.methods
-    .manage(
-      // @ts-ignore
-      {
-        vaultId: new anchor.BN(0),
-        ixProgramId: TOKEN_PROGRAM_ID,
-        ixData: wrapIxData,
-        operators: CpiService.getWSolWrapOperators(),
-        expectedSize: 75,
-      }
-    )
-    .accounts({
-      signer: authority.publicKey,
-      boringVaultState: boringVaultStateAccount,
-      boringVault: boringVaultAccount,
-      cpiDigest: cpiDigestAccount,
-    })
-    .remainingAccounts(wrapAccounts)
-    .instruction();
-
     let vaultWSolStartBalance = await getTokenBalance(client, vaultWSolAta);
 
-    let txResult_3 = await createAndProcessTransaction(client, deployer, ix_3, [authority]);
+    const txResult_1 = await CpiService.executeCpi(
+      {
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
+        vaultId: new anchor.BN(0),
+        ixProgramId: TOKEN_PROGRAM_ID,
+        ixData: wrapIxData,
+        // @ts-ignore
+        operators: CpiService.getWSolWrapOperators(),
+        expectedSize: 75,
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      wrapAccounts
+    );
 
-    // Expect the tx to succeed.
-    expect(txResult_3.result).to.be.null;
+    expect(txResult_1.result).to.be.null;
 
     let vaultWSolEndBalance = await getTokenBalance(client, vaultWSolAta);
     expect((vaultWSolEndBalance - vaultWSolStartBalance).toString()).to.equal("2039280");
+  });
+
+  it("Can lend JitoSOL on Kamino", async () => {
+    // Example tx https://solscan.io/tx/2cUbGCXmzvtXfZmc1WYbypx4rJAamHcTLqJyswjnyFbHsmT3ToVDXxUVrcnCTYbH3HqWTWMhiJcJqbGaaG9nRzdA
+
+    // Step 0: Call Create Lookup Table
+    const [lookupTableInst, lookupTableAddress] =
+    AddressLookupTableProgram.createLookupTable({
+      authority: boringVaultAccount,
+      payer:boringVaultAccount,
+      recentSlot: 0, // Bankrun starts at slot 1, so use slot 0.
+    });
+
+    const createLookupTableAccounts = [
+      { pubkey: lookupTableAddress, isWritable: true, isSigner: false },
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+      { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+      { pubkey: lookupTableInst.programId, isWritable: false, isSigner: false },
+    ];
+
+    let txResult_0 = await CpiService.executeCpi(
+      {
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
+        vaultId: new anchor.BN(0),
+        ixProgramId: lookupTableInst.programId,
+        ixData: lookupTableInst.data,
+        // @ts-ignore
+        operators: CpiService.getCreateLookupTableOperators(),
+        expectedSize: 32,
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      createLookupTableAccounts
+    );
+
+    expect(txResult_0.result).to.be.null;
+
+    // Advance to slot 3 to ensure the lookup table is warm.
+    context.warpToSlot(BigInt(2));
+
+    // Step 1: Call Init User Metadata on Kamino Lend Program.
+    const discriminator = Buffer.from("75a9b045c5170fa2", "hex");
+    const initUserMetadataIx = Buffer.concat([discriminator, lookupTableAddress.toBuffer()]);
+
+    // for debugging
+    // console.log("init user metadata ix", initUserMetadataIx.toString("hex"));
+    // let exampleLookupTableAddress = new anchor.web3.PublicKey("8xzmgxayzKLzEVQYti1rZpE5Bwad9dURmtGytfhbzkEe");
+    // const exampleIx = Buffer.concat([discriminator, exampleLookupTableAddress.toBuffer()]);
+    // console.log("example ix", exampleIx.toString("hex"));
+
+    // 2. Find CPI Digest Account
+    const [userMetadataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("user_metadata"), // from https://github.com/Kamino-Finance/klend/blob/master/programs/klend/src/utils/seeds.rs#L7
+        boringVaultAccount.toBuffer(),
+      ],
+      KAMINO_LEND_PROGRAM_ID
+    );
+    const initUserMetadataAccounts = [
+      { pubkey: boringVaultAccount, isWritable: false, isSigner: false },
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+      { pubkey: userMetadataPda, isWritable: true, isSigner: false },
+      { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+      { pubkey: anchor.web3.SYSVAR_RENT_PUBKEY, isWritable: false, isSigner: false },
+      { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+      { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+    ];
+
+    let txResult_1 = await CpiService.executeCpi(
+      {
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
+        vaultId: new anchor.BN(0),
+        ixProgramId: KAMINO_LEND_PROGRAM_ID,
+        ixData: initUserMetadataIx,
+        // @ts-ignore
+        operators: CpiService.getInitUserMetadataOperators(),
+        expectedSize: 32,
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      initUserMetadataAccounts
+    );
+    expect(txResult_1.result).to.be.null;
+
+    // Step 2: Call Init Obligation on Kamino Lend Program.
+    // const initObligationAccounts = [
+    //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+    //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+    //   { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+    //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+    // ];
+
   });
 });
