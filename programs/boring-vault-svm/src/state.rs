@@ -72,7 +72,6 @@ pub struct DepositArgs {
 #[account]
 #[derive(Debug)]
 pub struct AssetData {
-    pub decimals: u8,
     pub allow_deposits: bool,
     pub allow_withdrawals: bool,
     pub share_premium_bps: u16,

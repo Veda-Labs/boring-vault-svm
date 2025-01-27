@@ -22,4 +22,8 @@ pub enum BoringErrorCode {
     InvalidCpiDigest,
     #[msg("Invalid Account")]
     InvalidAccounts,
+    #[msg("Invalid Token Program")]
+    InvalidTokenProgram,
+    #[msg("Invalid Token Account")]
+    InvalidTokenAccount,
 }

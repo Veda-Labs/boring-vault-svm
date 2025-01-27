@@ -15,4 +15,5 @@ cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "RUST_LOG=error yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/boring-vault-svm.ts"
+# test = "RUST_LOG=error yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

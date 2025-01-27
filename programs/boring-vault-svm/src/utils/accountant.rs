@@ -17,11 +17,13 @@ pub fn calculate_shares_to_mint_using_base_asset(
         .set_scale(deposit_asset_decimals as u32)
         .unwrap();
 
-    let shares_to_mint = deposit_amount.checked_mul(exchange_rate).unwrap();
+    // Calculate shares_to_mint = deposit_amount[base] / exchange_rate[base/share]
+    let shares_to_mint = deposit_amount.checked_div(exchange_rate).unwrap();
     let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
 
+    // Scale up shares to mint by share decimals.
     let shares_to_mint = shares_to_mint
-        .checked_mul(Decimal::from(share_decimals as u32))
+        .checked_mul(Decimal::from(10u64.pow(share_decimals as u32)))
         .unwrap();
 
     let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();
@@ -52,6 +54,7 @@ pub fn calculate_shares_to_mint_using_deposit_asset(
         asset_price
     };
 
+    // Calculate shares_to_mint = deposit_amount[asset] * asset_price[base/asset] / exchange_rate[base/share]
     let shares_to_mint = deposit_amount
         .checked_mul(asset_price)
         .unwrap()
@@ -59,8 +62,9 @@ pub fn calculate_shares_to_mint_using_deposit_asset(
         .unwrap();
     let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
 
+    // Scale up shares to mint by share decimals.
     let shares_to_mint = shares_to_mint
-        .checked_mul(Decimal::from(share_decimals as u32))
+        .checked_mul(Decimal::from(10u64.pow(share_decimals as u32)))
         .unwrap();
 
     let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();

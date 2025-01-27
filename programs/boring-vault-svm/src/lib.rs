@@ -13,10 +13,9 @@ mod error;
 use error::*;
 mod constants;
 use constants::*;
-use rust_decimal::Decimal;
-use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 mod utils;
-use utils::math::*;
+use utils::accountant;
+use utils::teller;
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
@@ -33,6 +32,7 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    // TODO this needs to set up the remaining state.
     // Need to set all the other state
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
         // Make sure the signer is the authority.
@@ -61,13 +61,13 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
-    // TODO this could check that the decimals is correct by making a cpi
+    // TODO more admin functions for changing authority
+
     pub fn update_asset_data(
         ctx: Context<UpdateAssetData>,
         args: UpdateAssetDataArgs,
     ) -> Result<()> {
         let asset_data = &mut ctx.accounts.asset_data;
-        asset_data.decimals = args.asset_data.decimals;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
         asset_data.share_premium_bps = args.asset_data.share_premium_bps;
@@ -77,12 +77,10 @@ pub mod boring_vault_svm {
     }
 
     pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<()> {
-        let deposit_is_base_asset =
-            if NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key() {
-                true
-            } else {
-                false
-            };
+        teller::before_deposit(
+            ctx.accounts.boring_vault_state.config.paused,
+            ctx.accounts.asset_data.allow_deposits,
+        )?;
 
         // Transfer SOL from user to vault
         system_program::transfer(
@@ -96,192 +94,95 @@ pub mod boring_vault_svm {
             args.deposit_amount,
         )?;
 
-        let shares_to_mint = if deposit_is_base_asset {
-            calculate_shares_to_mint_using_base_asset(
-                args.deposit_amount,
-                ctx.accounts.boring_vault_state.teller.exchange_rate,
-                ctx.accounts.asset_data.decimals,
-                ctx.accounts.share_mint.decimals,
-                ctx.accounts.asset_data.share_premium_bps,
-            )?
-        } else {
-            // Query price feed.
-            let feed_account = ctx.accounts.price_feed.data.borrow();
-            let feed = PullFeedAccountData::parse(feed_account).unwrap();
+        let is_base = NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key();
 
-            let price = match feed.value() {
-                Some(value) => value,
-                None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
-            };
-
-            calculate_shares_to_mint_using_deposit_asset(
-                args.deposit_amount,
-                ctx.accounts.boring_vault_state.teller.exchange_rate,
-                price,
-                ctx.accounts.asset_data.inverse_price_feed,
-                ctx.accounts.asset_data.decimals,
-                ctx.accounts.share_mint.decimals,
-                ctx.accounts.asset_data.share_premium_bps,
-            )?
-        };
-
-        // Verify minimum shares
-        require!(
-            shares_to_mint >= args.min_mint_amount,
-            BoringErrorCode::SlippageExceeded
-        );
-
-        // Mint shares to user
-        token_interface::mint_to(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program_2022.to_account_info(),
-                token_interface::MintTo {
-                    mint: ctx.accounts.share_mint.to_account_info(),
-                    to: ctx.accounts.user_shares.to_account_info(),
-                    authority: ctx.accounts.boring_vault_state.to_account_info(),
-                },
-                &[&[
-                    // PDA signer seeds for vault state
-                    b"boring-vault-state",
-                    &args.vault_id.to_le_bytes()[..],
-                    &[ctx.bumps.boring_vault_state],
-                ]],
-            ),
-            shares_to_mint,
+        teller::calculate_shares_and_mint(
+            is_base,
+            args,
+            ctx.accounts.boring_vault_state.teller.exchange_rate,
+            ctx.accounts.share_mint.decimals,
+            NATIVE_DECIMALS,
+            ctx.accounts.asset_data.to_owned(),
+            ctx.accounts.price_feed.to_account_info(),
+            ctx.accounts.token_program_2022.to_account_info(),
+            ctx.accounts.share_mint.to_account_info(),
+            ctx.accounts.user_shares.to_account_info(),
+            ctx.accounts.boring_vault_state.to_account_info(),
+            ctx.bumps.boring_vault_state,
         )?;
 
         Ok(())
     }
 
-    // TODO Error: Function _ZN105_$LT$boring_vault_svm..Deposit$u20$as$u20$anchor_lang..Accounts$LT$boring_vault_svm..DepositBumps$GT$$GT$12try_accounts17hf67808aa77ce4371E Stack offset of 4104 exceeded max offset of 4096 by 8 bytes, please minimize large stack variables. Estimated function frame size: 4136 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
-    // Got the above error, wondering if that is why it was behaving so weird
-    // TODO Create deposit functions for Sol, Token2022, and Token.
-    // Then I guess we just functionize it for minting the shares, and maybe the oracle stuff too?
     pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
-        // Handle transferring the deposit asset into the vault.
-        let mut deposit_is_base_asset = false;
-        match &ctx.accounts.deposit_mint {
-            Some(mint) => {
-                if mint.key() == ctx.accounts.boring_vault_state.teller.base_asset.key() {
-                    deposit_is_base_asset = true;
-                }
-                let user_ata = ctx.accounts.user_ata.as_ref().unwrap();
-                let vault_ata = ctx.accounts.vault_ata.as_ref().unwrap();
-                // Accepting a Token2022
-                // Transfer Token2022 from user to vault
-                token_interface::transfer_checked(
-                    CpiContext::new(
-                        ctx.accounts.token_program.to_account_info(),
-                        token_interface::TransferChecked {
-                            from: user_ata.to_account_info(),
-                            to: vault_ata.to_account_info(),
-                            mint: mint.to_account_info(),
-                            authority: ctx.accounts.signer.to_account_info(),
-                        },
-                    ),
-                    args.deposit_amount,
-                    ctx.accounts.asset_data.decimals,
-                )?;
-            }
-            None => {
-                if NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key() {
-                    deposit_is_base_asset = true;
-                }
-                // Accepting native SOL
-                // Transfer SOL from user to vault
-                system_program::transfer(
-                    CpiContext::new(
-                        ctx.accounts.system_program.to_account_info(),
-                        system_program::Transfer {
-                            from: ctx.accounts.signer.to_account_info(),
-                            to: ctx.accounts.boring_vault.to_account_info(),
-                        },
-                    ),
-                    args.deposit_amount,
-                )?;
-            }
-        }
+        teller::before_deposit(
+            ctx.accounts.boring_vault_state.config.paused,
+            ctx.accounts.asset_data.allow_deposits,
+        )?;
 
-        // TODO not a bad idea to use this Decimal logic for any math we are doing.
-        let exchange_rate = ctx.accounts.boring_vault_state.teller.exchange_rate;
-        let mut deposit_amount = Decimal::from(args.deposit_amount);
-        deposit_amount
-            .set_scale(ctx.accounts.asset_data.decimals as u32)
-            .unwrap();
-        msg!("Deposit amount: {:?}", deposit_amount);
-        let mut exchange_rate = Decimal::from(exchange_rate);
-        exchange_rate
-            .set_scale(ctx.accounts.asset_data.decimals as u32)
-            .unwrap();
-        msg!("Exchange rate: {:?}", exchange_rate);
-
-        let mut shares_to_mint = if deposit_is_base_asset {
-            let res = deposit_amount.checked_mul(exchange_rate).unwrap();
-            res
+        // Determine which token program to use based on the mint's owner
+        let token_program_id = ctx.accounts.deposit_mint.to_account_info().owner;
+        // Validate ATAs by checking against derived PDAs
+        teller::validate_associated_token_accounts(
+            &ctx.accounts.deposit_mint.key(),
+            &token_program_id,
+            &ctx.accounts.signer.key(),
+            &ctx.accounts.boring_vault.key(),
+            &ctx.accounts.user_ata.key(),
+            &ctx.accounts.vault_ata.key(),
+        )?;
+        if token_program_id == &ctx.accounts.token_program.key() {
+            // Transfer Token from user to vault
+            token_interface::transfer_checked(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.user_ata.to_account_info(),
+                        to: ctx.accounts.vault_ata.to_account_info(),
+                        mint: ctx.accounts.deposit_mint.to_account_info(),
+                        authority: ctx.accounts.signer.to_account_info(),
+                    },
+                ),
+                args.deposit_amount,
+                ctx.accounts.deposit_mint.decimals,
+            )?;
+        } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+            // Transfer Token2022 from user to vault
+            token_interface::transfer_checked(
+                CpiContext::new(
+                    ctx.accounts.token_program_2022.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.user_ata.to_account_info(),
+                        to: ctx.accounts.vault_ata.to_account_info(),
+                        mint: ctx.accounts.deposit_mint.to_account_info(),
+                        authority: ctx.accounts.signer.to_account_info(),
+                    },
+                ),
+                args.deposit_amount,
+                ctx.accounts.deposit_mint.decimals,
+            )?;
         } else {
-            // Query price feed.
-            let feed_account = ctx.accounts.price_feed.data.borrow();
-            let feed = PullFeedAccountData::parse(feed_account).unwrap();
-
-            let mut price = match feed.value() {
-                Some(value) => value,
-                None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
-            };
-            msg!("Price: {:?}", price);
-
-            if ctx.accounts.asset_data.inverse_price_feed {
-                price = Decimal::from(PRECISION).checked_div(price).unwrap(); // 1 / price
-            }
-
-            let shares_to_mint = deposit_amount
-                .checked_mul(price)
-                .unwrap()
-                .checked_div(exchange_rate)
-                .unwrap();
-            shares_to_mint
+            return Err(BoringErrorCode::InvalidTokenProgram.into());
         };
 
-        // Factor in share premium.
-        if ctx.accounts.asset_data.share_premium_bps > 0 {
-            let mut premium_bps = Decimal::from(ctx.accounts.asset_data.share_premium_bps);
-            premium_bps.set_scale(4).unwrap();
-            let premium_amount = shares_to_mint.checked_mul(premium_bps).unwrap();
-            shares_to_mint = shares_to_mint.checked_sub(premium_amount).unwrap();
-        }
+        let is_base = ctx.accounts.deposit_mint.key()
+            == ctx.accounts.boring_vault_state.teller.base_asset.key();
 
-        // Scale up to share decimals.
-        // TODO note this uses precision right now which just so happens to be the same as the share decimals, but this is not guaranteed.
-        let shares_to_mint = shares_to_mint
-            .checked_mul(Decimal::from(PRECISION))
-            .unwrap();
-
-        let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();
-        msg!("Shares to mint: {:?}", shares_to_mint);
-
-        // Verify minimum shares
-        require!(
-            shares_to_mint >= args.min_mint_amount,
-            BoringErrorCode::SlippageExceeded
-        );
-
-        // Mint shares to user
-        token_interface::mint_to(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program_2022.to_account_info(),
-                token_interface::MintTo {
-                    mint: ctx.accounts.share_mint.to_account_info(),
-                    to: ctx.accounts.user_shares.to_account_info(),
-                    authority: ctx.accounts.boring_vault_state.to_account_info(),
-                },
-                &[&[
-                    // PDA signer seeds for vault state
-                    b"boring-vault-state",
-                    &args.vault_id.to_le_bytes()[..],
-                    &[ctx.bumps.boring_vault_state],
-                ]],
-            ),
-            shares_to_mint,
+        teller::calculate_shares_and_mint(
+            is_base,
+            args,
+            ctx.accounts.boring_vault_state.teller.exchange_rate,
+            ctx.accounts.share_mint.decimals,
+            ctx.accounts.deposit_mint.decimals,
+            ctx.accounts.asset_data.to_owned(),
+            ctx.accounts.price_feed.to_account_info(),
+            ctx.accounts.token_program_2022.to_account_info(),
+            ctx.accounts.share_mint.to_account_info(),
+            ctx.accounts.user_shares.to_account_info(),
+            ctx.accounts.boring_vault_state.to_account_info(),
+            ctx.bumps.boring_vault_state,
         )?;
+
         Ok(())
     }
 
@@ -295,9 +196,6 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
-    // This code base is doing what I need to , passing in remaining accounts and then doing the CPI call with them.
-    // TODO: https://github.com/coral-xyz/multisig
-    // https://github.com/coral-xyz/multisig/blob/master/programs/multisig/src/lib.rs
     pub fn manage(ctx: Context<Manage>, args: ManageArgs) -> Result<()> {
         let cpi_digest = &ctx.accounts.cpi_digest;
         require!(cpi_digest.is_valid, BoringErrorCode::InvalidCpiDigest);
@@ -324,8 +222,6 @@ pub mod boring_vault_svm {
             expected_pda == cpi_digest.key(),
             BoringErrorCode::InvalidCpiDigest
         );
-
-        msg!("Constructing CPI call");
 
         // Create new Vec<AccountInfo> with replacements
         let vault_key = ctx.accounts.boring_vault.key();
@@ -356,17 +252,11 @@ pub mod boring_vault_svm {
             data: args.ix_data,
         };
 
-        msg!("Making CPI call");
-
         let vault_seeds = &[
             b"boring-vault",
             &args.vault_id.to_le_bytes()[..],
             &[ctx.bumps.boring_vault],
         ];
-
-        // msg!("ix.accounts {:?}", ix.accounts);
-
-        // msg!("remaining_accounts {:?}", ctx.remaining_accounts);
 
         // Make the CPI call.
         invoke_signed(&ix, ctx.remaining_accounts, &[vault_seeds])?;
@@ -556,7 +446,7 @@ pub struct Deposit<'info> {
 
     // State
     #[account(
-        // mut, // FOR WHATEVER REASON THIS CAUSES THE DEPOSIT PDA SIGNING TO REVERT? IT DOESNT NEED TO BE MUTABLE BUT STILL WHY DOES THAT MAKE IT REVERT???
+        mut,
         seeds = [b"boring-vault-state", &args.vault_id.to_le_bytes()[..]],
         bump,
         constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused
@@ -571,40 +461,29 @@ pub struct Deposit<'info> {
     /// CHECK: Account used to hold assets.
     pub boring_vault: SystemAccount<'info>,
 
-    // Deposit asset accounts
-    // Optional Deposit asset mint accont
-    // Some => trying to deposit a Token2022
-    // None => trying to deposit NATIVE
-    pub deposit_mint: Option<InterfaceAccount<'info, Mint>>,
+    // Deposit asset account
+    pub deposit_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
         seeds = [
             b"asset-data",
             boring_vault_state.key().as_ref(),
-            deposit_mint.as_ref().map_or(NATIVE, |mint| mint.key()).as_ref(),
+            deposit_mint.key().as_ref(),
         ],
         bump,
         constraint = asset_data.allow_deposits @ BoringErrorCode::AssetNotAllowed
     )]
     pub asset_data: Account<'info, AssetData>,
 
+    #[account(mut)]
     /// User's Token associated token account
-    #[account(
-            mut,
-            associated_token::mint = deposit_mint.as_ref().unwrap(),
-            associated_token::authority = signer,
-            associated_token::token_program = token_program,
-        )]
-    pub user_ata: Option<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: Validated in instruction
+    pub user_ata: InterfaceAccount<'info, TokenAccount>,
 
+    #[account(mut)]
     /// Vault's Token associated token account
-    #[account(
-            mut,
-            associated_token::mint = deposit_mint.as_ref().unwrap(),
-            associated_token::authority = boring_vault,
-            associated_token::token_program = token_program,
-        )]
-    pub vault_ata: Option<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: Validated in instruction
+    pub vault_ata: InterfaceAccount<'info, TokenAccount>,
 
     // Programs
     pub token_program: Program<'info, Token>,

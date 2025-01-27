@@ -25,6 +25,7 @@ import {
   Connection,
   TransactionInstruction
 } from "@solana/web3.js";
+import { CpiService } from "./services";
 
 describe("boring-vault-svm", () => {
   let provider: BankrunProvider;
@@ -46,6 +47,7 @@ describe("boring-vault-svm", () => {
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
   let solAssetDataPda: anchor.web3.PublicKey;
   let userShareAta: anchor.web3.PublicKey;
+  let vaultWSolAta: anchor.web3.PublicKey;
 
   let cpiDigestAccount: anchor.web3.PublicKey;
   
@@ -59,6 +61,7 @@ describe("boring-vault-svm", () => {
   const JITOSOL_SOL_ORACLE = new anchor.web3.PublicKey('4Z1SLH9g4ikNBV8uP2ZctEouqjYmVqB2Tz5SZxKYBN7z');
   const JITOSOL = new anchor.web3.PublicKey('J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn');
 
+  const WSOL = new anchor.web3.PublicKey('So11111111111111111111111111111111111111112');
 
   const ACCOUNTS_TO_CLONE = [
     JITO_SOL_STAKE_POOL.toString(),
@@ -67,6 +70,7 @@ describe("boring-vault-svm", () => {
     JITO_SOL_STAKE_POOL_FEE.toString(),
     JITOSOL_SOL_ORACLE.toString(),
     JITOSOL.toString(),
+    WSOL.toString(),
   ];
 
   async function createAndProcessTransaction(
@@ -91,11 +95,17 @@ describe("boring-vault-svm", () => {
 
   async function setupATA(
     context: ProgramTestContext,
+    programId: PublicKey,
     mintAccount: PublicKey,
     owner: PublicKey,
     amount: number
   ): Promise<PublicKey> {
     const tokenAccData = Buffer.alloc(ACCOUNT_SIZE);
+    
+    // Check if this is a wSOL account
+    const isNative = mintAccount.equals(WSOL);
+    const rentExempt = isNative ? BigInt(2039280) : BigInt(0); // Minimum rent exempt balance for native accounts
+    
     AccountLayout.encode(
       {
         mint: mintAccount,
@@ -105,19 +115,17 @@ describe("boring-vault-svm", () => {
         delegate: PublicKey.default,
         delegatedAmount: BigInt(0),
         state: 1,
-        isNativeOption: 0,
-        isNative: BigInt(0),
+        isNativeOption: isNative ? 1 : 0,
+        isNative: isNative ? rentExempt : BigInt(0), // For native accounts, this holds the rent exempt amount
         closeAuthorityOption: 0,
         closeAuthority: PublicKey.default,
       },
       tokenAccData,
     );
   
-    // Use TOKEN_PROGRAM_ID for JitoSOL-related accounts
-    const programId = mintAccount.equals(JITOSOL) ? TOKEN_PROGRAM_ID : TOKEN_2022_PROGRAM_ID;
     const ata = getAssociatedTokenAddressSync(mintAccount, owner, true, programId);
     const ataAccountInfo = {
-      lamports: 1_000_000_000,
+      lamports: isNative ? Number(rentExempt) + amount : 1_000_000_000, // Add rent exempt balance for native accounts
       data: tokenAccData,
       owner: programId,
       executable: false,
@@ -252,9 +260,17 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
-    userJitoSolAta = await setupATA(context, JITOSOL, user.publicKey, 1000000000000000000);
-    vaultJitoSolAta = await setupATA(context, JITOSOL, boringVaultAccount, 0);
-    userShareAta = await setupATA(context, boringVaultShareMint, user.publicKey, 0);
+    userJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, user.publicKey, 1000000000000000000);
+    vaultJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, boringVaultAccount, 0);
+    userShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, user.publicKey, 0);
+    vaultWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, boringVaultAccount, 0);
+
+    let dev = new anchor.web3.PublicKey("DuheUFDBEGh1xKKvCvcTPQwA8eR3oo58kzVpB54TW5TP");
+    let devWSolAta: anchor.web3.PublicKey;
+    devWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, dev, 0);
+
+    console.log("devWSolAta: ", devWSolAta.toString());
+
 
   });
 
@@ -326,7 +342,6 @@ describe("boring-vault-svm", () => {
       {
         vaultId: new anchor.BN(0),
         assetData: {
-          decimals: 9,
           allowDeposits: true,
           allowWithdrawals: true,
           sharePremiumBps: 100,
@@ -351,7 +366,6 @@ describe("boring-vault-svm", () => {
     expect(txResult.result).to.be.null;
 
     const assetData = await program.account.assetData.fetch(jitoSolAssetDataPda);
-    expect(assetData.decimals).to.equal(9);
     expect(assetData.allowDeposits).to.be.true;
     expect(assetData.allowWithdrawals).to.be.true;
     expect(assetData.sharePremiumBps).to.equal(100);
@@ -365,7 +379,6 @@ describe("boring-vault-svm", () => {
       {
         vaultId: new anchor.BN(0),
         assetData: {
-          decimals: 9,
           allowDeposits: true,
           allowWithdrawals: true,
           sharePremiumBps: 0,
@@ -389,42 +402,43 @@ describe("boring-vault-svm", () => {
     // Expect the tx to succeed.
     expect(txResult_0.result).to.be.null;
 
+    let depositAmount = new anchor.BN(1000000000);
     const ix_1 = await program.methods
-    .deposit(
+    .depositSol(
       {
         vaultId: new anchor.BN(0),
-        depositAmount: new anchor.BN(1000000000),
+        depositAmount: depositAmount,
         minMintAmount: new anchor.BN(0),
       }
     )
     .accounts({
       // @ts-ignore
       signer: user.publicKey,
-      boringVaultState: boringVaultStateAccount,
-      boringVault: boringVaultAccount,
-      depositMint: null,
       // @ts-ignore
-      userAta: null,
-      vaultAta: null,
-      // @ts-ignore
-      assetData: solAssetDataPda,
-      tokenProgram: TOKEN_PROGRAM_ID,
       tokenProgram2022: TOKEN_2022_PROGRAM_ID,
       systemProgram: anchor.web3.SystemProgram.programId,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      boringVaultState: boringVaultStateAccount,
+      boringVault: boringVaultAccount,
+      assetData: solAssetDataPda,
+      tokenProgram: TOKEN_PROGRAM_ID,
       shareMint: boringVaultShareMint,
       userShares: userShareAta,
       priceFeed: JITOSOL_SOL_ORACLE,
     })
     .instruction();
 
+    let userShareStartBalance = await getTokenBalance(client, userShareAta);
+    let userSolStartBalance = await client.getBalance(user.publicKey);
     let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [user]);
 
     // Expect the tx to succeed.
     expect(txResult_1.result).to.be.null;
 
-    const userShareBalance = await getTokenBalance(client, userShareAta);
-    expect(userShareBalance.toString()).to.equal("1000000000");
+    let userShareEndBalance = await getTokenBalance(client, userShareAta);
+    let userSolEndBalance = await client.getBalance(user.publicKey);
+    expect((userShareEndBalance - userShareStartBalance).toString()).to.equal("1000000000");
+    expect((userSolStartBalance - userSolEndBalance).toString()).to.equal(depositAmount.toString());
   });
   
   it("Can deposit JitoSOL into a vault", async () => {
@@ -433,7 +447,6 @@ describe("boring-vault-svm", () => {
       {
         vaultId: new anchor.BN(0),
         assetData: {
-          decimals: 9,
           allowDeposits: true,
           allowWithdrawals: true,
           sharePremiumBps: 0,
@@ -457,11 +470,12 @@ describe("boring-vault-svm", () => {
     // Expect the tx to succeed.
     expect(txResult_0.result).to.be.null;
 
+    let depositAmount = new anchor.BN(1000000000);
     const ix_1 = await program.methods
     .deposit(
       {
         vaultId: new anchor.BN(0),
-        depositAmount: new anchor.BN(1000000000),
+        depositAmount: depositAmount,
         minMintAmount: new anchor.BN(0),
       }
     )
@@ -485,14 +499,19 @@ describe("boring-vault-svm", () => {
     })
     .instruction();
 
+    let userShareStartBalance = await getTokenBalance(client, userShareAta);
+    let userJitoSolStartBalance = await getTokenBalance(client, userJitoSolAta);
+
     let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [user]);
 
     // Expect the tx to succeed.
     expect(txResult_1.result).to.be.null;
 
     // We expect this to be 1 share larger because of the previous deposit.
-    const userShareBalance = await getTokenBalance(client, userShareAta);
-    expect(userShareBalance.toString()).to.equal("2171923747");
+    let userShareEndBalance = await getTokenBalance(client, userShareAta);
+    let userJitoSolEndBalance = await getTokenBalance(client, userJitoSolAta);
+    expect(BigInt(userShareEndBalance - userShareStartBalance) > BigInt(1171923747)); // Should mint more than 1 share since JitoSol is more valuable than a share.
+    expect((userJitoSolStartBalance - userJitoSolEndBalance).toString()).to.equal(depositAmount.toString());
   });
 
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
@@ -514,6 +533,19 @@ describe("boring-vault-svm", () => {
   // Expect the transfer to succeed
   expect(transferTxResult.result).to.be.null;
 
+  const remainingAccounts = CpiService.getJitoSolDepositAccounts({
+    stakePool: JITO_SOL_STAKE_POOL,
+    withdrawAuth: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
+    reserve: JITO_SOL_STAKE_POOL_RESERVE,
+    vault: boringVaultAccount,
+    vaultAta: vaultJitoSolAta,
+    fee: JITO_SOL_STAKE_POOL_FEE,
+    jitoSol: JITOSOL,
+    systemProgram: anchor.web3.SystemProgram.programId,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    stakePoolProgram: STAKE_POOL_PROGRAM_ID,
+  });
+
     // Preview the cpi digest.
     const view_ix = await program.methods
     .viewCpiDigest(
@@ -522,82 +554,12 @@ describe("boring-vault-svm", () => {
           vaultId: new anchor.BN(0),
           ixProgramId: STAKE_POOL_PROGRAM_ID,
           ixData: Buffer.from("0e40420f0000000000", "hex"),
-          operators: {
-            operators: [
-              { ingestInstruction: {0: 0, 1: 1}},
-              { ingestAccount: 0},
-              { ingestAccount: 1},
-              { ingestAccount: 2},
-              { ingestAccount: 3},
-              { ingestAccount: 4},
-              { ingestAccount: 5},
-              { ingestAccount: 6},
-              { ingestAccount: 7},
-              { ingestAccount: 8},
-              { ingestAccount: 9}
-            ],
-          },
+          operators: CpiService.getJitoSolDepositOperators(),
           expectedSize: 399,
       }
     )
     .signers([deployer])
-    .remainingAccounts([
-      {
-        pubkey: JITO_SOL_STAKE_POOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_RESERVE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: boringVaultAccount,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_FEE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITOSOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: anchor.web3.SystemProgram.programId,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: TOKEN_2022_PROGRAM_ID,
-        isWritable: false,
-        isSigner: false
-      },
-      { // MASSIVELY IMPORTANT TO INCLUDE THIS
-        pubkey: STAKE_POOL_PROGRAM_ID,
-        isWritable: false,
-        isSigner: false
-      }
-    ])
+    .remainingAccounts(remainingAccounts)
     .view();
 
     let digest = view_ix.digest;
@@ -640,21 +602,7 @@ describe("boring-vault-svm", () => {
           vaultId: new anchor.BN(0),
           ixProgramId: STAKE_POOL_PROGRAM_ID,
           ixData: Buffer.from("0e40420f0000000000", "hex"),
-          operators: {
-            operators: [
-              { ingestInstruction: {0: 0, 1: 1}},
-              { ingestAccount: 0},
-              { ingestAccount: 1},
-              { ingestAccount: 2},
-              { ingestAccount: 3},
-              { ingestAccount: 4},
-              { ingestAccount: 5},
-              { ingestAccount: 6},
-              { ingestAccount: 7},
-              { ingestAccount: 8},
-              { ingestAccount: 9}
-            ],
-          },
+          operators: CpiService.getJitoSolDepositOperators(),
           expectedSize: 399,
       }
     )
@@ -664,63 +612,7 @@ describe("boring-vault-svm", () => {
       boringVault: boringVaultAccount,
       cpiDigest: cpiDigestAccount,
     })
-    .remainingAccounts([
-      {
-        pubkey: JITO_SOL_STAKE_POOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_WITHDRAW_AUTH,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_RESERVE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: boringVaultAccount,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITO_SOL_STAKE_POOL_FEE,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: vaultJitoSolAta,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: JITOSOL,
-        isWritable: true,
-        isSigner: false
-      },
-      {
-        pubkey: anchor.web3.SystemProgram.programId,
-        isWritable: false,
-        isSigner: false
-      },
-      {
-        pubkey: TOKEN_PROGRAM_ID,
-        isWritable: false,
-        isSigner: false
-      },
-      { // MASSIVELY IMPORTANT TO INCLUDE THIS
-        pubkey: STAKE_POOL_PROGRAM_ID,
-        isWritable: false,
-        isSigner: false
-      }
-    ])
+    .remainingAccounts(remainingAccounts)
     .instruction();
 
     let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
@@ -728,5 +620,178 @@ describe("boring-vault-svm", () => {
     // Expect the tx to succeed.
     expect(txResult_1.result).to.be.null;
   });
-});
 
+  it("Can transfer sol and wrap it", async () => {
+    // Create the transfer instruction data
+    const transferIxData = Buffer.from("02000000f01d1f0000000000", "hex");
+
+    // Get the accounts needed for transfer
+    const transferAccounts = [
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false }, // from
+      { pubkey: vaultWSolAta, isWritable: true, isSigner: false }, // to
+      { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false }, // system program
+    ];
+
+    // Preview the cpi digest.
+    const view_ix = await program.methods
+    .viewCpiDigest(
+      //@ts-ignore
+      {
+        vaultId: new anchor.BN(0),
+        ixProgramId: anchor.web3.SystemProgram.programId,
+        ixData: transferIxData,
+        operators: CpiService.getWSolTransferOperators(),
+        expectedSize: 104,
+      }
+    )
+    .signers([deployer])
+    .remainingAccounts(transferAccounts)
+    .view();
+
+    let digest = view_ix.digest;
+
+    let bump;
+    [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("cpi-digest"),
+        boringVaultStateAccount.toBuffer(),
+        Buffer.from(digest),
+      ],
+      program.programId
+    );
+
+    const ix_0 = await program.methods.updateCpiDigest(
+      {
+        vaultId: new anchor.BN(0),
+        cpiDigest: digest,
+        isValid: true,
+      }
+    )
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+      // @ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
+      cpiDigest: cpiDigestAccount,
+    })
+    .instruction();
+
+    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_0.result).to.be.null;
+
+    const ix_1 = await program.methods
+    .manage(
+      // @ts-ignore
+      {
+        vaultId: new anchor.BN(0),
+        ixProgramId: anchor.web3.SystemProgram.programId,
+        ixData: transferIxData,
+        operators: CpiService.getWSolTransferOperators(),
+        expectedSize: 104,
+      }
+    )
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+      boringVault: boringVaultAccount,
+      cpiDigest: cpiDigestAccount,
+    })
+    .remainingAccounts(transferAccounts)
+    .instruction();
+
+    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_1.result).to.be.null;
+
+    // Now that our wSOL ata has SOL, we can wrap it.
+    // Create the transfer instruction data
+    const wrapIxData = Buffer.from([17]); // 11 in hex
+
+    // Get the accounts needed for transfer
+    const wrapAccounts = [
+      { pubkey: vaultWSolAta, isWritable: true, isSigner: false }, // vault wSOL ATA
+      { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false }, // token program
+    ];
+
+    // Preview the cpi digest.
+    const view_ix_0 = await program.methods
+    .viewCpiDigest(
+      //@ts-ignore
+      {
+        vaultId: new anchor.BN(0),
+        ixProgramId: TOKEN_PROGRAM_ID,
+        ixData: wrapIxData,
+        operators: CpiService.getWSolWrapOperators(),
+        expectedSize: 75,
+      }
+    )
+    .signers([deployer])
+    .remainingAccounts(wrapAccounts)
+    .view();
+
+    let digest_0 = view_ix_0.digest;
+
+    [cpiDigestAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("cpi-digest"),
+        boringVaultStateAccount.toBuffer(),
+        Buffer.from(digest_0),
+      ],
+      program.programId
+    );
+
+    const ix_2 = await program.methods.updateCpiDigest(
+      {
+        vaultId: new anchor.BN(0),
+        cpiDigest: digest_0,
+        isValid: true,
+      }
+    )
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+      // @ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
+      cpiDigest: cpiDigestAccount,
+    })
+    .instruction();
+
+    let txResult_2 = await createAndProcessTransaction(client, deployer, ix_2, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_2.result).to.be.null;
+
+    const ix_3 = await program.methods
+    .manage(
+      // @ts-ignore
+      {
+        vaultId: new anchor.BN(0),
+        ixProgramId: TOKEN_PROGRAM_ID,
+        ixData: wrapIxData,
+        operators: CpiService.getWSolWrapOperators(),
+        expectedSize: 75,
+      }
+    )
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+      boringVault: boringVaultAccount,
+      cpiDigest: cpiDigestAccount,
+    })
+    .remainingAccounts(wrapAccounts)
+    .instruction();
+
+    let vaultWSolStartBalance = await getTokenBalance(client, vaultWSolAta);
+
+    let txResult_3 = await createAndProcessTransaction(client, deployer, ix_3, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_3.result).to.be.null;
+
+    let vaultWSolEndBalance = await getTokenBalance(client, vaultWSolAta);
+    expect((vaultWSolEndBalance - vaultWSolStartBalance).toString()).to.equal("2039280");
+  });
+});
