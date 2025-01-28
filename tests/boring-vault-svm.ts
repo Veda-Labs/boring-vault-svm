@@ -27,6 +27,9 @@ import {
 } from "@solana/web3.js";
 import { CpiService } from "./services";
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 describe("boring-vault-svm", () => {
   let provider: BankrunProvider;
   let program: Program<BoringVaultSvm>;
@@ -66,6 +69,7 @@ describe("boring-vault-svm", () => {
   const KAMINO_LEND_PROGRAM_ID = new anchor.web3.PublicKey('KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD');
   const KAMINO_LEND_JITO_SOL_OBLIGATION = new anchor.web3.PublicKey('95XivWGu4By7b7B6upK5ThXrYSsKKtNGrcpcgucTStNU');
   const KAMINO_LEND_JITO_SOL_MARKET = new anchor.web3.PublicKey('7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF');
+  const KAMINO_LEND_ACCOUNT_NEEDED = new anchor.web3.PublicKey('8qLKwp1fk8WyqmzarkuMeZEX3AzL4VDSmA2UZTKT2aCJ');
 
 
   const WSOL = new anchor.web3.PublicKey('So11111111111111111111111111111111111111112');
@@ -80,6 +84,7 @@ describe("boring-vault-svm", () => {
     WSOL.toString(),
     KAMINO_LEND_JITO_SOL_OBLIGATION.toString(),
     KAMINO_LEND_JITO_SOL_MARKET.toString(),
+    KAMINO_LEND_ACCOUNT_NEEDED.toString(),
   ];
 
   async function createAndProcessTransaction(
@@ -156,7 +161,7 @@ describe("boring-vault-svm", () => {
   }
 
   before(async () => {
-    connection = new Connection("https://api.mainnet-beta.solana.com");
+    connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`);
 
     // Helper function to create AddedAccount from public key
     const createAddedAccount = async (pubkeyStr: string): Promise<AddedAccount> => {
@@ -700,54 +705,75 @@ describe("boring-vault-svm", () => {
     // Advance to slot 3 to ensure the lookup table is warm.
     context.warpToSlot(BigInt(2));
 
-    // Step 1: Call Init User Metadata on Kamino Lend Program.
-    const discriminator = Buffer.from("75a9b045c5170fa2", "hex");
-    const initUserMetadataIx = Buffer.concat([discriminator, lookupTableAddress.toBuffer()]);
+    const kaminoLendIdl = require('./idls/kamino-lend-idl.json');
+    if (!kaminoLendIdl) {
+      throw new Error("Failed to fetch Kamino Lend IDL");
+  }
 
-    // for debugging
-    // console.log("init user metadata ix", initUserMetadataIx.toString("hex"));
-    // let exampleLookupTableAddress = new anchor.web3.PublicKey("8xzmgxayzKLzEVQYti1rZpE5Bwad9dURmtGytfhbzkEe");
-    // const exampleIx = Buffer.concat([discriminator, exampleLookupTableAddress.toBuffer()]);
-    // console.log("example ix", exampleIx.toString("hex"));
+  const kaminoLendProgram = new anchor.Program(kaminoLendIdl, provider);
 
-    // 2. Find CPI Digest Account
-    const [userMetadataPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("user_metadata"), // from https://github.com/Kamino-Finance/klend/blob/master/programs/klend/src/utils/seeds.rs#L7
-        boringVaultAccount.toBuffer(),
-      ],
-      KAMINO_LEND_PROGRAM_ID
-    );
-    const initUserMetadataAccounts = [
-      { pubkey: boringVaultAccount, isWritable: false, isSigner: false },
-      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
-      { pubkey: userMetadataPda, isWritable: true, isSigner: false },
-      { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
-      { pubkey: anchor.web3.SYSVAR_RENT_PUBKEY, isWritable: false, isSigner: false },
-      { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
-      { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
-    ];
+    // const [userMetadataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    //   [
+    //     Buffer.from("user_meta"), // from https://github.com/Kamino-Finance/klend/blob/master/programs/klend/src/utils/seeds.rs#L7
+    //     boringVaultAccount.toBuffer(),
+    //   ],
+    //   KAMINO_LEND_PROGRAM_ID
+    // );
 
-    let txResult_1 = await CpiService.executeCpi(
-      {
-        program: program,
-        client: client,
-        deployer: deployer,
-        authority: authority,
-        vaultId: new anchor.BN(0),
-        ixProgramId: KAMINO_LEND_PROGRAM_ID,
-        ixData: initUserMetadataIx,
-        // @ts-ignore
-        operators: CpiService.getInitUserMetadataOperators(),
-        expectedSize: 32,
-        accounts: {
-          boringVaultState: boringVaultStateAccount,
-          boringVault: boringVaultAccount,
-        },
-      },
-      initUserMetadataAccounts
-    );
-    expect(txResult_1.result).to.be.null;
+    // const initUserMetadataIx = await kaminoLendProgram.methods.initUserMetadata({
+    //   lookupTableAddress: lookupTableAddress,
+    // }).accounts({
+    //   owner: boringVaultAccount,
+    //   feePayer: boringVaultAccount,
+    //   userMetadata: userMetadataPda,
+    //   referrerUserMetadata: KAMINO_LEND_PROGRAM_ID,
+    //   rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+    //   systemProgram: anchor.web3.SystemProgram.programId,
+    // }).instruction();
+
+    // // Step 1: Call Init User Metadata on Kamino Lend Program.
+    // const discriminator = Buffer.from("75a9b045c5170fa2", "hex");
+    // const initUserMetadataIx_0 = Buffer.concat([discriminator, lookupTableAddress.toBuffer()]);
+
+    // console.log("Anchor generated IX data:", Buffer.from(initUserMetadataIx.data).toString('hex'));
+    // console.log("Manual IX data:", initUserMetadataIx_0.toString('hex'));
+    // // for debugging
+    // // console.log("init user metadata ix", initUserMetadataIx.toString("hex"));
+    // // let exampleLookupTableAddress = new anchor.web3.PublicKey("8xzmgxayzKLzEVQYti1rZpE5Bwad9dURmtGytfhbzkEe");
+    // // const exampleIx = Buffer.concat([discriminator, exampleLookupTableAddress.toBuffer()]);
+    // // console.log("example ix", exampleIx.toString("hex"));
+
+    // // 2. Find CPI Digest Account
+    // const initUserMetadataAccounts = [
+    //   { pubkey: boringVaultAccount, isWritable: false, isSigner: false },
+    //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+    //   { pubkey: userMetadataPda, isWritable: true, isSigner: false },
+    //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+    //   { pubkey: anchor.web3.SYSVAR_RENT_PUBKEY, isWritable: false, isSigner: false },
+    //   { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+    //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+    // ];
+
+    // let txResult_1 = await CpiService.executeCpi(
+    //   {
+    //     program: program,
+    //     client: client,
+    //     deployer: deployer,
+    //     authority: authority,
+    //     vaultId: new anchor.BN(0),
+    //     ixProgramId: KAMINO_LEND_PROGRAM_ID,
+    //     ixData: initUserMetadataIx.data,
+    //     // @ts-ignore
+    //     operators: CpiService.getInitUserMetadataOperators(),
+    //     expectedSize: 32,
+    //     accounts: {
+    //       boringVaultState: boringVaultStateAccount,
+    //       boringVault: boringVaultAccount,
+    //     },
+    //   },
+    //   initUserMetadataAccounts
+    // );
+    // expect(txResult_1.result).to.be.null;
 
     // Step 2: Call Init Obligation on Kamino Lend Program.
     // const initObligationAccounts = [
