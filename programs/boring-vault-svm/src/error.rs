@@ -40,4 +40,8 @@ pub enum BoringErrorCode {
     InvalidPlatformFeeBps,
     #[msg("Invalid Performance Fee BPS")]
     InvalidPerformanceFeeBps,
+    #[msg("Is Not Currently Transferring")]
+    IsNotCurrentlyTransferring,
+    #[msg("Not in Transfer Allow List")]
+    NotInTransferAllowList,
 }

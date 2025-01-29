@@ -11,7 +11,8 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_PROGRAM_ID
+  TOKEN_PROGRAM_ID,
+  createTransferCheckedWithTransferHookInstruction,
 } from "@solana/spl-token";
 import {
   AddedAccount,
@@ -48,6 +49,8 @@ describe("boring-vault-svm", () => {
   let boringVaultStateAccount: anchor.web3.PublicKey;
   let boringVaultAccount: anchor.web3.PublicKey;
   let boringVaultShareMint: anchor.web3.PublicKey;
+  let transferConfigAccount: anchor.web3.PublicKey;
+  let extraAccountMetaList: anchor.web3.PublicKey;
   let userJitoSolAta: anchor.web3.PublicKey;
   let vaultJitoSolAta: anchor.web3.PublicKey;
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
@@ -270,6 +273,22 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
+    [transferConfigAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("transfer-config"),
+        boringVaultShareMint.toBuffer(),
+      ],
+      program.programId
+    );
+
+    [extraAccountMetaList, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("extra-account-metas"),
+        boringVaultShareMint.toBuffer(),
+      ],
+      program.programId
+    );
+
     [jitoSolAssetDataPda, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("asset-data"),
@@ -362,7 +381,42 @@ describe("boring-vault-svm", () => {
     expect(boringVault.config.shareMint.equals(boringVaultShareMint)).to.be.true;
     expect(boringVault.config.paused).to.be.false;
     expect(boringVault.config.initialized).to.be.true;
+  });
 
+  it("Can initialize extra account meta list", async () => {
+    const ix = await program.methods
+    .initializeExtraAccountMetaList()
+    .accounts({
+      payer: authority.publicKey,
+      // @ts-ignore
+      extraAccountMetaList: extraAccountMetaList,
+      mint: boringVaultShareMint,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      transferConfig: transferConfigAccount,
+    })
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult.result).to.be.null;
+
+    // Now allow all transfers
+    const ix_1 = await program.methods
+    .allowAllTransfers(new anchor.BN(0))
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+      // @ts-ignore
+      transferConfig: transferConfigAccount,
+    })
+    .instruction();
+
+    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [authority]);
+
+    // Expect the tx to succeed.
+    expect(txResult_1.result).to.be.null;
   });
 
   it("Can update asset data", async () => {
@@ -544,6 +598,70 @@ describe("boring-vault-svm", () => {
     expect(BigInt(userShareEndBalance - userShareStartBalance) > BigInt(1171923747)); // Should mint more than 1 share since JitoSol is more valuable than a share.
     expect((userJitoSolStartBalance - userJitoSolEndBalance).toString()).to.equal(depositAmount.toString());
     expect((vaultJitoSolEndBalance - vaultJitoSolStartBalance).toString()).to.equal(depositAmount.toString());
+  });
+
+  it("Enforces transfer hook", async () => {
+    // First set up the recipient's token account
+    const strategistShareAta = await setupATA(
+      context, 
+      TOKEN_2022_PROGRAM_ID, 
+      boringVaultShareMint, 
+      strategist.publicKey, 
+      0
+    );
+
+    // Get initial balances
+    const userStartBalance = await getTokenBalance(client, userShareAta);
+    const strategistStartBalance = await getTokenBalance(client, strategistShareAta);
+
+    console.log("userStartBalance", userStartBalance);
+    console.log("strategistStartBalance", strategistStartBalance);
+
+    // Create transfer instruction
+    const transferAmount = new anchor.BN(100_000_000); // Transfer 0.1 shares
+    const ix = await createTransferCheckedWithTransferHookInstruction(
+      connection,
+      userShareAta,
+      boringVaultShareMint,
+      strategistShareAta,
+      user.publicKey,
+      BigInt(transferAmount.toNumber()),
+      9,
+      [
+        {
+          pubkey: extraAccountMetaList,
+          isSigner: false,
+          isWritable: false
+        },
+        {
+          pubkey: transferConfigAccount,
+          isSigner: false,
+          isWritable: false
+        }
+      ],
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID,
+    );
+
+
+    // // Execute transfer
+    // let txResult = await createAndProcessTransaction(
+    //   client,
+    //   user,
+    //   ix,
+    //   [user] // user needs to sign since they're sending tokens
+    // );
+
+    // // Verify the transaction succeeded
+    // expect(txResult.result).to.be.null;
+
+    // // Get final balances
+    // const userEndBalance = await getTokenBalance(client, userShareAta);
+    // const strategistEndBalance = await getTokenBalance(client, strategistShareAta);
+
+    // // Verify balances changed correctly
+    // expect(userEndBalance).to.equal(userStartBalance - BigInt(transferAmount.toNumber()));
+    // expect(strategistEndBalance).to.equal(strategistStartBalance + BigInt(transferAmount.toNumber()));
   });
 
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {

@@ -69,6 +69,21 @@ pub struct DeployArgs {
     pub strategist: Pubkey,
 }
 
+// =============================== Transfer ===============================
+
+#[account]
+#[derive(Debug)]
+pub struct TransferConfig {
+    pub allow_transfers: bool,
+    pub allow_list: [Pubkey; 16],
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct UpdateTransferAllowListArgs {
+    pub index: u8,
+    pub account: Pubkey,
+}
+
 // =============================== Deposit ===============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]

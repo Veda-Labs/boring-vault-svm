@@ -1,8 +1,29 @@
 #![allow(unexpected_cfgs)]
 
-use anchor_lang::prelude::*;
+use anchor_lang::{
+    prelude::*,
+    system_program::{create_account, CreateAccount},
+};
 mod state;
-use anchor_lang::solana_program::program::invoke_signed;
+use anchor_lang::solana_program::{
+    instruction::Instruction, program::invoke, program::invoke_signed,
+};
+use std::cell::RefMut;
+use anchor_spl::
+    token_2022::spl_token_2022::{
+        extension::{
+            transfer_hook::TransferHookAccount,
+            BaseStateWithExtensionsMut,
+            PodStateWithExtensionsMut,
+        },
+        pod::PodAccount,
+    };
+use spl_tlv_account_resolution::{
+    account::ExtraAccountMeta,
+    seeds::Seed,
+    state::ExtraAccountMetaList,
+};
+use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 use anchor_lang::system_program;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::Token;
@@ -237,6 +258,87 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    // ================================== Transfer Hook ==================================
+
+    // TODO could this be done in the deploy function?
+    #[interface(spl_transfer_hook_interface::initialize_extra_account_meta_list)]
+    pub fn initialize_extra_account_meta_list(
+        ctx: Context<InitializeExtraAccountMetaList>
+    ) -> Result<()> {
+        let extra_account_metas = InitializeExtraAccountMetaList::extra_account_metas()?;
+
+        // initialize ExtraAccountMetaList account with extra accounts
+        ExtraAccountMetaList::init::<ExecuteInstruction>(
+            &mut ctx.accounts.extra_account_meta_list.try_borrow_mut_data()?,
+            &extra_account_metas
+        )?;
+
+        // TODO so I think the next step is to actually make the CPI call to token2022 to set the metadata
+
+     
+        Ok(())
+    }
+
+    #[interface(spl_transfer_hook_interface::execute)]
+    pub fn transfer_hook(ctx: Context<TransferHook>, _amount: u64) -> Result<()> {
+        // Fail this instruction if it is not called from within a transfer hook
+        check_is_transferring(&ctx)?;
+
+        // Check if allow_transfers is true
+        if !ctx.accounts.transfer_config.allow_transfers {
+            // Transfers are not allowed, but see if the owner is in the allowed list to make an exception
+            let transfer_config = &ctx.accounts.transfer_config;
+            let owner = ctx.accounts.owner.key();
+            require!(transfer_config.allow_list.contains(&owner), BoringErrorCode::NotInTransferAllowList);
+        } 
+
+        Ok(())
+    }
+
+    pub fn allow_all_transfers(ctx: Context<AllowAllTransfers>, vault_id: u64) -> Result<()> {
+        let transfer_config = &mut ctx.accounts.transfer_config;
+        transfer_config.allow_transfers = true;
+
+        msg!("Allowing all transfers for vault {}", vault_id);
+        Ok(())
+    }
+
+    pub fn enforce_transfer_allow_list(ctx: Context<EnforceTransferAllowList>, vault_id: u64) -> Result<()> {
+        let transfer_config = &mut ctx.accounts.transfer_config;
+        transfer_config.allow_transfers = false;
+
+        msg!("Enforcing transfer allow list for vault {}", vault_id);
+        Ok(())
+    }
+
+    pub fn stop_all_transfers(ctx: Context<StopAllTransfers>, vault_id: u64) -> Result<()> {
+        let transfer_config = &mut ctx.accounts.transfer_config;
+        transfer_config.allow_transfers = false;
+        // Iterate through allow_list and zero out all the accounts.
+        for account in transfer_config.allow_list.iter_mut() {
+            *account = Pubkey::default();
+        }
+
+        msg!("Stopping all transfers for vault {}", vault_id);
+        Ok(())
+    }
+
+    pub fn add_to_transfer_allow_list(ctx: Context<AddToTransferAllowList>, vault_id: u64, args: UpdateTransferAllowListArgs) -> Result<()> {
+        let transfer_config = &mut ctx.accounts.transfer_config;
+        transfer_config.allow_list[args.index as usize] = args.account;
+
+        msg!("Adding account {} to transfer allow list for vault {}", args.account, vault_id);
+        Ok(())
+    }
+
+    pub fn remove_from_transfer_allow_list(ctx: Context<RemoveFromTransferAllowList>, vault_id: u64, args: UpdateTransferAllowListArgs) -> Result<()> {
+        let transfer_config = &mut ctx.accounts.transfer_config;
+        transfer_config.allow_list[args.index as usize] = Pubkey::default();
+
+        msg!("Removing account {} from transfer allow list for vault {}", args.account, vault_id);
+        Ok(())
+    }
+
     // ================================ Deposit Functions ================================
 
     // TODO share lock period
@@ -369,6 +471,20 @@ pub mod boring_vault_svm {
     }
 }
 
+
+fn check_is_transferring(ctx: &Context<TransferHook>) -> Result<()> {
+    let source_token_info = ctx.accounts.source_token.to_account_info();
+    let mut account_data_ref: RefMut<&mut [u8]> = source_token_info.try_borrow_mut_data()?;
+    let mut account = PodStateWithExtensionsMut::<PodAccount>::unpack(*account_data_ref)?;
+    let account_extension = account.get_extension_mut::<TransferHookAccount>()?;
+
+    if !bool::from(account_extension.transferring) {
+        return err!(BoringErrorCode::IsNotCurrentlyTransferring);
+    }
+
+    Ok(())
+}
+
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(mut)]
@@ -422,6 +538,7 @@ pub struct Deploy<'info> {
         payer = signer,
         mint::decimals = args.decimals,
         mint::authority = boring_vault_state.key(),
+        extensions::transfer_hook::program_id = crate::ID,
         seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
         bump,
     )]
@@ -461,6 +578,197 @@ pub struct UpdateAssetData<'info> {
         bump
     )]
     pub asset_data: Account<'info, AssetData>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeExtraAccountMetaList<'info> {
+    #[account(mut)]
+    payer: Signer<'info>,
+
+    /// CHECK: ExtraAccountMetaList Account, must use these seeds
+    #[account(
+        init,
+        seeds = [b"extra-account-metas", mint.key().as_ref()],
+        bump,
+        space = ExtraAccountMetaList::size_of(
+            InitializeExtraAccountMetaList::extra_account_metas()?.len()
+        )?,
+        payer = payer
+    )]
+    pub extra_account_meta_list: AccountInfo<'info>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program_2022: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + std::mem::size_of::<TransferConfig>(),
+        seeds = [b"transfer-config", mint.key().as_ref()],
+        bump,
+    )]
+    pub transfer_config: Account<'info, TransferConfig>,
+}
+
+// Define extra account metas to store on extra_account_meta_list account
+impl<'info> InitializeExtraAccountMetaList<'info> {
+    pub fn extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
+        Ok(
+            vec![
+                ExtraAccountMeta::new_with_seeds(
+                    &[
+                        Seed::Literal {
+                            bytes: "transfer-config".as_bytes().to_vec(),
+                        },
+                        Seed::AccountKey { index: 2 }, // Index of mint in InitializeExtraAccountMetaList context
+                    ],
+                    false, // is_signer
+                    true // is_writable
+                )?
+            ]
+        )
+    }
+}
+
+// Order of accounts matters for this struct.
+// The first 4 accounts are the accounts required for token transfer (source, mint, destination, owner)
+// Remaining accounts are the extra accounts required from the ExtraAccountMetaList account
+// These accounts are provided via CPI to this program from the token2022 program
+#[derive(Accounts)]
+pub struct TransferHook<'info> {
+    #[account(
+        token::mint = mint, 
+        token::authority = owner,
+    )]
+    pub source_token: InterfaceAccount<'info, TokenAccount>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    #[account(
+        token::mint = mint,
+    )]
+    pub destination_token: InterfaceAccount<'info, TokenAccount>,
+    /// CHECK: source token account owner, can be SystemAccount or PDA owned by another program
+    pub owner: UncheckedAccount<'info>,
+    /// CHECK: ExtraAccountMetaList Account,
+    #[account(
+        seeds = [b"extra-account-metas", mint.key().as_ref()], 
+        bump
+    )]
+    pub extra_account_meta_list: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [b"transfer-config", mint.key().as_ref()],
+        bump,
+    )]
+    pub transfer_config: Account<'info, TransferConfig>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct AllowAllTransfers<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [b"transfer-config", boring_vault_state.config.share_mint.key().as_ref()],
+        bump,
+    )]
+    pub transfer_config: Account<'info, TransferConfig>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct EnforceTransferAllowList<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [b"transfer-config", boring_vault_state.config.share_mint.key().as_ref()],
+        bump,
+    )]
+    pub transfer_config: Account<'info, TransferConfig>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct StopAllTransfers<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [b"transfer-config", boring_vault_state.config.share_mint.key().as_ref()],
+        bump,
+    )]
+    pub transfer_config: Account<'info, TransferConfig>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64, args: UpdateTransferAllowListArgs)]
+pub struct AddToTransferAllowList<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [b"transfer-config", boring_vault_state.config.share_mint.key().as_ref()],
+        bump,
+    )]
+    pub transfer_config: Account<'info, TransferConfig>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64, args: UpdateTransferAllowListArgs)]
+pub struct RemoveFromTransferAllowList<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [b"transfer-config", boring_vault_state.config.share_mint.key().as_ref()],
+        bump,
+    )]
+    pub transfer_config: Account<'info, TransferConfig>,
 }
 
 #[derive(Accounts)]
