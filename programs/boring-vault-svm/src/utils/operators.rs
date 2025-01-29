@@ -35,7 +35,6 @@ impl Operators {
 
         // Add the ix_program_id to the hash_data
         hash_data.extend(ix_program_id.to_bytes());
-        msg!("Operators length: {}", self.operators.len());
 
         // Iterate over operators and apply them
         for operator in &self.operators {

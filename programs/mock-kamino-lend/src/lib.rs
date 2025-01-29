@@ -12,8 +12,25 @@ pub mod mock_kamino_lend {
         ctx: Context<InitUserMetadata>,
         user_lookup_table: Pubkey,
     ) -> Result<()> {
-        // Implementation here
-        // This would create the user metadata account with the same structure as Kamino's
+        let referrer = match &ctx.accounts.referrer_user_metadata {
+            Some(referrer_user_metadata) => {
+                let referrer_user_metadata = referrer_user_metadata.load()?;
+                referrer_user_metadata.owner
+            }
+            None => Pubkey::default(),
+        };
+
+        let mut user_metadata = ctx.accounts.user_metadata.load_init()?;
+        let bump = ctx.bumps.user_metadata;
+
+        *user_metadata = UserMetadata {
+            referrer,
+            bump: bump.into(),
+            user_lookup_table,
+            owner: ctx.accounts.owner.key(),
+            padding_1: [0; 64],
+            padding_2: [0; 64],
+        };
         msg!("owner: {:?}", ctx.accounts.owner.key());
         msg!("user_lookup_table: {:?}", user_lookup_table);
         Ok(())
@@ -60,7 +77,7 @@ pub struct InitUserMetadata<'info> {
         seeds = [b"user_meta", owner.key().as_ref()],
         bump,
         payer = fee_payer,
-        space = 1024 + 8,
+        space = std::mem::size_of::<UserMetadata>() + 8,
     )]
     /// CHECK: test
     pub user_metadata: AccountLoader<'info, UserMetadata>,

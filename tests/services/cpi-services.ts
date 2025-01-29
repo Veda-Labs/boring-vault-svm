@@ -214,8 +214,6 @@ export class CpiService {
            boringVaultState: params.accounts.boringVaultState,
            boringVault: params.accounts.boringVault,
            cpiDigest: cpiDigestAccount,
-           // @ts-ignore
-           clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
          })
          .remainingAccounts(remainingAccounts)
          .instruction();
