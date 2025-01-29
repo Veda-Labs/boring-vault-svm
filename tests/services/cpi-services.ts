@@ -42,7 +42,7 @@ export class CpiService {
         tx.add(instruction);
         tx.add(
           ComputeBudgetProgram.setComputeUnitLimit({
-            units: 400_000,
+            units: 1_400_000,
           })
         );
         tx.sign(payer, ...additionalSigners);

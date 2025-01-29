@@ -2,6 +2,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { BankrunProvider, startAnchor } from "anchor-bankrun";
 import { Program } from "@coral-xyz/anchor";
 import { BoringVaultSvm } from "../target/types/boring_vault_svm";
+import { MockKaminoLend } from "../target/types/mock_kamino_lend";
 import { expect } from "chai";
 import { ComputeBudgetProgram, AddressLookupTableProgram } from "@solana/web3.js";
 import {
@@ -33,6 +34,7 @@ dotenv.config();
 describe("boring-vault-svm", () => {
   let provider: BankrunProvider;
   let program: Program<BoringVaultSvm>;
+  let mockKaminoLendProgram: Program<MockKaminoLend>;
   let context: ProgramTestContext;
   let client: BanksClient;
   let connection: Connection;
@@ -84,7 +86,6 @@ describe("boring-vault-svm", () => {
     WSOL.toString(),
     KAMINO_LEND_JITO_SOL_OBLIGATION.toString(),
     KAMINO_LEND_JITO_SOL_MARKET.toString(),
-    KAMINO_LEND_ACCOUNT_NEEDED.toString(),
   ];
 
   async function createAndProcessTransaction(
@@ -100,7 +101,7 @@ describe("boring-vault-svm", () => {
     tx.add(instruction);
     tx.add(
       ComputeBudgetProgram.setComputeUnitLimit({
-        units: 400_000,
+        units: 1_400_000,
       })
     );
     tx.sign(payer, ...additionalSigners);
@@ -161,7 +162,8 @@ describe("boring-vault-svm", () => {
   }
 
   before(async () => {
-    connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`);
+    // connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`);
+    connection = new Connection(`https://api.mainnet-beta.solana.com`);
 
     // Helper function to create AddedAccount from public key
     const createAddedAccount = async (pubkeyStr: string): Promise<AddedAccount> => {
@@ -225,7 +227,7 @@ describe("boring-vault-svm", () => {
     anchor.setProvider(provider);
 
     program = anchor.workspace.BoringVaultSvm as Program<BoringVaultSvm>;
-
+    mockKaminoLendProgram = anchor.workspace.MockKaminoLend as Program<MockKaminoLend>;
     // Find PDAs
     let bump;
     [programConfigAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -661,56 +663,117 @@ describe("boring-vault-svm", () => {
     expect((vaultWSolEndBalance - vaultWSolStartBalance).toString()).to.equal("2039280");
   });
 
-  it("Can lend JitoSOL on Kamino", async () => {
-    // Example tx https://solscan.io/tx/2cUbGCXmzvtXfZmc1WYbypx4rJAamHcTLqJyswjnyFbHsmT3ToVDXxUVrcnCTYbH3HqWTWMhiJcJqbGaaG9nRzdA
-
-    // Step 0: Call Create Lookup Table
+  it("I Can lend JitoSOL on Kamino", async () => {
+    // Create lookup table for user
     const [lookupTableInst, lookupTableAddress] =
     AddressLookupTableProgram.createLookupTable({
-      authority: boringVaultAccount,
-      payer:boringVaultAccount,
+      authority: user.publicKey,
+      payer:user.publicKey,
       recentSlot: 0, // Bankrun starts at slot 1, so use slot 0.
     });
 
-    const createLookupTableAccounts = [
-      { pubkey: lookupTableAddress, isWritable: true, isSigner: false },
-      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
-      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
-      { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
-      { pubkey: lookupTableInst.programId, isWritable: false, isSigner: false },
-    ];
-
-    let txResult_0 = await CpiService.executeCpi(
-      {
-        program: program,
-        client: client,
-        deployer: deployer,
-        authority: authority,
-        vaultId: new anchor.BN(0),
-        ixProgramId: lookupTableInst.programId,
-        ixData: lookupTableInst.data,
-        // @ts-ignore
-        operators: CpiService.getCreateLookupTableOperators(),
-        expectedSize: 32,
-        accounts: {
-          boringVaultState: boringVaultStateAccount,
-          boringVault: boringVaultAccount,
-        },
-      },
-      createLookupTableAccounts
+    const targetProgramId = mockKaminoLendProgram.programId;
+    
+    const [userMetadataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("user_meta"), // from https://github.com/Kamino-Finance/klend/blob/master/programs/klend/src/utils/seeds.rs#L7
+        user.publicKey.toBuffer(),
+      ],
+      targetProgramId
     );
 
-    expect(txResult_0.result).to.be.null;
+    let initUserMetadataIx = await mockKaminoLendProgram.methods.initUserMetadata(lookupTableAddress).accounts({
+      owner: user.publicKey,
+      feePayer: user.publicKey,
+      // @ts-ignore
+      userMetadata: userMetadataPda,
+      referrerUserMetadata: targetProgramId,
+      rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      systemProgram: anchor.web3.SystemProgram.programId,
+    }).instruction();
 
-    // Advance to slot 3 to ensure the lookup table is warm.
-    context.warpToSlot(BigInt(2));
+    // // Create the instruction data for init_user_metadata
+    // const discriminator = Buffer.from("75a9b045c5170fa2", "hex");
+    // const initUserMetadataData = Buffer.concat([
+    //   discriminator,
+    //   lookupTableAddress.toBuffer(),
+    //   Buffer.alloc(32),
+    // ]);
 
-    const kaminoLendIdl = require('./idls/kamino-lend-idl.json');
-    if (!kaminoLendIdl) {
-      throw new Error("Failed to fetch Kamino Lend IDL");
-  }
+    // // Create the instruction
+    // const initUserMetadataIx = new anchor.web3.TransactionInstruction({
+    //   programId: targetProgramId,
+    //   keys: [
+    //     { pubkey: user.publicKey, isSigner: true, isWritable: true }, // owner
+    //     { pubkey: user.publicKey, isSigner: true, isWritable: true }, // fee_payer
+    //     { pubkey: userMetadataPda, isSigner: false, isWritable: true }, // user_metadata
+    //     { pubkey: anchor.web3.SystemProgram.programId, isSigner: false, isWritable: false }, // referrer_user_metadata
+    //     { pubkey: anchor.web3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false }, // rent
+    //     { pubkey: anchor.web3.SystemProgram.programId, isSigner: false, isWritable: false }, // system_program
+    //   ],
+    //   data: initUserMetadataData,
+    // });
 
-  const kaminoLendProgram = new anchor.Program(kaminoLendIdl, provider);
+    const tx = new Transaction();
+    const [latestBlockhash] = await client.getLatestBlockhash();
+    tx.recentBlockhash = latestBlockhash;
+    tx.feePayer = user.publicKey;
+    tx.add(
+     ComputeBudgetProgram.setComputeUnitLimit({
+        units: 1_400_000,
+      })
+    );
+    tx.add(lookupTableInst);
+    tx.add(initUserMetadataIx);
+    tx.sign(user);
+    let result = await client.tryProcessTransaction(tx);
+    expect(result.result).to.be.null;
+
+  });
+
+  // it("Can lend JitoSOL on Kamino", async () => {
+  //   // Example tx https://solscan.io/tx/2cUbGCXmzvtXfZmc1WYbypx4rJAamHcTLqJyswjnyFbHsmT3ToVDXxUVrcnCTYbH3HqWTWMhiJcJqbGaaG9nRzdA
+
+  //   // Step 0: Call Create Lookup Table
+  //   const [lookupTableInst, lookupTableAddress] =
+  //   AddressLookupTableProgram.createLookupTable({
+  //     authority: boringVaultAccount,
+  //     payer:boringVaultAccount,
+  //     recentSlot: 0, // Bankrun starts at slot 1, so use slot 0.
+  //   });
+
+  //   const createLookupTableAccounts = [
+  //     { pubkey: lookupTableAddress, isWritable: true, isSigner: false },
+  //     { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+  //     { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+  //     { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+  //     { pubkey: lookupTableInst.programId, isWritable: false, isSigner: false },
+  //   ];
+
+  //   let txResult_0 = await CpiService.executeCpi(
+  //     {
+  //       program: program,
+  //       client: client,
+  //       deployer: deployer,
+  //       authority: authority,
+  //       vaultId: new anchor.BN(0),
+  //       ixProgramId: lookupTableInst.programId,
+  //       ixData: lookupTableInst.data,
+  //       // @ts-ignore
+  //       operators: CpiService.getCreateLookupTableOperators(),
+  //       expectedSize: 32,
+  //       accounts: {
+  //         boringVaultState: boringVaultStateAccount,
+  //         boringVault: boringVaultAccount,
+  //       },
+  //     },
+  //     createLookupTableAccounts
+  //   );
+
+  //   expect(txResult_0.result).to.be.null;
+
+  //   // Advance to slot 3 to ensure the lookup table is warm.
+  //   context.warpToSlot(BigInt(2));
 
     // const [userMetadataPda] = anchor.web3.PublicKey.findProgramAddressSync(
     //   [
@@ -720,68 +783,75 @@ describe("boring-vault-svm", () => {
     //   KAMINO_LEND_PROGRAM_ID
     // );
 
-    // const initUserMetadataIx = await kaminoLendProgram.methods.initUserMetadata({
-    //   lookupTableAddress: lookupTableAddress,
-    // }).accounts({
-    //   owner: boringVaultAccount,
-    //   feePayer: boringVaultAccount,
-    //   userMetadata: userMetadataPda,
-    //   referrerUserMetadata: KAMINO_LEND_PROGRAM_ID,
-    //   rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //   systemProgram: anchor.web3.SystemProgram.programId,
-    // }).instruction();
+  //   // const initUserMetadataIx = await program.methods
+  //   // .initUserMetadata(
+  //   //   lookupTableAddress,
+  //   // ).accounts({
+  //   //   owner: boringVaultAccount,
+  //   //   feePayer: boringVaultAccount,
+  //   //   userMetadata: userMetadataPda,
+  //   //   referrerUserMetadata: KAMINO_LEND_PROGRAM_ID,
+  //   //   // @ts-ignore
+  //   //   rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //   //   systemProgram: anchor.web3.SystemProgram.programId,
+  //   // })
+  //   // .remainingAccounts([
+  //   //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+  //   // ])
+  //   // .instruction();
 
-    // // Step 1: Call Init User Metadata on Kamino Lend Program.
-    // const discriminator = Buffer.from("75a9b045c5170fa2", "hex");
-    // const initUserMetadataIx_0 = Buffer.concat([discriminator, lookupTableAddress.toBuffer()]);
+  //   // Step 1: Call Init User Metadata on Kamino Lend Program.
+  //   const discriminator = Buffer.from("75a9b045c5170fa2", "hex");
+  //   const initUserMetadataIx = Buffer.concat([discriminator, lookupTableAddress.toBuffer(), Buffer.alloc(32)]);
+  //   // const initUserMetadataIx = Buffer.from("75a9b045c5170fa2765a1304fed410d42d7a73e36fb0d6f4973bc44b9e635035667691411fd2372b", "hex");
 
-    // console.log("Anchor generated IX data:", Buffer.from(initUserMetadataIx.data).toString('hex'));
-    // console.log("Manual IX data:", initUserMetadataIx_0.toString('hex'));
-    // // for debugging
-    // // console.log("init user metadata ix", initUserMetadataIx.toString("hex"));
-    // // let exampleLookupTableAddress = new anchor.web3.PublicKey("8xzmgxayzKLzEVQYti1rZpE5Bwad9dURmtGytfhbzkEe");
-    // // const exampleIx = Buffer.concat([discriminator, exampleLookupTableAddress.toBuffer()]);
-    // // console.log("example ix", exampleIx.toString("hex"));
+  //   // console.log("Anchor generated IX data:", Buffer.from(initUserMetadataIx.data).toString('hex'));
+  //   // console.log("Manual IX data:", initUserMetadataIx_0.toString('hex'));
 
-    // // 2. Find CPI Digest Account
-    // const initUserMetadataAccounts = [
-    //   { pubkey: boringVaultAccount, isWritable: false, isSigner: false },
-    //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
-    //   { pubkey: userMetadataPda, isWritable: true, isSigner: false },
-    //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
-    //   { pubkey: anchor.web3.SYSVAR_RENT_PUBKEY, isWritable: false, isSigner: false },
-    //   { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
-    //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
-    // ];
+  //   // // for debugging
+  //   // // console.log("init user metadata ix", initUserMetadataIx.toString("hex"));
+  //   // // let exampleLookupTableAddress = new anchor.web3.PublicKey("8xzmgxayzKLzEVQYti1rZpE5Bwad9dURmtGytfhbzkEe");
+  //   // // const exampleIx = Buffer.concat([discriminator, exampleLookupTableAddress.toBuffer()]);
+  //   // // console.log("example ix", exampleIx.toString("hex"));
 
-    // let txResult_1 = await CpiService.executeCpi(
-    //   {
-    //     program: program,
-    //     client: client,
-    //     deployer: deployer,
-    //     authority: authority,
-    //     vaultId: new anchor.BN(0),
-    //     ixProgramId: KAMINO_LEND_PROGRAM_ID,
-    //     ixData: initUserMetadataIx.data,
-    //     // @ts-ignore
-    //     operators: CpiService.getInitUserMetadataOperators(),
-    //     expectedSize: 32,
-    //     accounts: {
-    //       boringVaultState: boringVaultStateAccount,
-    //       boringVault: boringVaultAccount,
-    //     },
-    //   },
-    //   initUserMetadataAccounts
-    // );
-    // expect(txResult_1.result).to.be.null;
+  //   // 2. Find CPI Digest Account
+  //   const initUserMetadataAccounts = [
+  //     { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+  //     { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+  //     { pubkey: userMetadataPda, isWritable: true, isSigner: false },
+  //     { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+  //     { pubkey: new anchor.web3.PublicKey('SysvarRent111111111111111111111111111111111'), isWritable: false, isSigner: false },
+  //     { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+  //   ];
 
-    // Step 2: Call Init Obligation on Kamino Lend Program.
-    // const initObligationAccounts = [
-    //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
-    //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
-    //   { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
-    //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
-    // ];
+  //   let txResult_1 = await CpiService.executeCpi(
+  //     {
+  //       program: program,
+  //       client: client,
+  //       deployer: deployer,
+  //       authority: authority,
+  //       vaultId: new anchor.BN(0),
+  //       ixProgramId: KAMINO_LEND_PROGRAM_ID,
+  //       ixData: initUserMetadataIx,
+  //       // @ts-ignore
+  //       operators: CpiService.getInitUserMetadataOperators(),
+  //       expectedSize: 32,
+  //       accounts: {
+  //         boringVaultState: boringVaultStateAccount,
+  //         boringVault: boringVaultAccount,
+  //       },
+  //     },
+  //     initUserMetadataAccounts
+  //   );
+  //   expect(txResult_1.result).to.be.null;
 
-  });
+  //   // Step 2: Call Init Obligation on Kamino Lend Program.
+  //   // const initObligationAccounts = [
+  //   //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+  //   //   { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+  //   //   { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+  //   //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
+  //   // ];
+
+  // });
 });

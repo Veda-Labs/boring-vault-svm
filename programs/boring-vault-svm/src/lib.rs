@@ -248,6 +248,8 @@ pub mod boring_vault_svm {
             })
             .collect();
 
+        msg!("Accounts: {:?}", accounts);
+
         // Create the instruction
         let ix = anchor_lang::solana_program::instruction::Instruction {
             program_id: args.ix_program_id,
