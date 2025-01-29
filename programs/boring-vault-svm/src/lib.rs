@@ -19,6 +19,10 @@ use utils::accountant;
 use utils::teller;
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
+// Good resources for figuring out how to setup extensions
+// https://github.com/solana-developers/program-examples/tree/main/tokens/token-2022/transfer-hook/whitelist/anchor
+// https://www.quicknode.com/guides/solana-development/anchor/token-2022
+
 #[program]
 pub mod boring_vault_svm {
     use super::*;
@@ -167,6 +171,9 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    // TODO update exchange rate provider
+    // TODO update exchange rate, and fee calculations
+
     // =============================== Strategist Functions ===============================
 
     pub fn manage(ctx: Context<Manage>, args: ManageArgs) -> Result<()> {
@@ -226,7 +233,7 @@ pub mod boring_vault_svm {
         };
 
         let vault_seeds = &[
-            b"boring-vault",
+            BASE_SEED_BORING_VAULT,
             &args.vault_id.to_le_bytes()[..],
             &[ctx.bumps.boring_vault],
         ];
@@ -239,7 +246,6 @@ pub mod boring_vault_svm {
 
     // ================================ Deposit Functions ================================
 
-    // TODO share lock period
     pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<()> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,
@@ -350,8 +356,12 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    // ================================ Withdraw Functions ================================
+    // TODO
+
     // ================================== View Functions ==================================
     // TODO preview_deposit
+    // TODO preview_withdraw
 
     pub fn view_cpi_digest(
         ctx: Context<ViewCpiDigest>,

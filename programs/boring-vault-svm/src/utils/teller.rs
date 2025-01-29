@@ -1,4 +1,5 @@
 use crate::accountant;
+use crate::constants::*;
 use crate::AssetData;
 use crate::BoringErrorCode;
 use crate::DepositArgs;
@@ -106,7 +107,7 @@ pub fn calculate_shares_and_mint<'a>(
             },
             &[&[
                 // PDA signer seeds for vault state
-                b"boring-vault-state",
+                BASE_SEED_BORING_VAULT_STATE,
                 &args.vault_id.to_le_bytes()[..],
                 &[boring_vault_state_bump],
             ]],
