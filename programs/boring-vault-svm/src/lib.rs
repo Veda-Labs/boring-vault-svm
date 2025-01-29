@@ -259,6 +259,8 @@ pub mod boring_vault_svm {
     }
 
     // ================================== Transfer Hook ==================================
+    // TODO to make this work would need a transfer function here, that would allow users
+    // to transfer shares, but it would check if their shares were locked
 
     // TODO could this be done in the deploy function?
     #[interface(spl_transfer_hook_interface::initialize_extra_account_meta_list)]
