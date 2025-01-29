@@ -41,6 +41,7 @@ describe("boring-vault-svm", () => {
 
   let deployer: anchor.web3.Keypair;
   let authority: anchor.web3.Keypair = anchor.web3.Keypair.generate();
+  let strategist: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   let user: anchor.web3.Keypair = anchor.web3.Keypair.generate();
 
   let programConfigAccount: anchor.web3.PublicKey;
@@ -186,6 +187,15 @@ describe("boring-vault-svm", () => {
         }
       },
       {
+        address: strategist.publicKey,
+        info: {
+          lamports: 2_000_000_000,
+          data: Buffer.alloc(0),
+          owner: anchor.web3.SystemProgram.programId,
+          executable: false,
+        }
+      },
+      {
         address: user.publicKey,
         info: {
           lamports: 100_000_000_000,
@@ -282,14 +292,6 @@ describe("boring-vault-svm", () => {
     vaultJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, boringVaultAccount, 1000000000); // 1 JitoSOL
     userShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, user.publicKey, 0);
     vaultWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, boringVaultAccount, 1000000000); // Start with 1 wSOL.
-
-    let dev = new anchor.web3.PublicKey("DuheUFDBEGh1xKKvCvcTPQwA8eR3oo58kzVpB54TW5TP");
-    let devWSolAta: anchor.web3.PublicKey;
-    devWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, dev, 0);
-
-    console.log("devWSolAta: ", devWSolAta.toString());
-
-
   });
 
   it("Is initialized", async () => {
@@ -319,10 +321,19 @@ describe("boring-vault-svm", () => {
     .deploy(
       {
         authority: authority.publicKey,
-        strategist: user.publicKey,
         name: "Boring Vault",
-        symbol: "Boring Vault",
-        decimals: 9
+        symbol: "BV",
+        decimals: 9,
+        baseAsset: anchor.web3.PublicKey.default,
+        exchangeRateProvider: strategist.publicKey,
+        exchangeRate: new anchor.BN(1000000000),
+        payoutAddress: strategist.publicKey,
+        allowedExchangeRateChangeUpperBound: 10050,
+        allowedExchangeRateChangeLowerBound: 9950,
+        minimumUpdateDelayInSeconds: 3600,
+        platformFeeBps: 100,
+        performanceFeeBps: 2000,
+        strategist: strategist.publicKey,
       }
     )
     .accounts({
@@ -573,6 +584,7 @@ describe("boring-vault-svm", () => {
         client: client,
         deployer: deployer,
         authority: authority,
+        strategist: strategist,
         vaultId: new anchor.BN(0),
         ixProgramId: STAKE_POOL_PROGRAM_ID,
         ixData: Buffer.from("0e40420f0000000000", "hex"),
@@ -607,6 +619,7 @@ describe("boring-vault-svm", () => {
         client: client,
         deployer: deployer,
         authority: authority,
+        strategist: strategist,
         vaultId: new anchor.BN(0),
         ixProgramId: anchor.web3.SystemProgram.programId,
         ixData: transferIxData,
@@ -641,6 +654,7 @@ describe("boring-vault-svm", () => {
         client: client,
         deployer: deployer,
         authority: authority,
+        strategist: strategist,
         vaultId: new anchor.BN(0),
         ixProgramId: TOKEN_PROGRAM_ID,
         ixData: wrapIxData,
@@ -752,6 +766,7 @@ describe("boring-vault-svm", () => {
     const initUserMetadataData = Buffer.concat([
       discriminator,
       lookupTableAddress.toBuffer(),
+      Buffer.alloc(32),
     ]);
 
     // Create the instruction
@@ -810,6 +825,7 @@ describe("boring-vault-svm", () => {
         client: client,
         deployer: deployer,
         authority: authority,
+        strategist: strategist,
         vaultId: new anchor.BN(0),
         ixProgramId: lookupTableInst.programId,
         ixData: lookupTableInst.data,
@@ -858,6 +874,7 @@ describe("boring-vault-svm", () => {
         client: client,
         deployer: deployer,
         authority: authority,
+        strategist: strategist,
         vaultId: new anchor.BN(0),
         ixProgramId: targetProgramId,
         ixData: initUserMetadataIx,

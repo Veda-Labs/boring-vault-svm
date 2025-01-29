@@ -131,6 +131,7 @@ export class CpiService {
           client: BanksClient,
           deployer: Keypair,
           authority: Keypair,
+          strategist: Keypair,
           vaultId: anchor.BN,
           ixProgramId: PublicKey,
           ixData: Buffer,
@@ -210,7 +211,7 @@ export class CpiService {
              expectedSize: params.expectedSize,
          })
          .accounts({
-           signer: params.authority.publicKey,
+           signer: params.strategist.publicKey,
            boringVaultState: params.accounts.boringVaultState,
            boringVault: params.accounts.boringVault,
            cpiDigest: cpiDigestAccount,
@@ -222,7 +223,7 @@ export class CpiService {
             params.client,
             params.deployer,
             manageIx,
-            [params.authority]
+            [params.strategist]
         );
     }
 }

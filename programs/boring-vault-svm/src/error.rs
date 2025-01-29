@@ -26,4 +26,18 @@ pub enum BoringErrorCode {
     InvalidTokenProgram,
     #[msg("Invalid Token Account")]
     InvalidTokenAccount,
+    #[msg("Invalid Exchange Rate Provider")]
+    InvalidExchangeRateProvider,
+    #[msg("Invalid Authority")]
+    InvalidAuthority,
+    #[msg("Invalid Payout Address")]
+    InvalidPayoutAddress,
+    #[msg("Invalid Allowed Exchange Rate Change Upper Bound")]
+    InvalidAllowedExchangeRateChangeUpperBound,
+    #[msg("Invalid Allowed Exchange Rate Change Lower Bound")]
+    InvalidAllowedExchangeRateChangeLowerBound,
+    #[msg("Invalid Platform Fee BPS")]
+    InvalidPlatformFeeBps,
+    #[msg("Invalid Performance Fee BPS")]
+    InvalidPerformanceFeeBps,
 }

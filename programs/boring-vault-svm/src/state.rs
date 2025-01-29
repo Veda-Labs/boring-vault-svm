@@ -10,13 +10,13 @@ pub struct ProgramConfig {
 
 #[account]
 pub struct BoringVault {
-    pub config: VaultConfig,
-    pub teller: TellerConfig,
-    pub manager: ManagerConfig,
+    pub config: VaultState,
+    pub teller: TellerState,
+    pub manager: ManagerState,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct VaultConfig {
+pub struct VaultState {
     pub vault_id: u64,
     pub authority: Pubkey,
     pub paused: bool,
@@ -25,33 +25,48 @@ pub struct VaultConfig {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct TellerConfig {
+pub struct TellerState {
     pub base_asset: Pubkey,
+    pub exchange_rate_provider: Pubkey,
     pub exchange_rate: u64,
     pub exchange_rate_high_water_mark: u64,
+    pub fees_owed_in_base_asset: u64,
     pub total_shares_last_update: u64,
-    pub last_update_timestamp: u32,
+    pub last_update_timestamp: u64,
     pub payout_address: Pubkey,
-    pub allowed_exchange_rate_change_upper_bound: u64,
-    pub allowed_exchange_rate_change_lower_bound: u64,
-    pub allowed_exchange_rate_change_upper_bound_timestamp: u16,
-    pub minimum_update_delay_in_seconds: u16,
+    pub allowed_exchange_rate_change_upper_bound: u16,
+    pub allowed_exchange_rate_change_lower_bound: u16,
+    pub minimum_update_delay_in_seconds: u32,
     pub platform_fee_bps: u16,
     pub performance_fee_bps: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct ManagerConfig {
+pub struct ManagerState {
     pub strategist: Pubkey,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct DeployArgs {
+    // Config
     pub authority: Pubkey,
-    pub strategist: Pubkey,
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
+
+    // Teller
+    pub base_asset: Pubkey,
+    pub exchange_rate_provider: Pubkey, // Who can update the exchange rate
+    pub exchange_rate: u64,
+    pub payout_address: Pubkey,
+    pub allowed_exchange_rate_change_upper_bound: u16,
+    pub allowed_exchange_rate_change_lower_bound: u16,
+    pub minimum_update_delay_in_seconds: u32,
+    pub platform_fee_bps: u16,
+    pub performance_fee_bps: u16,
+
+    // Manager
+    pub strategist: Pubkey,
 }
 
 // =============================== Deposit ===============================
