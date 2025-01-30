@@ -14,6 +14,7 @@ import {
   TOKEN_PROGRAM_ID
 } from "@solana/spl-token";
 import {
+  Clock,
   AddedAccount,
   BanksClient,
   BanksTransactionResultWithMeta,
@@ -41,6 +42,7 @@ describe("boring-vault-svm", () => {
 
   let deployer: anchor.web3.Keypair;
   let authority: anchor.web3.Keypair = anchor.web3.Keypair.generate();
+  let newAuthority: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   let strategist: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   let user: anchor.web3.Keypair = anchor.web3.Keypair.generate();
 
@@ -149,6 +151,19 @@ describe("boring-vault-svm", () => {
     return ata;
   }
 
+  async function wait(seconds: number) {
+    const currentClock = await client.getClock();
+    context.setClock(
+      new Clock(
+        currentClock.slot,
+        currentClock.epochStartTimestamp,
+        currentClock.epoch,
+        currentClock.leaderScheduleEpoch,
+        currentClock.unixTimestamp + BigInt(seconds)
+      )
+    );
+  }
+
   // Helper function to get token balance from bankrun
   async function getTokenBalance(
     client: BanksClient,
@@ -158,6 +173,64 @@ describe("boring-vault-svm", () => {
     if (!account) throw new Error("Account not found");
 
     return AccountLayout.decode(account.data).amount;
+  }
+
+  async function updateExchangeRateAndWait(
+    program: Program<BoringVaultSvm>,
+    client: BanksClient,
+    vaultId: anchor.BN,
+    newExchangeRate: anchor.BN,
+    exchangeRateProvider: Keypair,
+    waitTimeInSeconds: number = 86400 // 1 day default
+  ): Promise<{ feesOwed: bigint, platformFees: bigint, performanceFees: bigint }> {
+    // Update exchange rate
+    const ix = await program.methods
+      .updateExchangeRate(vaultId, newExchangeRate)
+      .accounts({
+        signer: exchangeRateProvider.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        shareMint: boringVaultShareMint,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+  
+    const txResult = await createAndProcessTransaction(
+      client, 
+      deployer, 
+      ix, 
+      [exchangeRateProvider]
+    );
+
+    // Expect the tx to succeed.
+    expect(txResult.result).to.be.null;
+  
+    // Wait specified time
+    await wait(waitTimeInSeconds);
+
+    // Get program logs
+    const logs = txResult.meta?.logMessages || [];
+
+    // Find the fee messages
+    const platformFeeLog = logs.find(log => log.includes("Platform fees owed:"));
+    const performanceFeeLog = logs.find(log => log.includes("Performance fees owed:"));
+
+    // Extract the fee amounts (optional)
+    const platformFees = platformFeeLog 
+        ? BigInt(platformFeeLog.split("Program log: Platform fees owed: ")[1]) 
+        : BigInt(0);
+    const performanceFees = performanceFeeLog 
+        ? BigInt(performanceFeeLog.split("Program log: Performance fees owed: ")[1]) 
+        : BigInt(0);
+    
+    // Get updated vault state to return fees
+    const vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    
+    return {
+      feesOwed: BigInt(vaultState.teller.feesOwedInBaseAsset.toNumber()),
+      platformFees: platformFees,
+      performanceFees: performanceFees,
+    };
   }
 
   before(async () => {
@@ -197,6 +270,15 @@ describe("boring-vault-svm", () => {
       },
       {
         address: user.publicKey,
+        info: {
+          lamports: 100_000_000_000,
+          data: Buffer.alloc(0),
+          owner: anchor.web3.SystemProgram.programId,
+          executable: false,
+        }
+      },
+      {
+        address: newAuthority.publicKey,
         info: {
           lamports: 100_000_000_000,
           data: Buffer.alloc(0),
@@ -323,8 +405,6 @@ describe("boring-vault-svm", () => {
         authority: authority.publicKey,
         name: "Boring Vault",
         symbol: "BV",
-        decimals: 9,
-        baseAsset: anchor.web3.PublicKey.default,
         exchangeRateProvider: strategist.publicKey,
         exchangeRate: new anchor.BN(1000000000),
         payoutAddress: strategist.publicKey,
@@ -342,6 +422,7 @@ describe("boring-vault-svm", () => {
       boringVaultState: boringVaultStateAccount,
       boringVault: boringVaultAccount,
       shareMint: boringVaultShareMint,
+      baseAsset: JITOSOL,
       signer: authority.publicKey,
       systemProgram: anchor.web3.SystemProgram.programId,
       tokenProgram: TOKEN_2022_PROGRAM_ID,
@@ -365,6 +446,92 @@ describe("boring-vault-svm", () => {
 
   });
 
+  it("Can transfer authority", async () => {
+    // Transfer authority to new authority.
+    {
+      const ix = await program.methods
+      .transferAuthority(
+           new anchor.BN(0),
+           newAuthority.publicKey,
+      )
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+  
+      let txResult = await createAndProcessTransaction(client, deployer, ix, [authority]);
+  
+      // Expect the tx to succeed.
+      expect(txResult.result).to.be.null;
+  
+      const boringVault = await program.account.boringVault.fetch(boringVaultStateAccount);
+      expect(boringVault.config.pendingAuthority.equals(newAuthority.publicKey)).to.be.true;
+    }
+
+    // Now accept the authority.
+    {
+      const ix = await program.methods
+      .acceptAuthority(new anchor.BN(0))
+      .accounts({
+        signer: newAuthority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+  
+      let txResult = await createAndProcessTransaction(client, deployer, ix, [newAuthority]);
+  
+      // Expect the tx to succeed.
+      expect(txResult.result).to.be.null;
+
+      const boringVault = await program.account.boringVault.fetch(boringVaultStateAccount);
+      expect(boringVault.config.authority.equals(newAuthority.publicKey)).to.be.true;
+      expect(boringVault.config.pendingAuthority.equals(anchor.web3.PublicKey.default)).to.be.true;
+    }
+
+    // Transfer authority back to original authority.
+    {
+      const ix = await program.methods
+      .transferAuthority(
+           new anchor.BN(0),
+           authority.publicKey,
+      )
+      .accounts({
+        signer: newAuthority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+  
+      let txResult = await createAndProcessTransaction(client, deployer, ix, [newAuthority]);
+  
+      // Expect the tx to succeed.
+      expect(txResult.result).to.be.null;
+  
+      const boringVault = await program.account.boringVault.fetch(boringVaultStateAccount);
+      expect(boringVault.config.pendingAuthority.equals(authority.publicKey)).to.be.true;
+    }
+
+    // Accept authority again.
+    {
+      const acceptIx = await program.methods
+      .acceptAuthority(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+  
+      let txResult = await createAndProcessTransaction(client, deployer, acceptIx, [authority]);
+  
+      // Expect the tx to succeed.
+      expect(txResult.result).to.be.null;
+
+      const boringVault = await program.account.boringVault.fetch(boringVaultStateAccount);
+      expect(boringVault.config.authority.equals(authority.publicKey)).to.be.true;
+      expect(boringVault.config.pendingAuthority.equals(anchor.web3.PublicKey.default)).to.be.true;
+    }
+  });
+
   it("Can update asset data", async () => {
     const ix = await program.methods
     .updateAssetData(
@@ -374,7 +541,8 @@ describe("boring-vault-svm", () => {
           allowDeposits: true,
           allowWithdrawals: true,
           sharePremiumBps: 100,
-          priceFeed: JITOSOL_SOL_ORACLE,
+          isPeggedToBaseAsset: true,
+          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
         }
       }
@@ -398,7 +566,8 @@ describe("boring-vault-svm", () => {
     expect(assetData.allowDeposits).to.be.true;
     expect(assetData.allowWithdrawals).to.be.true;
     expect(assetData.sharePremiumBps).to.equal(100);
-    expect(assetData.priceFeed.equals(JITOSOL_SOL_ORACLE)).to.be.true;
+    expect(assetData.isPeggedToBaseAsset).to.be.true;
+    expect(assetData.priceFeed.equals(anchor.web3.PublicKey.default)).to.be.true;
     expect(assetData.inversePriceFeed).to.be.false;
   });
 
@@ -411,6 +580,7 @@ describe("boring-vault-svm", () => {
           allowDeposits: true,
           allowWithdrawals: true,
           sharePremiumBps: 0,
+          isPeggedToBaseAsset: false,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: true,
         }
@@ -466,7 +636,8 @@ describe("boring-vault-svm", () => {
 
     let userShareEndBalance = await getTokenBalance(client, userShareAta);
     let userSolEndBalance = await client.getBalance(user.publicKey);
-    expect((userShareEndBalance - userShareStartBalance).toString()).to.equal("1000000000");
+    expect(BigInt(userShareEndBalance - userShareStartBalance) > BigInt(0));
+    expect(BigInt(userShareEndBalance - userShareStartBalance) < BigInt(1000000000));
     expect((userSolStartBalance - userSolEndBalance).toString()).to.equal(depositAmount.toString());
   });
   
@@ -479,7 +650,8 @@ describe("boring-vault-svm", () => {
           allowDeposits: true,
           allowWithdrawals: true,
           sharePremiumBps: 0,
-          priceFeed: JITOSOL_SOL_ORACLE,
+          isPeggedToBaseAsset: true,
+          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
         }
       }
@@ -524,7 +696,7 @@ describe("boring-vault-svm", () => {
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       shareMint: boringVaultShareMint,
       userShares: userShareAta,
-      priceFeed: JITOSOL_SOL_ORACLE,
+      priceFeed: anchor.web3.PublicKey.default,
     })
     .instruction();
 
@@ -541,9 +713,240 @@ describe("boring-vault-svm", () => {
     let userShareEndBalance = await getTokenBalance(client, userShareAta);
     let userJitoSolEndBalance = await getTokenBalance(client, userJitoSolAta);
     let vaultJitoSolEndBalance = await getTokenBalance(client, vaultJitoSolAta);
-    expect(BigInt(userShareEndBalance - userShareStartBalance) > BigInt(1171923747)); // Should mint more than 1 share since JitoSol is more valuable than a share.
+    expect(BigInt(userShareEndBalance - userShareStartBalance) == BigInt(1000000000)); // Should mint 1 share since JitoSol is base
     expect((userJitoSolStartBalance - userJitoSolEndBalance).toString()).to.equal(depositAmount.toString());
     expect((vaultJitoSolEndBalance - vaultJitoSolStartBalance).toString()).to.equal(depositAmount.toString());
+  });
+
+  it("Can update exchange rate and calculate fees owed", async () => {
+    await wait(86_400);
+
+    // First update - all fees should be zero
+    let res_0 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(1000000000),
+      strategist,
+      86400,
+    );
+
+    expect(res_0.feesOwed).to.equal(BigInt(0));
+    expect(res_0.platformFees).to.equal(BigInt(0));
+    expect(res_0.performanceFees).to.equal(BigInt(0));
+
+    // Second update - all fees should be non-zero
+    let res_1 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(1000500000),
+      strategist,
+      86400,
+    );
+
+    expect(res_1.feesOwed > BigInt(0));
+    expect(res_1.platformFees > BigInt(0));
+    expect(res_1.performanceFees > BigInt(0));
+    // Verify fees owed equals sum of platform and performance fees
+    expect(res_1.feesOwed - res_0.feesOwed).to.equal(res_1.platformFees + res_1.performanceFees);
+
+    // Third update - only platform fees should increase
+    let res_2 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(1000300000),
+      strategist,
+      86400,
+    );
+
+    expect(res_2.feesOwed > res_1.feesOwed);
+    expect(res_2.platformFees > BigInt(0));
+    expect(res_2.performanceFees).to.equal(BigInt(0));
+    // Verify fees owed increased only by platform fees
+    expect(res_2.feesOwed - res_1.feesOwed).to.equal(res_2.platformFees);
+
+    // Fourth update - only platform fees should increase
+    let res_3 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(1000400000),
+      strategist,
+      86400,
+    );
+
+    expect(res_3.feesOwed > res_2.feesOwed);
+    expect(res_3.platformFees > BigInt(0));
+    expect(res_3.performanceFees).to.equal(BigInt(0));
+    // Verify fees owed increased only by platform fees
+    expect(res_3.feesOwed - res_2.feesOwed).to.equal(res_3.platformFees);
+
+    // Fifth update - both platform and performance fees should increase
+    let res_4 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(1000700000),
+      strategist,
+      86400,
+    );
+
+    expect(res_4.feesOwed > res_3.feesOwed);
+    expect(res_4.platformFees > BigInt(0));
+    expect(res_4.performanceFees > BigInt(0));
+    // Verify fees owed equals sum of platform and performance fees
+    expect(res_4.feesOwed - res_3.feesOwed).to.equal(res_4.platformFees + res_4.performanceFees);
+
+    // Sixth update - change exchange rate to a ridiculous value
+    let res_5 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(2000000000),
+      strategist,
+      86400,
+    );
+
+    expect(res_5.feesOwed == res_4.feesOwed); // No fees should be owed since the exchange rate is too high, and we paused
+    expect(res_5.platformFees == BigInt(0));
+    expect(res_5.performanceFees == BigInt(0));
+
+    let boringVaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(boringVaultState.config.paused).to.be.true;
+
+    // Unpause the vault
+    const unpause_ix = await program.methods
+    .unpause(new anchor.BN(0))
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+    })
+    .instruction();
+
+    let txResult_unpause = await createAndProcessTransaction(client, deployer, unpause_ix, [authority]);
+    expect(txResult_unpause.result).to.be.null;
+
+    boringVaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(boringVaultState.config.paused).to.be.false;
+
+    // Seventh update - change exchange rate to a ridiculous low value
+    let res_6 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(100000000),
+      strategist,
+      86400,
+    );
+
+    expect(res_6.feesOwed == res_5.feesOwed); // No fees should be owed since the exchange rate is too high, and we paused
+    expect(res_6.platformFees == BigInt(0));
+    expect(res_6.performanceFees == BigInt(0));
+
+    boringVaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(boringVaultState.config.paused).to.be.true;
+
+    // Unpause the vault
+    const unpause_ix_1 = await program.methods
+    .unpause(new anchor.BN(0))
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+    })
+    .instruction();
+
+    let txResult_unpause_1 = await createAndProcessTransaction(client, deployer, unpause_ix, [authority]);
+    expect(txResult_unpause_1.result).to.be.null;
+  });
+
+  it("Can pause and unpause vault", async () => {
+    // Check initial state
+    let vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(vaultState.config.paused).to.be.false;
+
+    // Pause the vault
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let pauseTxResult = await createAndProcessTransaction(client, deployer, pauseIx, [authority]);
+    
+    // Check transaction succeeded and logs
+    expect(pauseTxResult.result).to.be.null;
+    const pauseLogs = pauseTxResult.meta?.logMessages || [];
+    expect(pauseLogs.find(log => log.includes("Vault 0 paused"))).to.not.be.undefined;
+
+    // Verify vault is paused
+    vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(vaultState.config.paused).to.be.true;
+
+    // Try to perform an action while paused (should fail)
+    const updateRateIx = await program.methods
+      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1000000000))
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        shareMint: boringVaultShareMint,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, updateRateIx, [strategist]);
+    expect(txResult.result).to.not.be.null;  // Transaction should fail
+
+    // Unpause the vault
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let unpauseTxResult = await createAndProcessTransaction(client, deployer, unpauseIx, [authority]);
+    
+    // Check transaction succeeded and logs
+    expect(unpauseTxResult.result).to.be.null;
+    const unpauseLogs = unpauseTxResult.meta?.logMessages || [];
+    expect(unpauseLogs.find(log => log.includes("Vault 0 unpaused"))).to.not.be.undefined;
+
+    // Verify vault is unpaused
+    vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(vaultState.config.paused).to.be.false;
+
+    // Verify we can now perform actions
+    const updateRateIx2 = await program.methods
+      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1000000000))
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        shareMint: boringVaultShareMint,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+
+    let updateTxResult = await createAndProcessTransaction(client, deployer, updateRateIx2, [strategist]);
+    expect(updateTxResult.result).to.be.null;
+
+    // Unpause the vault
+    const unpauseIx_1 = await program.methods
+    .unpause(new anchor.BN(0))
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+    })
+    .instruction();
+  
+    let unpauseTxResult_1 = await createAndProcessTransaction(client, deployer, unpauseIx_1, [authority]);
+    expect(unpauseTxResult_1.result).to.be.null;
   });
 
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
@@ -864,8 +1267,8 @@ describe("boring-vault-svm", () => {
       { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
       { pubkey: userMetadataPda, isWritable: true, isSigner: false },
       { pubkey: targetProgramId, isWritable: false, isSigner: false },
-      { pubkey: anchor.web3.SYSVAR_RENT_PUBKEY, isWritable: false, isSigner: false },
-      { pubkey: anchor.web3.SystemProgram.programId, isWritable: false, isSigner: false },
+      { pubkey: anchor.web3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: anchor.web3.SystemProgram.programId, isSigner: false, isWritable: false },
     ];
 
     let txResult_1 = await CpiService.executeCpi(

@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 pub const NATIVE: Pubkey = Pubkey::new_from_array([0; 32]);
 pub const NATIVE_DECIMALS: u8 = 9;
 pub const BPS_SCALE: u16 = 10000;
+pub const BPS_DECIMALS: u16 = 4;
 pub const MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND: u16 = 12000; // 20%
 pub const MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND: u16 = 8000; // -20%
 pub const MAXIMUM_PLATFORM_FEE_BPS: u16 = 2000; // 20%

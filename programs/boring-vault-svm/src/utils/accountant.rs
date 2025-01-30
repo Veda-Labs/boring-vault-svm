@@ -13,9 +13,7 @@ pub fn calculate_shares_to_mint_using_base_asset(
         .set_scale(deposit_asset_decimals as u32)
         .unwrap();
     let mut exchange_rate = Decimal::from(exchange_rate);
-    exchange_rate
-        .set_scale(deposit_asset_decimals as u32)
-        .unwrap();
+    exchange_rate.set_scale(share_decimals as u32).unwrap();
 
     // Calculate shares_to_mint = deposit_amount[base] / exchange_rate[base/share]
     let shares_to_mint = deposit_amount.checked_div(exchange_rate).unwrap();
@@ -44,9 +42,7 @@ pub fn calculate_shares_to_mint_using_deposit_asset(
         .set_scale(deposit_asset_decimals as u32)
         .unwrap();
     let mut exchange_rate = Decimal::from(exchange_rate);
-    exchange_rate
-        .set_scale(deposit_asset_decimals as u32)
-        .unwrap();
+    exchange_rate.set_scale(share_decimals as u32).unwrap();
 
     let asset_price = if inverse_price_feed {
         Decimal::from(1).checked_div(asset_price).unwrap() // 1 / price

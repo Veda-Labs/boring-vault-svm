@@ -5,6 +5,7 @@ use crate::BoringErrorCode;
 use crate::DepositArgs;
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface;
+use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
 pub fn before_deposit(is_paused: bool, allow_deposits: bool) -> Result<()> {
@@ -64,6 +65,24 @@ pub fn calculate_shares_and_mint<'a>(
     let shares_to_mint = if is_base {
         accountant::calculate_shares_to_mint_using_base_asset(
             args.deposit_amount,
+            exchange_rate,
+            asset_decimals,
+            share_decimals,
+            asset_data.share_premium_bps,
+        )?
+    } else if asset_data.is_pegged_to_base_asset {
+        // Asset is pegged to base asset, so just need to convert amount to be in terms of base asset decimals.
+        let mut deposit_amount = Decimal::from(args.deposit_amount);
+        deposit_amount.set_scale(asset_decimals as u32).unwrap();
+        // Convert to base asset decimals, which is share decimals.
+        deposit_amount = deposit_amount
+            .checked_mul(Decimal::from(10u64.pow(share_decimals as u32)))
+            .unwrap();
+
+        let deposit_amount: u64 = deposit_amount.try_into().unwrap();
+
+        accountant::calculate_shares_to_mint_using_base_asset(
+            deposit_amount,
             exchange_rate,
             asset_decimals,
             share_decimals,

@@ -40,4 +40,8 @@ pub enum BoringErrorCode {
     InvalidPlatformFeeBps,
     #[msg("Invalid Performance Fee BPS")]
     InvalidPerformanceFeeBps,
+    #[msg("Invalid Decimals")]
+    InvalidDecimals,
+    #[msg("Invalid Base Asset")]
+    InvalidBaseAsset,
 }

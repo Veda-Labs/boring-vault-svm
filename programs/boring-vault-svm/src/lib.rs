@@ -15,8 +15,10 @@ use error::*;
 mod constants;
 use constants::*;
 mod utils;
+use rust_decimal::Decimal;
 use utils::accountant;
 use utils::teller;
+
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 // Good resources for figuring out how to setup extensions
@@ -88,7 +90,7 @@ pub mod boring_vault_svm {
         vault.config.paused = false;
 
         // Initialize teller state.
-        vault.teller.base_asset = args.base_asset;
+        vault.teller.base_asset = ctx.accounts.base_asset.key();
         if args.exchange_rate_provider == Pubkey::default() {
             return Err(BoringErrorCode::InvalidExchangeRateProvider.into());
         }
@@ -143,20 +145,83 @@ pub mod boring_vault_svm {
     }
 
     // =============================== Authority Functions ===============================
-    // TODO
-    // transfer_authority
-    // accept_authority
-    // close_cpi_digest
+
+    pub fn pause(ctx: Context<Pause>, vault_id: u64) -> Result<()> {
+        ctx.accounts.boring_vault_state.config.paused = true;
+        msg!("Vault {} paused", vault_id);
+        Ok(())
+    }
+
+    pub fn unpause(ctx: Context<Unpause>, vault_id: u64) -> Result<()> {
+        ctx.accounts.boring_vault_state.config.paused = false;
+        msg!("Vault {} unpaused", vault_id);
+        Ok(())
+    }
+
+    /// Transfers authority to a new authority
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault id
+    /// * `pending_authority` - The new pending authority
+    pub fn transfer_authority(
+        ctx: Context<TransferAuthority>,
+        vault_id: u64,
+        pending_authority: Pubkey,
+    ) -> Result<()> {
+        // Set the pending authority.
+        ctx.accounts.boring_vault_state.config.pending_authority = pending_authority;
+
+        msg!(
+            "Vault {} pending authority set to {}",
+            vault_id,
+            pending_authority
+        );
+        Ok(())
+    }
+
+    /// Accepts authority from a pending authority
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault id
+    pub fn accept_authority(ctx: Context<AcceptAuthority>, vault_id: u64) -> Result<()> {
+        // Update the authority.
+        ctx.accounts.boring_vault_state.config.authority =
+            ctx.accounts.boring_vault_state.config.pending_authority;
+
+        // Reset the pending authority.
+        ctx.accounts.boring_vault_state.config.pending_authority = Pubkey::default();
+
+        msg!(
+            "Vault {} authority updated to {}",
+            vault_id,
+            ctx.accounts.boring_vault_state.config.authority
+        );
+        Ok(())
+    }
     // functions to change fees, payout address, etc.
 
+    /// Updates the asset data
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `args` - The new asset data
     pub fn update_asset_data(
         ctx: Context<UpdateAssetData>,
         args: UpdateAssetDataArgs,
     ) -> Result<()> {
+        if args.asset_data.price_feed == Pubkey::default() {
+            require!(
+                args.asset_data.is_pegged_to_base_asset,
+                BoringErrorCode::InvalidPriceFeed
+            );
+        }
         let asset_data = &mut ctx.accounts.asset_data;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
         asset_data.share_premium_bps = args.asset_data.share_premium_bps;
+        asset_data.is_pegged_to_base_asset = args.asset_data.is_pegged_to_base_asset;
         asset_data.price_feed = args.asset_data.price_feed;
         asset_data.inverse_price_feed = args.asset_data.inverse_price_feed;
         Ok(())
@@ -170,9 +235,183 @@ pub mod boring_vault_svm {
         cpi_digest.is_valid = args.is_valid;
         Ok(())
     }
+    // close_cpi_digest
 
     // TODO update exchange rate provider
-    // TODO update exchange rate, and fee calculations
+    // TODO claim fees
+
+    // =============================== Exchange Rate Functions ===============================
+
+    // TODO can refactor this into teller and accountant?
+    pub fn update_exchange_rate(
+        ctx: Context<UpdateExchangeRate>,
+        vault_id: u64,
+        new_exchange_rate: u64,
+    ) -> Result<()> {
+        let current_time = ctx.accounts.clock.unix_timestamp as u64;
+        let vault_decimals = ctx.accounts.share_mint.decimals;
+        let mut new_exchange_rate_d = Decimal::from(new_exchange_rate);
+        new_exchange_rate_d
+            .set_scale(vault_decimals as u32)
+            .unwrap();
+        let current_exchange_rate = ctx.accounts.boring_vault_state.teller.exchange_rate;
+        msg!("Current exchange rate: {}", current_exchange_rate);
+        let mut current_exchange_rate_d = Decimal::from(current_exchange_rate);
+        current_exchange_rate_d
+            .set_scale(vault_decimals as u32)
+            .unwrap();
+        let mut upper_bound = Decimal::from(
+            ctx.accounts
+                .boring_vault_state
+                .teller
+                .allowed_exchange_rate_change_upper_bound,
+        );
+        upper_bound.set_scale(BPS_DECIMALS as u32).unwrap();
+        let mut lower_bound = Decimal::from(
+            ctx.accounts
+                .boring_vault_state
+                .teller
+                .allowed_exchange_rate_change_lower_bound,
+        );
+        lower_bound.set_scale(BPS_DECIMALS as u32).unwrap();
+
+        let last_update_time = ctx.accounts.boring_vault_state.teller.last_update_timestamp;
+        let total_shares_last_update = ctx
+            .accounts
+            .boring_vault_state
+            .teller
+            .total_shares_last_update;
+        let current_total_shares = ctx.accounts.share_mint.supply;
+
+        let mut should_pause = current_time
+            < last_update_time
+                + ctx
+                    .accounts
+                    .boring_vault_state
+                    .teller
+                    .minimum_update_delay_in_seconds as u64;
+
+        should_pause = should_pause
+            || new_exchange_rate_d > current_exchange_rate_d.checked_mul(upper_bound).unwrap();
+
+        should_pause = should_pause
+            || new_exchange_rate_d < current_exchange_rate_d.checked_mul(lower_bound).unwrap();
+
+        if should_pause {
+            ctx.accounts.boring_vault_state.config.paused = true;
+            msg!("Vault {} paused due to exchange rate update", vault_id);
+        } else {
+            // Not pausing so calculate fees owed.
+            let mut platform_fees_owed_in_base_asset: u64 = 0;
+            let mut performance_fees_owed_in_base_asset: u64 = 0;
+            // First determine platform fee
+            let mut share_supply_to_use_d = if current_total_shares > total_shares_last_update {
+                Decimal::from(total_shares_last_update)
+            } else {
+                Decimal::from(current_total_shares)
+            };
+            share_supply_to_use_d
+                .set_scale(vault_decimals as u32)
+                .unwrap();
+
+            if ctx.accounts.boring_vault_state.teller.platform_fee_bps > 0 {
+                let mut platform_fee_d =
+                    Decimal::from(ctx.accounts.boring_vault_state.teller.platform_fee_bps);
+                platform_fee_d.set_scale(BPS_DECIMALS as u32).unwrap();
+                // Figure out how much time as passed since last update.
+                let time_passed = current_time - last_update_time;
+
+                // Minimum assets is the exchange rate times the share supply.
+                let minimum_assets = if share_supply_to_use_d.is_zero() {
+                    Decimal::ZERO
+                } else if new_exchange_rate > current_exchange_rate {
+                    current_exchange_rate_d
+                        .checked_mul(share_supply_to_use_d)
+                        .unwrap()
+                } else {
+                    new_exchange_rate_d
+                        .checked_mul(share_supply_to_use_d)
+                        .unwrap()
+                };
+                let platform_fee_in_base_asset =
+                    minimum_assets.checked_mul(platform_fee_d).unwrap();
+                let time_passed_in_years = Decimal::from(time_passed)
+                    .checked_div(Decimal::from(365 * 86400))
+                    .unwrap();
+                let platform_fee_in_base_asset = platform_fee_in_base_asset
+                    .checked_mul(time_passed_in_years)
+                    .unwrap();
+                platform_fees_owed_in_base_asset = platform_fee_in_base_asset
+                    .checked_mul(Decimal::from(10u64.pow(vault_decimals as u32)))
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+            }
+
+            if new_exchange_rate
+                > ctx
+                    .accounts
+                    .boring_vault_state
+                    .teller
+                    .exchange_rate_high_water_mark
+            {
+                if ctx.accounts.boring_vault_state.teller.performance_fee_bps > 0 {
+                    let mut high_water_mark_d = Decimal::from(
+                        ctx.accounts
+                            .boring_vault_state
+                            .teller
+                            .exchange_rate_high_water_mark,
+                    );
+                    high_water_mark_d.set_scale(vault_decimals as u32).unwrap();
+                    let mut performance_fee_d =
+                        Decimal::from(ctx.accounts.boring_vault_state.teller.performance_fee_bps);
+                    performance_fee_d.set_scale(BPS_DECIMALS as u32).unwrap();
+                    let delta_rate = new_exchange_rate_d.checked_sub(high_water_mark_d).unwrap();
+                    let yield_earned = delta_rate.checked_mul(share_supply_to_use_d).unwrap();
+                    let performance_fee_in_base_asset =
+                        yield_earned.checked_mul(performance_fee_d).unwrap();
+                    performance_fees_owed_in_base_asset = performance_fee_in_base_asset
+                        .checked_mul(Decimal::from(10u64.pow(vault_decimals as u32)))
+                        .unwrap()
+                        .try_into()
+                        .unwrap();
+                }
+
+                // Always update high water mark
+                ctx.accounts
+                    .boring_vault_state
+                    .teller
+                    .exchange_rate_high_water_mark = new_exchange_rate;
+            }
+
+            msg!("Platform fees owed: {}", platform_fees_owed_in_base_asset);
+            msg!(
+                "Performance fees owed: {}",
+                performance_fees_owed_in_base_asset
+            );
+            // Update fees owed
+            ctx.accounts
+                .boring_vault_state
+                .teller
+                .fees_owed_in_base_asset +=
+                platform_fees_owed_in_base_asset + performance_fees_owed_in_base_asset;
+        }
+
+        // Update exchange rate, last update time, and total shares.
+        ctx.accounts.boring_vault_state.teller.exchange_rate = new_exchange_rate;
+        ctx.accounts.boring_vault_state.teller.last_update_timestamp = current_time;
+        ctx.accounts
+            .boring_vault_state
+            .teller
+            .total_shares_last_update = current_total_shares;
+
+        msg!(
+            "Vault {} exchange rate updated to {}",
+            vault_id,
+            new_exchange_rate
+        );
+        Ok(())
+    }
 
     // =============================== Strategist Functions ===============================
 
@@ -357,7 +596,7 @@ pub mod boring_vault_svm {
     }
 
     // ================================ Withdraw Functions ================================
-    // TODO
+    // TODO just a generic withdraw function but only callable by the queue program
 
     // ================================== View Functions ==================================
     // TODO preview_deposit
@@ -430,16 +669,83 @@ pub struct Deploy<'info> {
     #[account(
         init,
         payer = signer,
-        mint::decimals = args.decimals,
+        mint::decimals = base_asset.decimals,
         mint::authority = boring_vault_state.key(),
         seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
         bump,
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
+    /// CHECK: Checked in the instruction
+    pub base_asset: InterfaceAccount<'info, Mint>,
+
     pub system_program: Program<'info, System>,
     pub token_program: Interface<'info, TokenInterface>,
     pub clock: Sysvar<'info, Clock>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct Pause<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct Unpause<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64, pending_authority: Pubkey)]
+pub struct TransferAuthority<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct AcceptAuthority<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.pending_authority == signer.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
 }
 
 #[derive(Accounts)]
@@ -646,6 +952,31 @@ pub struct UpdateCpiDigest<'info> {
         bump,
     )]
     pub cpi_digest: Account<'info, CpiDigest>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64, new_exchange_rate: u64)]
+pub struct UpdateExchangeRate<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = signer.key() == boring_vault_state.teller.exchange_rate_provider.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
+        bump,
+        constraint = share_mint.key() == boring_vault_state.config.share_mint @ BoringErrorCode::InvalidShareMint
+    )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    pub clock: Sysvar<'info, Clock>,
 }
 
 #[derive(Accounts)]

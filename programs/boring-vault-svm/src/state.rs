@@ -19,6 +19,7 @@ pub struct BoringVault {
 pub struct VaultState {
     pub vault_id: u64,
     pub authority: Pubkey,
+    pub pending_authority: Pubkey,
     pub paused: bool,
     pub initialized: bool,
     pub share_mint: Pubkey,
@@ -52,10 +53,8 @@ pub struct DeployArgs {
     pub authority: Pubkey,
     pub name: String,
     pub symbol: String,
-    pub decimals: u8,
 
     // Teller
-    pub base_asset: Pubkey,
     pub exchange_rate_provider: Pubkey, // Who can update the exchange rate
     pub exchange_rate: u64,
     pub payout_address: Pubkey,
@@ -90,6 +89,7 @@ pub struct AssetData {
     pub allow_deposits: bool,
     pub allow_withdrawals: bool,
     pub share_premium_bps: u16,
+    pub is_pegged_to_base_asset: bool,
     pub price_feed: Pubkey,
     pub inverse_price_feed: bool,
 }
