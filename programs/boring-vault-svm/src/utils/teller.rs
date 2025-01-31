@@ -1,10 +1,11 @@
 use crate::accountant;
 use crate::constants::*;
-use crate::AssetData;
 use crate::BoringErrorCode;
+use crate::{AssetData, BoringVault};
 use crate::{DepositArgs, WithdrawArgs};
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface;
+use anchor_spl::token_interface::Mint;
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
@@ -199,4 +200,49 @@ pub fn calculate_assets_out<'a>(
     );
 
     Ok(assets_out)
+}
+
+pub fn get_rate(boring_vault_state: Account<'_, BoringVault>) -> Result<u64> {
+    Ok(boring_vault_state.teller.exchange_rate)
+}
+
+pub fn get_rate_in_quote(
+    boring_vault_state: Account<'_, BoringVault>,
+    quote: InterfaceAccount<'_, Mint>,
+    asset_data: Account<'_, AssetData>,
+    price_feed: AccountInfo,
+) -> Result<u64> {
+    if boring_vault_state.teller.base_asset == quote.key() {
+        get_rate(boring_vault_state)
+    } else {
+        // Query price feed.
+        let feed_account = price_feed.data.borrow();
+        let feed = PullFeedAccountData::parse(feed_account).unwrap();
+
+        let price = match feed.value() {
+            Some(value) => value,
+            None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
+        };
+
+        let price = if asset_data.inverse_price_feed {
+            Decimal::from(1).checked_div(price).unwrap() // 1 / price
+        } else {
+            price
+        };
+
+        let mut exchange_rate = Decimal::from(boring_vault_state.teller.exchange_rate);
+        exchange_rate
+            .set_scale(boring_vault_state.teller.decimals as u32)
+            .unwrap();
+        // price[base/asset]
+        // exchange_rate[base/share]
+        // want asset/share =  exchange_rate[base/share] / price[base/asset]
+        let rate = exchange_rate.checked_div(price).unwrap();
+
+        // Scale rate to quote decimals.
+        let rate = rate
+            .checked_mul(Decimal::from(10u64.pow(quote.decimals as u32)))
+            .unwrap();
+        Ok(rate.try_into().unwrap())
+    }
 }

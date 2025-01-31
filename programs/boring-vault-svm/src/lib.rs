@@ -47,7 +47,6 @@ pub mod boring_vault_svm {
         let config = &mut ctx.accounts.config;
         config.authority = authority;
         config.vault_count = 0;
-        config.bump = ctx.bumps.config;
         Ok(())
     }
 
@@ -98,6 +97,7 @@ pub mod boring_vault_svm {
         if args.exchange_rate_provider == Pubkey::default() {
             return Err(BoringErrorCode::InvalidExchangeRateProvider.into());
         }
+        vault.teller.decimals = ctx.accounts.base_asset.decimals;
         vault.teller.exchange_rate_provider = args.exchange_rate_provider;
         vault.teller.exchange_rate = args.exchange_rate;
         vault.teller.exchange_rate_high_water_mark = args.exchange_rate;
@@ -246,6 +246,7 @@ pub mod boring_vault_svm {
 
     // TODO update exchange rate provider
     // TODO claim fees
+    // TODO set withdraw authority
 
     // =============================== Exchange Rate Functions ===============================
 
@@ -603,7 +604,7 @@ pub mod boring_vault_svm {
     }
 
     // ================================ Withdraw Functions ================================
-    // TODO just a generic withdraw function but only callable by the queue program
+
     pub fn withdraw(ctx: Context<Withdraw>, args: WithdrawArgs) -> Result<()> {
         teller::before_withdraw(
             ctx.accounts.boring_vault_state.config.paused,
@@ -718,6 +719,32 @@ pub mod boring_vault_svm {
 
         Ok(ViewCpiDigestReturn { digest })
     }
+
+    pub fn get_rate(ctx: Context<GetRate>) -> Result<u64> {
+        teller::get_rate(ctx.accounts.boring_vault_state.to_owned())
+    }
+
+    pub fn get_rate_safe(ctx: Context<GetRateSafe>) -> Result<u64> {
+        teller::get_rate(ctx.accounts.boring_vault_state.to_owned())
+    }
+
+    pub fn get_rate_in_quote(ctx: Context<GetRateInQuote>) -> Result<u64> {
+        teller::get_rate_in_quote(
+            ctx.accounts.boring_vault_state.to_owned(),
+            ctx.accounts.quote_mint.to_owned(),
+            ctx.accounts.asset_data.to_owned(),
+            ctx.accounts.price_feed.to_owned(),
+        )
+    }
+
+    pub fn get_rate_in_quote_safe(ctx: Context<GetRateInQuoteSafe>) -> Result<u64> {
+        teller::get_rate_in_quote(
+            ctx.accounts.boring_vault_state.to_owned(),
+            ctx.accounts.quote_mint.to_owned(),
+            ctx.accounts.asset_data.to_owned(),
+            ctx.accounts.price_feed.to_owned(),
+        )
+    }
 }
 
 #[derive(Accounts)]
@@ -746,7 +773,7 @@ pub struct Deploy<'info> {
     #[account(
         mut,
         seeds = [BASE_SEED_CONFIG],
-        bump = config.bump,
+        bump,
     )]
     pub config: Account<'info, ProgramConfig>,
 
@@ -1028,7 +1055,7 @@ pub struct Deposit<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args: DepositArgs)]
+#[instruction(args: WithdrawArgs)]
 pub struct Withdraw<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -1038,7 +1065,6 @@ pub struct Withdraw<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
         constraint = boring_vault_state.teller.withdraw_authority == Pubkey::default() || signer.key() == boring_vault_state.teller.withdraw_authority @ BoringErrorCode::NotAuthorized,
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
@@ -1061,7 +1087,6 @@ pub struct Withdraw<'info> {
             withdraw_mint.key().as_ref(),
         ],
         bump,
-        constraint = asset_data.allow_withdrawals @ BoringErrorCode::AssetNotAllowed
     )]
     pub asset_data: Account<'info, AssetData>,
 
@@ -1192,3 +1217,85 @@ pub struct Manage<'info> {
 
 #[derive(Accounts)]
 pub struct ViewCpiDigest {}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct GetRate<'info> {
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct GetRateSafe<'info> {
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct GetRateInQuote<'info> {
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    // Quote asset account
+    pub quote_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [
+            BASE_SEED_ASSET_DATA,
+            boring_vault_state.key().as_ref(),
+            quote_mint.key().as_ref(),
+        ],
+        bump,
+    )]
+    pub asset_data: Account<'info, AssetData>,
+
+    // Pricing
+    #[account(
+            constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
+        )]
+    /// CHECK: Checked in the constraint
+    pub price_feed: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct GetRateInQuoteSafe<'info> {
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    // Quote asset account
+    pub quote_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [
+            BASE_SEED_ASSET_DATA,
+            boring_vault_state.key().as_ref(),
+            quote_mint.key().as_ref(),
+        ],
+        bump,
+    )]
+    pub asset_data: Account<'info, AssetData>,
+
+    // Pricing
+    #[account(
+            constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
+        )]
+    /// CHECK: Checked in the constraint
+    pub price_feed: AccountInfo<'info>,
+}

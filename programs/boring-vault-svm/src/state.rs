@@ -5,7 +5,6 @@ use anchor_lang::prelude::*;
 pub struct ProgramConfig {
     pub authority: Pubkey,
     pub vault_count: u64,
-    pub bump: u8,
 }
 
 #[account]
@@ -28,6 +27,7 @@ pub struct VaultState {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct TellerState {
     pub base_asset: Pubkey,
+    pub decimals: u8,
     pub exchange_rate_provider: Pubkey,
     pub exchange_rate: u64,
     pub exchange_rate_high_water_mark: u64,
