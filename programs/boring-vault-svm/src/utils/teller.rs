@@ -2,7 +2,7 @@ use crate::accountant;
 use crate::constants::*;
 use crate::AssetData;
 use crate::BoringErrorCode;
-use crate::DepositArgs;
+use crate::{DepositArgs, WithdrawArgs};
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface;
 use rust_decimal::Decimal;
@@ -11,6 +11,12 @@ use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 pub fn before_deposit(is_paused: bool, allow_deposits: bool) -> Result<()> {
     require!(!is_paused, BoringErrorCode::VaultPaused);
     require!(allow_deposits, BoringErrorCode::AssetNotAllowed);
+    Ok(())
+}
+
+pub fn before_withdraw(is_paused: bool, allow_withdrawals: bool) -> Result<()> {
+    require!(!is_paused, BoringErrorCode::VaultPaused);
+    require!(allow_withdrawals, BoringErrorCode::AssetNotAllowed);
     Ok(())
 }
 
@@ -134,4 +140,63 @@ pub fn calculate_shares_and_mint<'a>(
         shares_to_mint,
     )?;
     Ok(())
+}
+
+pub fn calculate_assets_out<'a>(
+    is_base: bool,
+    args: WithdrawArgs,
+    exchange_rate: u64,
+    share_decimals: u8,
+    asset_decimals: u8,
+    asset_data: Account<'_, AssetData>,
+    price_feed: AccountInfo<'a>,
+) -> Result<u64> {
+    let assets_out = if is_base {
+        accountant::calculate_assets_out_in_base_asset(
+            args.share_amount,
+            exchange_rate,
+            share_decimals,
+        )?
+    } else if asset_data.is_pegged_to_base_asset {
+        // Asset is pegged to base asset, so find assets out in base then scale assets out to be in terms of withdraw asset decimals.
+        let assets_out_in_base = accountant::calculate_assets_out_in_base_asset(
+            args.share_amount,
+            exchange_rate,
+            share_decimals,
+        )?;
+        let mut assets_out_in_base = Decimal::from(assets_out_in_base);
+        assets_out_in_base.set_scale(share_decimals as u32).unwrap();
+        let assets_out = assets_out_in_base
+            .checked_mul(Decimal::from(10u64.pow(asset_decimals as u32)))
+            .unwrap();
+        let assets_out: u64 = assets_out.try_into().unwrap();
+
+        assets_out
+    } else {
+        // Query price feed.
+        let feed_account = price_feed.data.borrow();
+        let feed = PullFeedAccountData::parse(feed_account).unwrap();
+
+        let price = match feed.value() {
+            Some(value) => value,
+            None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
+        };
+
+        accountant::calculate_assets_out_using_withdraw_asset(
+            args.share_amount,
+            exchange_rate,
+            price,
+            asset_data.inverse_price_feed,
+            asset_decimals,
+            share_decimals,
+        )?
+    };
+
+    // Verify minimum assets
+    require!(
+        assets_out >= args.min_assets_amount,
+        BoringErrorCode::SlippageExceeded
+    );
+
+    Ok(assets_out)
 }

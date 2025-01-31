@@ -40,6 +40,7 @@ pub struct TellerState {
     pub minimum_update_delay_in_seconds: u32,
     pub platform_fee_bps: u16,
     pub performance_fee_bps: u16,
+    pub withdraw_authority: Pubkey,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -63,6 +64,7 @@ pub struct DeployArgs {
     pub minimum_update_delay_in_seconds: u32,
     pub platform_fee_bps: u16,
     pub performance_fee_bps: u16,
+    pub withdraw_authority: Pubkey,
 
     // Manager
     pub strategist: Pubkey,
@@ -92,6 +94,15 @@ pub struct AssetData {
     pub is_pegged_to_base_asset: bool,
     pub price_feed: Pubkey,
     pub inverse_price_feed: bool,
+}
+
+// =============================== Withdraw =============================
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct WithdrawArgs {
+    pub vault_id: u64,
+    pub share_amount: u64,
+    pub min_assets_amount: u64,
 }
 
 // =============================== Manage ===============================

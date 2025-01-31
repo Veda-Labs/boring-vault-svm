@@ -25,6 +25,10 @@ declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 // https://github.com/solana-developers/program-examples/tree/main/tokens/token-2022/transfer-hook/whitelist/anchor
 // https://www.quicknode.com/guides/solana-development/anchor/token-2022
 
+// TODO boring_vault pda owns all SOL and tokens, I could optionally allow a strategist to use sub-accounts
+// that use the existing pda seeds but with additional u8 sub account id
+// then there can also be a config for deposits and withdraws to specify which sub account money should go into.
+// I would need to change manage such that the sub account id must be provided.
 #[program]
 pub mod boring_vault_svm {
     use super::*;
@@ -129,6 +133,9 @@ pub mod boring_vault_svm {
             return Err(BoringErrorCode::InvalidPerformanceFeeBps.into());
         }
         vault.teller.performance_fee_bps = args.performance_fee_bps;
+
+        // Set withdraw_authority, if default, then withdraws are permissionless
+        vault.teller.withdraw_authority = args.withdraw_authority;
 
         // Initialize manager state.
         // TODO this will likely change to support multiple strategists.
@@ -484,7 +491,7 @@ pub mod boring_vault_svm {
     }
 
     // ================================ Deposit Functions ================================
-
+    // TODO could add deposit authority logic like I did for withdraw authority
     pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<()> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,
@@ -597,6 +604,101 @@ pub mod boring_vault_svm {
 
     // ================================ Withdraw Functions ================================
     // TODO just a generic withdraw function but only callable by the queue program
+    pub fn withdraw(ctx: Context<Withdraw>, args: WithdrawArgs) -> Result<()> {
+        teller::before_withdraw(
+            ctx.accounts.boring_vault_state.config.paused,
+            ctx.accounts.asset_data.allow_withdrawals,
+        )?;
+
+        // Determine which token program to use based on the mint's owner
+        let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
+        // Validate ATAs by checking against derived PDAs
+        teller::validate_associated_token_accounts(
+            &ctx.accounts.withdraw_mint.key(),
+            &token_program_id,
+            &ctx.accounts.signer.key(),
+            &ctx.accounts.boring_vault.key(),
+            &ctx.accounts.user_ata.key(),
+            &ctx.accounts.vault_ata.key(),
+        )?;
+
+        // Burn shares from user.
+        token_interface::burn(
+            CpiContext::new(
+                ctx.accounts.token_program_2022.to_account_info(),
+                token_interface::Burn {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    from: ctx.accounts.user_shares.to_account_info(),
+                    authority: ctx.accounts.signer.to_account_info(),
+                },
+            ),
+            args.share_amount,
+        )?;
+
+        // Calculate assets to user.
+        let is_base = ctx.accounts.withdraw_mint.key()
+            == ctx.accounts.boring_vault_state.teller.base_asset.key();
+
+        let vault_id = args.vault_id;
+        let assets_out = teller::calculate_assets_out(
+            is_base,
+            args,
+            ctx.accounts.boring_vault_state.teller.exchange_rate,
+            ctx.accounts.share_mint.decimals,
+            ctx.accounts.withdraw_mint.decimals,
+            ctx.accounts.asset_data.to_owned(),
+            ctx.accounts.price_feed.to_account_info(),
+        )?;
+
+        // Transfer asset to user.
+        if token_program_id == &ctx.accounts.token_program.key() {
+            // Transfer Token from vault to user
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.vault_ata.to_account_info(),
+                        to: ctx.accounts.user_ata.to_account_info(),
+                        mint: ctx.accounts.withdraw_mint.to_account_info(),
+                        authority: ctx.accounts.boring_vault.to_account_info(),
+                    },
+                    &[&[
+                        // PDA signer seeds for vault state
+                        BASE_SEED_BORING_VAULT,
+                        &vault_id.to_le_bytes()[..],
+                        &[ctx.bumps.boring_vault],
+                    ]],
+                ),
+                assets_out,
+                ctx.accounts.withdraw_mint.decimals,
+            )?;
+        } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+            // Transfer Token2022 from vault to user
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program_2022.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.vault_ata.to_account_info(),
+                        to: ctx.accounts.user_ata.to_account_info(),
+                        mint: ctx.accounts.withdraw_mint.to_account_info(),
+                        authority: ctx.accounts.boring_vault.to_account_info(),
+                    },
+                    &[&[
+                        // PDA signer seeds for vault state
+                        BASE_SEED_BORING_VAULT,
+                        &vault_id.to_le_bytes()[..],
+                        &[ctx.bumps.boring_vault],
+                    ]],
+                ),
+                assets_out,
+                ctx.accounts.withdraw_mint.decimals,
+            )?;
+        } else {
+            return Err(BoringErrorCode::InvalidTokenProgram.into());
+        };
+
+        Ok(())
+    }
 
     // ================================== View Functions ==================================
     // TODO preview_deposit
@@ -878,6 +980,88 @@ pub struct Deposit<'info> {
         ],
         bump,
         constraint = asset_data.allow_deposits @ BoringErrorCode::AssetNotAllowed
+    )]
+    pub asset_data: Account<'info, AssetData>,
+
+    #[account(mut)]
+    /// User's Token associated token account
+    /// CHECK: Validated in instruction
+    pub user_ata: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(mut)]
+    /// Vault's Token associated token account
+    /// CHECK: Validated in instruction
+    pub vault_ata: InterfaceAccount<'info, TokenAccount>,
+
+    // Programs
+    pub token_program: Program<'info, Token>,
+    pub token_program_2022: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    // Share Token
+    /// The vault's share mint
+    #[account(
+            mut,
+            seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
+            bump,
+            constraint = share_mint.key() == boring_vault_state.config.share_mint @ BoringErrorCode::InvalidShareMint
+        )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    /// The user's share token 2022 account
+    #[account(
+        init_if_needed,
+        payer = signer,
+        associated_token::mint = share_mint,
+        associated_token::authority = signer,
+        associated_token::token_program = token_program_2022,
+    )]
+    pub user_shares: InterfaceAccount<'info, TokenAccount>,
+
+    // Pricing
+    #[account(
+        constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
+    )]
+    /// CHECK: Checked in the constraint
+    pub price_feed: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: DepositArgs)]
+pub struct Withdraw<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // State
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = boring_vault_state.teller.withdraw_authority == Pubkey::default() || signer.key() == boring_vault_state.teller.withdraw_authority @ BoringErrorCode::NotAuthorized,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT, &args.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: Account used to hold assets.
+    pub boring_vault: SystemAccount<'info>,
+
+    // Withdraw asset account
+    pub withdraw_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [
+            BASE_SEED_ASSET_DATA,
+            boring_vault_state.key().as_ref(),
+            withdraw_mint.key().as_ref(),
+        ],
+        bump,
+        constraint = asset_data.allow_withdrawals @ BoringErrorCode::AssetNotAllowed
     )]
     pub asset_data: Account<'info, AssetData>,
 

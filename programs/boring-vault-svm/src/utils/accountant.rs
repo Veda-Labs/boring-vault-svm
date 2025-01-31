@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 pub fn calculate_shares_to_mint_using_base_asset(
     deposit_amount: u64,
     exchange_rate: u64,
-    deposit_asset_decimals: u8,
+    deposit_asset_decimals: u8, // Deploy uses base asset decimals for share decimals, so I only need 1 decimal here.
     share_decimals: u8,
     share_premium_bps: u16,
 ) -> Result<u64> {
@@ -34,7 +34,7 @@ pub fn calculate_shares_to_mint_using_deposit_asset(
     asset_price: Decimal,
     inverse_price_feed: bool,
     deposit_asset_decimals: u8,
-    share_decimals: u8,
+    share_decimals: u8, // same as base decimals
     share_premium_bps: u16,
 ) -> Result<u64> {
     let mut deposit_amount = Decimal::from(deposit_amount);
@@ -76,4 +76,61 @@ fn factor_in_share_premium(shares_to_mint: Decimal, share_premium_bps: u16) -> R
     } else {
         Ok(shares_to_mint)
     }
+}
+
+pub fn calculate_assets_out_in_base_asset(
+    share_amount: u64,
+    exchange_rate: u64,
+    decimals: u8, // same for base and shares
+) -> Result<u64> {
+    let mut share_amount = Decimal::from(share_amount);
+    share_amount.set_scale(decimals as u32).unwrap();
+    let mut exchange_rate = Decimal::from(exchange_rate);
+    exchange_rate.set_scale(decimals as u32).unwrap();
+
+    // Calculate assets_out = share_amount[share] * exchange_rate[base/share]
+    let assets_out = share_amount.checked_mul(exchange_rate).unwrap();
+
+    // Scale up assets out by decimals.
+    let assets_out = assets_out
+        .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
+        .unwrap();
+
+    let assets_out: u64 = assets_out.try_into().unwrap();
+    Ok(assets_out)
+}
+
+pub fn calculate_assets_out_using_withdraw_asset(
+    share_amount: u64,
+    exchange_rate: u64,
+    asset_price: Decimal,
+    inverse_price_feed: bool,
+    withdraw_asset_decimals: u8,
+    share_decimals: u8,
+) -> Result<u64> {
+    let mut share_amount = Decimal::from(share_amount);
+    share_amount.set_scale(share_decimals as u32).unwrap();
+    let mut exchange_rate = Decimal::from(exchange_rate);
+    exchange_rate.set_scale(share_decimals as u32).unwrap();
+
+    let asset_price = if inverse_price_feed {
+        Decimal::from(1).checked_div(asset_price).unwrap() // 1 / price
+    } else {
+        asset_price
+    };
+
+    // Calculate assets_out = share_amount[share] * exchange_rate[base/share] / asset_price[base/asset]
+    let assets_out = share_amount
+        .checked_mul(exchange_rate)
+        .unwrap()
+        .checked_div(asset_price)
+        .unwrap();
+
+    // Scale up assets out by withdraw asset decimals.
+    let assets_out = assets_out
+        .checked_mul(Decimal::from(10u64.pow(withdraw_asset_decimals as u32)))
+        .unwrap();
+
+    let assets_out: u64 = assets_out.try_into().unwrap();
+    Ok(assets_out)
 }
