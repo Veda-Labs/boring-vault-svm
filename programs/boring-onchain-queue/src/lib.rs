@@ -1,7 +1,11 @@
 #![allow(unexpected_cfgs)]
 
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
+use anchor_spl::token_2022::Token2022;
+use anchor_spl::token_interface;
+use anchor_spl::token_interface::{Mint, TokenAccount};
+use boring_vault_svm::{program::BoringVaultSvm, AssetData, BoringVault};
+use rust_decimal::Decimal;
 
 mod constants;
 use constants::*;
@@ -61,6 +65,21 @@ pub mod boring_onchain_queue {
         ctx: Context<RequestWithdraw>,
         args: RequestWithdrawArgs,
     ) -> Result<()> {
+        // Transfer shares to queue.
+        token_interface::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program_2022.to_account_info(),
+                token_interface::TransferChecked {
+                    from: ctx.accounts.user_shares.to_account_info(),
+                    to: ctx.accounts.queue_shares.to_account_info(),
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    authority: ctx.accounts.signer.to_account_info(),
+                },
+            ),
+            args.share_amount,
+            ctx.accounts.share_mint.decimals,
+        )?;
+
         let user_withdraw_state = &mut ctx.accounts.user_withdraw_state;
         let withdraw_request = &mut ctx.accounts.withdraw_request;
         let withdraw_asset_data = &ctx.accounts.withdraw_asset_data;
@@ -89,41 +108,50 @@ pub mod boring_onchain_queue {
         withdraw_request.seconds_to_deadline = args.seconds_to_deadline;
 
         // Get rate in quote through CPI
-        // let cpi_program = ctx.accounts.boring_vault_program.to_account_info();
-        // let cpi_accounts = boring_vault_svm::cpi::accounts::GetRateInQuoteSafe {
-        //     boring_vault_state: ctx.accounts.boring_vault_state.to_account_info(),
-        //     quote_mint: ctx.accounts.withdraw_mint.to_account_info(),
-        //     asset_data: ctx.accounts.vault_asset_data.to_account_info(),
-        //     price_feed: ctx.accounts.price_feed.to_account_info(),
-        // };
+        let cpi_program = ctx.accounts.boring_vault_program.to_account_info();
+        let cpi_accounts = boring_vault_svm::cpi::accounts::GetRateInQuoteSafe {
+            boring_vault_state: ctx.accounts.boring_vault_state.to_account_info(),
+            quote_mint: ctx.accounts.withdraw_mint.to_account_info(),
+            asset_data: ctx.accounts.vault_asset_data.to_account_info(),
+            price_feed: ctx.accounts.price_feed.to_account_info(),
+        };
 
-        // let rate = boring_vault_svm::cpi::get_rate_in_quote_safe(CpiContext::new(
-        //     cpi_program,
-        //     cpi_accounts,
-        // ))?;
+        // We want this to fail if the vault is paused
+        let rate = boring_vault_svm::cpi::get_rate_in_quote_safe(CpiContext::new(
+            cpi_program,
+            cpi_accounts,
+        ))?;
 
         // Calculate asset amount using rate and share amount
-        // let mut share_amount = Decimal::from(args.share_amount);
-        // share_amount
-        //     .set_scale(ctx.accounts.boring_vault_state.teller.decimals as u32)
-        //     .unwrap();
-        // let mut rate_d = Decimal::from(rate);
-        // rate_d
-        //     .set_scale(ctx.accounts.withdraw_mint.decimals as u32)
-        //     .unwrap();
+        let mut share_amount = Decimal::from(args.share_amount);
+        share_amount
+            .set_scale(ctx.accounts.boring_vault_state.teller.decimals as u32)
+            .unwrap();
+        let mut rate_d = Decimal::from(rate.get());
+        rate_d
+            .set_scale(ctx.accounts.withdraw_mint.decimals as u32)
+            .unwrap();
 
-        // let asset_amount = share_amount.checked_mul(rate_d).unwrap();
+        let asset_amount = share_amount.checked_mul(rate_d).unwrap();
 
-        // // Apply discount
-        // let mut discount = Decimal::from(args.discount);
-        // discount.set_scale(4).unwrap(); // BPS scale
-        // let discount_multiplier = Decimal::from(1).checked_sub(discount).unwrap();
-        // let asset_amount = asset_amount.checked_mul(discount_multiplier).unwrap();
+        // Apply discount
+        let mut discount = Decimal::from(args.discount);
+        discount.set_scale(4).unwrap(); // BPS scale
+        let discount_multiplier = Decimal::from(1).checked_sub(discount).unwrap();
+        let asset_amount = asset_amount.checked_mul(discount_multiplier).unwrap();
 
-        // withdraw_request.asset_amount = asset_amount.try_into().unwrap();
+        withdraw_request.asset_amount = asset_amount.try_into().unwrap();
         user_withdraw_state.last_nonce += 1;
         Ok(())
     }
+
+    // TODO function to cancel withdraw, replace withdraw
+
+    // TODO function to solve withdraws.
+    // Should validate enough time has passed, but we are not passed deadline
+    // Should call withdraw on program
+    // Excess can be transferred to the solver or boring vault
+    // Should close the withdraw request account
 }
 
 #[derive(Accounts)]
@@ -261,24 +289,56 @@ pub struct RequestWithdraw<'info> {
     )]
     pub withdraw_request: Account<'info, WithdrawRequest>,
 
+    #[account(
+        mut,
+        seeds = [BASE_SEED_QUEUE, &args.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: Account used to hold shares.
+    pub queue: SystemAccount<'info>,
+
+    // Share Token
+    /// The vault's share mint
+    #[account(mut)]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    /// The user's share token 2022 account
+    #[account(
+        associated_token::mint = share_mint,
+        associated_token::authority = signer,
+        associated_token::token_program = token_program_2022,
+    )]
+    pub user_shares: InterfaceAccount<'info, TokenAccount>,
+
+    /// The queue's share token 2022 account
+    #[account(
+        associated_token::mint = share_mint,
+        associated_token::authority = queue,
+        associated_token::token_program = token_program_2022,
+    )]
+    pub queue_shares: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program_2022: Program<'info, Token2022>,
+
     pub system_program: Program<'info, System>,
 
     pub clock: Sysvar<'info, Clock>,
-    // #[account(
-    //     constraint = boring_vault_program.key() == queue_state.boring_vault_program @ QueueErrorCode::InvalidBoringVaultProgram
-    // )]
-    // /// The Boring Vault program
-    // pub boring_vault_program: Program<'info, boring_vault_svm::program::BoringVaultSvm>,
 
-    // /// The vault state account
-    // /// CHECK: Validated in CPI call
-    // pub boring_vault_state: Account<'info, boring_vault_svm::BoringVault>,
+    #[account(
+        constraint = boring_vault_program.key() == queue_state.boring_vault_program @ QueueErrorCode::InvalidBoringVaultProgram
+    )]
+    /// The Boring Vault program
+    pub boring_vault_program: Program<'info, BoringVaultSvm>,
 
-    // /// The vault's asset data for the withdraw mint
-    // /// CHECK: Validated in CPI call
-    // pub vault_asset_data: Account<'info, boring_vault_svm::AssetData>,
+    /// The vault state account
+    /// CHECK: Validated in CPI call
+    pub boring_vault_state: Account<'info, BoringVault>,
 
-    // /// Price feed for the withdraw asset
-    // /// CHECK: Validated in CPI call
-    // pub price_feed: AccountInfo<'info>,
+    /// The vault's asset data for the withdraw mint
+    /// CHECK: Validated in CPI call
+    pub vault_asset_data: Account<'info, AssetData>,
+
+    /// Price feed for the withdraw asset
+    /// CHECK: Validated in CPI call
+    pub price_feed: AccountInfo<'info>,
 }

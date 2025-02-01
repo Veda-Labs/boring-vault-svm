@@ -908,87 +908,6 @@ describe("boring-vault-svm", () => {
     expect(txResult_unpause_1.result).to.be.null;
   });
 
-  it("Can pause and unpause vault", async () => {
-    // Check initial state
-    let vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
-    expect(vaultState.config.paused).to.be.false;
-
-    // Pause the vault
-    const pauseIx = await program.methods
-      .pause(new anchor.BN(0))
-      .accounts({
-        signer: authority.publicKey,
-        boringVaultState: boringVaultStateAccount,
-      })
-      .instruction();
-
-    let pauseTxResult = await createAndProcessTransaction(client, deployer, pauseIx, [authority]);
-    
-    // Check transaction succeeded or was already processed
-    expect(
-      pauseTxResult.result === null || 
-      pauseTxResult.result.toString().includes("This transaction has already been processed")
-    ).to.be.true;
-
-    // Verify vault is paused
-    vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
-    expect(vaultState.config.paused).to.be.true;
-
-    // Try to perform an action while paused (should fail)
-    const updateRateIx = await program.methods
-      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1000000000))
-      .accounts({
-        signer: strategist.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
-      })
-      .instruction();
-
-    let txResult = await createAndProcessTransaction(client, deployer, updateRateIx, [strategist]);
-    expect(txResult.result).to.not.be.null;  // Transaction should fail
-
-    // Unpause the vault
-    const unpauseIx = await program.methods
-      .unpause(new anchor.BN(0))
-      .accounts({
-        signer: authority.publicKey,
-        boringVaultState: boringVaultStateAccount,
-      })
-      .instruction();
-
-    let unpauseTxResult = await createAndProcessTransaction(client, deployer, unpauseIx, [authority]);
-    
-    // Check transaction succeeded or was already processed
-    expect(
-      unpauseTxResult.result === null || 
-      unpauseTxResult.result.toString().includes("This transaction has already been processed")
-    ).to.be.true;
-
-    // Verify vault is unpaused
-    vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
-    expect(vaultState.config.paused).to.be.false;
-
-    // Verify we can now perform actions
-    const updateRateIx2 = await program.methods
-      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1000000000))
-      .accounts({
-        signer: strategist.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
-      })
-      .instruction();
-
-    let updateTxResult = await createAndProcessTransaction(client, deployer, updateRateIx2, [strategist]);
-    expect(
-      updateTxResult.result === null || 
-      updateTxResult.result.toString().includes("This transaction has already been processed")
-    ).to.be.true;
-  });
-
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
 
     // Transfer SOL from user to vault.
@@ -1341,5 +1260,87 @@ describe("boring-vault-svm", () => {
     //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
     // ];
 
+  });
+
+  // TODO This test is super buggy and sometimes leaves the vault in a paused state, which can cause other tests to fail.
+  it("Can pause and unpause vault", async () => {
+    // Check initial state
+    let vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(vaultState.config.paused).to.be.false;
+
+    // Pause the vault
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let pauseTxResult = await createAndProcessTransaction(client, deployer, pauseIx, [authority]);
+    
+    // Check transaction succeeded or was already processed
+    expect(
+      pauseTxResult.result === null || 
+      pauseTxResult.result.toString().includes("This transaction has already been processed")
+    ).to.be.true;
+
+    // Verify vault is paused
+    vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(vaultState.config.paused).to.be.true;
+
+    // Try to perform an action while paused (should fail)
+    const updateRateIx = await program.methods
+      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1000000000))
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        shareMint: boringVaultShareMint,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, updateRateIx, [strategist]);
+    expect(txResult.result).to.not.be.null;  // Transaction should fail
+
+    // Unpause the vault
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let unpauseTxResult = await createAndProcessTransaction(client, deployer, unpauseIx, [authority]);
+    
+    // Check transaction succeeded or was already processed
+    expect(
+      unpauseTxResult.result === null || 
+      unpauseTxResult.result.toString().includes("This transaction has already been processed")
+    ).to.be.true;
+
+    // Verify vault is unpaused
+    vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(vaultState.config.paused).to.be.false;
+
+    // Verify we can now perform actions
+    const updateRateIx2 = await program.methods
+      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1000000000))
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        shareMint: boringVaultShareMint,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+
+    let updateTxResult = await createAndProcessTransaction(client, deployer, updateRateIx2, [strategist]);
+    expect(
+      updateTxResult.result === null || 
+      updateTxResult.result.toString().includes("This transaction has already been processed")
+    ).to.be.true;
   });
 });

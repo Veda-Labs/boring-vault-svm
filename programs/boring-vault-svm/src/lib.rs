@@ -9,7 +9,7 @@ use anchor_spl::token::Token;
 use anchor_spl::token_2022::Token2022;
 use anchor_spl::token_interface;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
-use state::*;
+pub use state::*;
 mod error;
 use error::*;
 mod constants;
@@ -1216,7 +1216,9 @@ pub struct Manage<'info> {
 }
 
 #[derive(Accounts)]
-pub struct ViewCpiDigest {}
+pub struct ViewCpiDigest<'info> {
+    pub system_program: Program<'info, System>,
+}
 
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
