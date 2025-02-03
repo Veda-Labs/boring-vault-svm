@@ -720,15 +720,15 @@ pub mod boring_vault_svm {
         Ok(ViewCpiDigestReturn { digest })
     }
 
-    pub fn get_rate(ctx: Context<GetRate>) -> Result<u64> {
+    pub fn get_rate(ctx: Context<GetRate>, _vault_id: u64) -> Result<u64> {
         teller::get_rate(ctx.accounts.boring_vault_state.to_owned())
     }
 
-    pub fn get_rate_safe(ctx: Context<GetRateSafe>) -> Result<u64> {
+    pub fn get_rate_safe(ctx: Context<GetRateSafe>, _vault_id: u64) -> Result<u64> {
         teller::get_rate(ctx.accounts.boring_vault_state.to_owned())
     }
 
-    pub fn get_rate_in_quote(ctx: Context<GetRateInQuote>) -> Result<u64> {
+    pub fn get_rate_in_quote(ctx: Context<GetRateInQuote>, _vault_id: u64) -> Result<u64> {
         teller::get_rate_in_quote(
             ctx.accounts.boring_vault_state.to_owned(),
             ctx.accounts.quote_mint.to_owned(),
@@ -737,7 +737,7 @@ pub mod boring_vault_svm {
         )
     }
 
-    pub fn get_rate_in_quote_safe(ctx: Context<GetRateInQuoteSafe>) -> Result<u64> {
+    pub fn get_rate_in_quote_safe(ctx: Context<GetRateInQuoteSafe>, _vault_id: u64) -> Result<u64> {
         teller::get_rate_in_quote(
             ctx.accounts.boring_vault_state.to_owned(),
             ctx.accounts.quote_mint.to_owned(),

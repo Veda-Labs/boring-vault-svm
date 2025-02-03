@@ -3,6 +3,7 @@ import { BankrunProvider, startAnchor } from "anchor-bankrun";
 import { Program } from "@coral-xyz/anchor";
 import { BoringVaultSvm } from "../target/types/boring_vault_svm";
 import { MockKaminoLend } from "../target/types/mock_kamino_lend";
+import { BoringOnchainQueue } from "../target/types/boring_onchain_queue";
 import { expect } from "chai";
 import { ComputeBudgetProgram, AddressLookupTableProgram } from "@solana/web3.js";
 import {
@@ -36,6 +37,7 @@ describe("boring-vault-svm", () => {
   let provider: BankrunProvider;
   let program: Program<BoringVaultSvm>;
   let mockKaminoLendProgram: Program<MockKaminoLend>;
+  let queueProgram: Program<BoringOnchainQueue>;
   let context: ProgramTestContext;
   let client: BanksClient;
   let connection: Connection;
@@ -56,7 +58,13 @@ describe("boring-vault-svm", () => {
   let solAssetDataPda: anchor.web3.PublicKey;
   let userShareAta: anchor.web3.PublicKey;
   let vaultWSolAta: anchor.web3.PublicKey;
-
+  let queueStateAccount: anchor.web3.PublicKey;
+  let queueProgramConfigAccount: anchor.web3.PublicKey;
+  let queueAccount: anchor.web3.PublicKey;
+  let jitoSolWithdrawAssetData: anchor.web3.PublicKey;
+  let userWithdrawState: anchor.web3.PublicKey;
+  let userWithdrawRequest: anchor.web3.PublicKey;
+  let queueShareAta: anchor.web3.PublicKey;
   let cpiDigestAccount: anchor.web3.PublicKey;
   
   const PROJECT_DIRECTORY = "";
@@ -318,6 +326,7 @@ describe("boring-vault-svm", () => {
 
     program = anchor.workspace.BoringVaultSvm as Program<BoringVaultSvm>;
     mockKaminoLendProgram = anchor.workspace.MockKaminoLend as Program<MockKaminoLend>;
+    queueProgram = anchor.workspace.BoringOnchainQueue as Program<BoringOnchainQueue>;
     // Find PDAs
     let bump;
     [programConfigAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -374,8 +383,42 @@ describe("boring-vault-svm", () => {
     vaultJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, boringVaultAccount, 1000000000); // 1 JitoSOL
     userShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, user.publicKey, 0);
     vaultWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, boringVaultAccount, 1000000000); // Start with 1 wSOL.
-  });
+    
+    // Queue PDAs
+    [queueProgramConfigAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("config")],
+      queueProgram.programId
+    );
+    [queueStateAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("boring-queue-state"), Buffer.from(new Array(8).fill(0))],
+      queueProgram.programId
+    );
+    
+    [queueAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("boring-queue"), Buffer.from(new Array(8).fill(0))],
+      queueProgram.programId
+    );
+    
+    [jitoSolWithdrawAssetData, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-queue-withdraw-asset-data"),
+        JITOSOL.toBuffer(),
+        Buffer.from(new Array(8).fill(0))],
+        queueProgram.programId
+      );
+      
+      [userWithdrawState, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("boring-queue-user-withdraw-state"),
+          user.publicKey.toBuffer(),
+          Buffer.from(new Array(8).fill(0))],
+          queueProgram.programId
+        );
+      
+      queueShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, queueAccount, 0);
 
+      });
+      
   it("Is initialized", async () => {
     const ix = await program.methods
     .initialize(
@@ -1260,6 +1303,147 @@ describe("boring-vault-svm", () => {
     //   { pubkey: KAMINO_LEND_PROGRAM_ID, isWritable: false, isSigner: false },
     // ];
 
+  });
+
+  it("Queue is initialized", async () => {
+    const ix = await queueProgram.methods
+      .initialize(
+        deployer.publicKey,
+      )
+      .accounts({
+        signer: deployer.publicKey,
+        // @ts-ignore
+        config: queueProgramConfigAccount,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix, [deployer]);
+    expect(txResult.result).to.be.null;
+
+    const queueConfig = await queueProgram.account.programConfig.fetch(queueProgramConfigAccount);
+    expect(queueConfig.authority.equals(deployer.publicKey)).to.be.true;
+  });
+
+  it("Can deploy a queue", async () => {
+    const ix = await queueProgram.methods
+      .deploy({
+        authority: authority.publicKey,
+        boringVaultProgram: program.programId,
+        solveAuthority: anchor.web3.SystemProgram.programId,
+        vaultId: new anchor.BN(0),
+      })
+      .accounts({
+        signer: deployer.publicKey,
+        // @ts-ignore
+        config: queueProgramConfigAccount,
+        queueState: queueStateAccount,
+        queue: queueAccount,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix, [deployer]);
+    expect(txResult.result).to.be.null;
+
+    const queueState = await queueProgram.account.queueState.fetch(queueStateAccount);
+    expect(queueState.authority.equals(authority.publicKey)).to.be.true;
+    expect(queueState.boringVaultProgram.equals(program.programId)).to.be.true;
+    expect(queueState.vaultId.toNumber()).to.equal(0);
+    expect(queueState.paused).to.be.false;
+  });
+
+  it("Can update withdraw assets", async () => {
+    const ix = await queueProgram.methods
+    .updateWithdrawAssetData(
+      // @ts-ignore
+      {
+        vaultId: new anchor.BN(0),
+        secondsToMaturity: new anchor.BN(86400),
+        minimumSecondsToDeadline: new anchor.BN(2 * 86400),
+        minimumDiscount: new anchor.BN(1),
+        maximumDiscount: new anchor.BN(10),
+        minimumShares: new anchor.BN(1000)
+      }
+    )
+    .accounts({
+      signer: authority.publicKey,
+      queueState: queueStateAccount,
+      withdrawMint: JITOSOL,
+      withdrawAssetData: jitoSolWithdrawAssetData,
+      // Looks like system program is included by default?
+    })
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix, [authority]);
+    expect(txResult.result).to.be.null;
+
+    const withdrawAssetData = await queueProgram.account.withdrawAssetData.fetch(jitoSolWithdrawAssetData);
+    expect(withdrawAssetData.allowWithdrawals).to.be.true;
+    expect(withdrawAssetData.secondsToMaturity).to.equal(86400);
+    expect(withdrawAssetData.minimumSecondsToDeadline).to.equal(2 * 86400);
+    expect(withdrawAssetData.minimumDiscount).to.equal(1);
+    expect(withdrawAssetData.maximumDiscount).to.equal(10);
+    expect(withdrawAssetData.minimumShares.toNumber()).to.equal(1000);
+  });
+
+  it("Allows users to setup withdraw state", async () => {
+    const ix = await queueProgram.methods
+    .setupUserWithdrawState(new anchor.BN(0))
+    .accounts({
+      signer: user.publicKey,
+      userWithdrawState: userWithdrawState
+    })
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix, [user]);
+    expect(txResult.result).to.be.null;
+  });
+
+  it("Allows users to make withdraw requests", async () => {
+    let bump;
+    [userWithdrawRequest, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-queue-withdraw-request"),
+        user.publicKey.toBuffer(),
+        Buffer.from(new Array(8).fill(0))],
+      queueProgram.programId
+    );
+
+    const ix_withdraw_request = await queueProgram.methods
+    .requestWithdraw(
+      // @ts-ignore
+      {
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1000000),
+        discount: new anchor.BN(3),
+        secondsToDeadline: new anchor.BN(3 * 86400)
+      }
+    )
+    .accounts({
+      signer: user.publicKey,
+      queueState: queueStateAccount,
+      withdrawMint: JITOSOL,
+      withdrawAssetData: jitoSolWithdrawAssetData,
+      userWithdrawState: userWithdrawState,
+      withdrawRequest: userWithdrawRequest,
+      queue: queueAccount,
+      shareMint: boringVaultShareMint,
+      // @ts-ignore
+      userShares: userShareAta,
+      queueShares: queueShareAta,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      boringVaultProgram: program.programId,
+      boringVaultState: boringVaultStateAccount,
+      vaultAssetData: jitoSolAssetDataPda,
+      priceFeed: anchor.web3.PublicKey.default,
+    })
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix_withdraw_request, [user]);
+    expect(txResult.result).to.be.null;
   });
 
   // TODO This test is super buggy and sometimes leaves the vault in a paused state, which can cause other tests to fail.

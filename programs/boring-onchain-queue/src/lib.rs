@@ -31,6 +31,7 @@ pub mod boring_onchain_queue {
         queue_state.authority = args.authority;
         queue_state.boring_vault_program = args.boring_vault_program;
         queue_state.vault_id = args.vault_id;
+        queue_state.solve_authority = args.solve_authority;
         queue_state.paused = false;
 
         // TODO create share ata
@@ -117,10 +118,10 @@ pub mod boring_onchain_queue {
         };
 
         // We want this to fail if the vault is paused
-        let rate = boring_vault_svm::cpi::get_rate_in_quote_safe(CpiContext::new(
-            cpi_program,
-            cpi_accounts,
-        ))?;
+        let rate = boring_vault_svm::cpi::get_rate_in_quote_safe(
+            CpiContext::new(cpi_program, cpi_accounts),
+            args.vault_id,
+        )?;
 
         // Calculate asset amount using rate and share amount
         let mut share_amount = Decimal::from(args.share_amount);
@@ -145,9 +146,26 @@ pub mod boring_onchain_queue {
         Ok(())
     }
 
+    pub fn fulfill_withdraw(
+        ctx: Context<FulfillWithdraw>,
+        vault_id: u64,
+        request_id: u64,
+    ) -> Result<()> {
+        // TODO add logic to deal with the excess.
+
+        // Make sure request is solvable, check maturity, deadline, withdraw_mint matches request mint,
+
+        // Withdraw from vault
+
+        // deal with excess
+
+        // Send assets to user
+        Ok(())
+    }
+
     // TODO function to cancel withdraw, replace withdraw
 
-    // TODO function to solve withdraws.
+    // TODO function to solve withdraws. Create a Solve Authority, if equal public key solves are public, else on solve auth can do it
     // Should validate enough time has passed, but we are not passed deadline
     // Should call withdraw on program
     // Excess can be transferred to the solver or boring vault
@@ -259,7 +277,7 @@ pub struct RequestWithdraw<'info> {
     #[account(
         seeds = [BASE_SEED_QUEUE_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = queue_state.paused == true @ QueueErrorCode::QueuePaused
+        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused
     )]
     pub queue_state: Account<'info, QueueState>,
 
@@ -304,6 +322,7 @@ pub struct RequestWithdraw<'info> {
 
     /// The user's share token 2022 account
     #[account(
+        mut,
         associated_token::mint = share_mint,
         associated_token::authority = signer,
         associated_token::token_program = token_program_2022,
@@ -312,6 +331,97 @@ pub struct RequestWithdraw<'info> {
 
     /// The queue's share token 2022 account
     #[account(
+        mut,
+        associated_token::mint = share_mint,
+        associated_token::authority = queue,
+        associated_token::token_program = token_program_2022,
+    )]
+    pub queue_shares: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program_2022: Program<'info, Token2022>,
+
+    pub system_program: Program<'info, System>,
+
+    pub clock: Sysvar<'info, Clock>,
+
+    #[account(
+        constraint = boring_vault_program.key() == queue_state.boring_vault_program @ QueueErrorCode::InvalidBoringVaultProgram
+    )]
+    /// The Boring Vault program
+    pub boring_vault_program: Program<'info, BoringVaultSvm>,
+
+    /// The vault state account
+    /// CHECK: Validated in CPI call
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    /// The vault's asset data for the withdraw mint
+    /// CHECK: Validated in CPI call
+    pub vault_asset_data: Account<'info, AssetData>,
+
+    /// Price feed for the withdraw asset
+    /// CHECK: Validated in CPI call
+    pub price_feed: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64, request_id: u64)]
+pub struct FulfillWithdraw<'info> {
+    #[account(mut)]
+    pub solver: Signer<'info>,
+
+    /// CHECK: Used in PDA derivation
+    pub user: AccountInfo<'info>,
+
+    #[account(
+        seeds = [BASE_SEED_QUEUE_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
+        constraint = queue_state.solve_authority == Pubkey::default() || solver.key() == queue_state.solve_authority @ QueueErrorCode::NotAuthorized
+    )]
+    pub queue_state: Account<'info, QueueState>,
+
+    // Withdraw asset account
+    pub withdraw_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(mut)]
+    /// Users's Token associated token account
+    /// CHECK: Validated in instruction
+    pub user_ata: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(mut)]
+    /// Queues's Token associated token account
+    /// CHECK: Validated in instruction
+    pub queue_ata: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(mut)]
+    /// Vault's Token associated token account
+    /// CHECK: Validated in instruction
+    pub vault_ata: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_WITHDRAW_REQUEST, user.key().as_ref(), &request_id.to_le_bytes()[..]],
+        bump,
+        close = solver
+    )]
+    pub withdraw_request: Account<'info, WithdrawRequest>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_QUEUE, &vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: Account used to hold shares.
+    pub queue: SystemAccount<'info>,
+
+    // Share Token
+    /// The vault's share mint
+    #[account(mut)]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    /// The queue's share token 2022 account
+    #[account(
+        mut,
         associated_token::mint = share_mint,
         associated_token::authority = queue,
         associated_token::token_program = token_program_2022,

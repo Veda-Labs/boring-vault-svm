@@ -10,6 +10,7 @@ pub struct QueueState {
     pub authority: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
+    pub solve_authority: Pubkey,
     pub paused: bool,
 }
 
@@ -45,6 +46,7 @@ pub struct DeployArgs {
     pub authority: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
+    pub solve_authority: Pubkey,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
