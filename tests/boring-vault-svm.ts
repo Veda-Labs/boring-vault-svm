@@ -1171,7 +1171,6 @@ describe("boring-vault-svm", () => {
     const initUserMetadataData = Buffer.concat([
       discriminator,
       lookupTableAddress.toBuffer(),
-      Buffer.alloc(32),
     ]);
 
     // Create the instruction
