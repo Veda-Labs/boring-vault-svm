@@ -494,7 +494,7 @@ pub mod boring_vault_svm {
 
     // ================================ Deposit Functions ================================
     // TODO could add deposit authority logic like I did for withdraw authority
-    pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<()> {
+    pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<u64> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,
             ctx.accounts.asset_data.allow_deposits,
@@ -514,7 +514,7 @@ pub mod boring_vault_svm {
 
         let is_base = NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key();
 
-        teller::calculate_shares_and_mint(
+        let shares_out = teller::calculate_shares_and_mint(
             is_base,
             args,
             ctx.accounts.boring_vault_state.teller.exchange_rate,
@@ -529,10 +529,10 @@ pub mod boring_vault_svm {
             ctx.bumps.boring_vault_state,
         )?;
 
-        Ok(())
+        Ok(shares_out)
     }
 
-    pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<()> {
+    pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<u64> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,
             ctx.accounts.asset_data.allow_deposits,
@@ -586,7 +586,7 @@ pub mod boring_vault_svm {
         let is_base = ctx.accounts.deposit_mint.key()
             == ctx.accounts.boring_vault_state.teller.base_asset.key();
 
-        teller::calculate_shares_and_mint(
+        let shares_out = teller::calculate_shares_and_mint(
             is_base,
             args,
             ctx.accounts.boring_vault_state.teller.exchange_rate,
@@ -601,12 +601,12 @@ pub mod boring_vault_svm {
             ctx.bumps.boring_vault_state,
         )?;
 
-        Ok(())
+        Ok(shares_out)
     }
 
     // ================================ Withdraw Functions ================================
 
-    pub fn withdraw(ctx: Context<Withdraw>, args: WithdrawArgs) -> Result<()> {
+    pub fn withdraw(ctx: Context<Withdraw>, args: WithdrawArgs) -> Result<u64> {
         teller::before_withdraw(
             ctx.accounts.boring_vault_state.config.paused,
             ctx.accounts.asset_data.allow_withdrawals,
@@ -701,7 +701,7 @@ pub mod boring_vault_svm {
             return Err(BoringErrorCode::InvalidTokenProgram.into());
         };
 
-        Ok(())
+        Ok(assets_out)
     }
 
     // ================================== View Functions ==================================

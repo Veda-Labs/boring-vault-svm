@@ -1,7 +1,10 @@
 #![allow(unexpected_cfgs)]
 
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token::Token;
 use anchor_spl::token_2022::Token2022;
+
 use anchor_spl::token_interface;
 use anchor_spl::token_interface::{Mint, TokenAccount};
 use boring_vault_svm::{program::BoringVaultSvm, AssetData, BoringVault};
@@ -149,27 +152,178 @@ pub mod boring_onchain_queue {
     pub fn fulfill_withdraw(
         ctx: Context<FulfillWithdraw>,
         vault_id: u64,
-        request_id: u64,
+        _request_id: u64, // Used in context
     ) -> Result<()> {
-        // TODO add logic to deal with the excess.
+        let withdraw_request = &ctx.accounts.withdraw_request;
+        let current_time = ctx.accounts.clock.unix_timestamp as u64;
+        let creation_time = withdraw_request.creation_time;
+        let maturity = creation_time + withdraw_request.seconds_to_maturity as u64;
+        let deadline = maturity + withdraw_request.seconds_to_deadline as u64;
 
-        // Make sure request is solvable, check maturity, deadline, withdraw_mint matches request mint,
+        if current_time < maturity {
+            return Err(QueueErrorCode::RequestNotMature.into());
+        }
 
-        // Withdraw from vault
+        if current_time > deadline {
+            return Err(QueueErrorCode::RequestDeadlinePassed.into());
+        }
 
-        // deal with excess
+        if ctx.accounts.withdraw_mint.key() != withdraw_request.asset_out {
+            return Err(QueueErrorCode::InvalidWithdrawMint.into());
+        }
 
-        // Send assets to user
+        msg!("=== Account Details ===");
+        msg!("signer (queue): {}", ctx.accounts.queue.key(),);
+        msg!(
+            "boring_vault_state: {}",
+            ctx.accounts.boring_vault_state.key(),
+        );
+        msg!("boring_vault: {}", ctx.accounts.boring_vault.key(),);
+        msg!("withdraw_mint: {}", ctx.accounts.withdraw_mint.key(),);
+        msg!("vault_asset_data: {}", ctx.accounts.vault_asset_data.key(),);
+        msg!("queue_ata: {}", ctx.accounts.queue_ata.key(),);
+        msg!("vault_ata: {}", ctx.accounts.vault_ata.key(),);
+        msg!("share_mint: {}", ctx.accounts.share_mint.key(),);
+        msg!("queue_shares: {}", ctx.accounts.queue_shares.key(),);
+        msg!("price_feed: {}", ctx.accounts.price_feed.key(),);
+
+        // Withdraw from vault using CPI
+        let withdraw_accounts = boring_vault_svm::cpi::accounts::Withdraw {
+            signer: ctx.accounts.queue.to_account_info(),
+            boring_vault_state: ctx.accounts.boring_vault_state.to_account_info(),
+            boring_vault: ctx.accounts.boring_vault.to_account_info(),
+            withdraw_mint: ctx.accounts.withdraw_mint.to_account_info(),
+            asset_data: ctx.accounts.vault_asset_data.to_account_info(),
+            user_ata: ctx.accounts.queue_ata.to_account_info(),
+            vault_ata: ctx.accounts.vault_ata.to_account_info(),
+            token_program: ctx.accounts.token_program.to_account_info(),
+            token_program_2022: ctx.accounts.token_program_2022.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+            associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
+            share_mint: ctx.accounts.share_mint.to_account_info(),
+            user_shares: ctx.accounts.queue_shares.to_account_info(),
+            price_feed: ctx.accounts.price_feed.to_account_info(),
+        };
+
+        let seeds = &[
+            BASE_SEED_QUEUE,
+            &vault_id.to_le_bytes()[..],
+            &[ctx.bumps.queue],
+        ];
+
+        let signer_seeds = &[&seeds[..]];
+
+        let withdraw_args = boring_vault_svm::WithdrawArgs {
+            vault_id,
+            share_amount: withdraw_request.share_amount,
+            min_assets_amount: withdraw_request.asset_amount, // Min out should be assets needed for request.
+        };
+
+        let assets_out = boring_vault_svm::cpi::withdraw(
+            CpiContext::new_with_signer(
+                ctx.accounts.boring_vault_program.to_account_info(),
+                withdraw_accounts,
+                signer_seeds,
+            ),
+            withdraw_args,
+        )?;
+
+        // Transfer asset_amount from queue to user.
+        let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
+
+        if token_program_id == &ctx.accounts.token_program.key() {
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.queue_ata.to_account_info(),
+                        to: ctx.accounts.user_ata.to_account_info(),
+                        mint: ctx.accounts.withdraw_mint.to_account_info(),
+                        authority: ctx.accounts.queue.to_account_info(),
+                    },
+                    &[&[
+                        BASE_SEED_QUEUE,
+                        &vault_id.to_le_bytes()[..],
+                        &[ctx.bumps.queue],
+                    ]],
+                ),
+                ctx.accounts.withdraw_request.asset_amount,
+                ctx.accounts.withdraw_mint.decimals,
+            )?;
+        } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program_2022.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.queue_ata.to_account_info(),
+                        to: ctx.accounts.user_ata.to_account_info(),
+                        mint: ctx.accounts.withdraw_mint.to_account_info(),
+                        authority: ctx.accounts.queue.to_account_info(),
+                    },
+                    &[&[
+                        BASE_SEED_QUEUE,
+                        &vault_id.to_le_bytes()[..],
+                        &[ctx.bumps.queue],
+                    ]],
+                ),
+                ctx.accounts.withdraw_request.asset_amount,
+                ctx.accounts.withdraw_mint.decimals,
+            )?;
+        } else {
+            return Err(QueueErrorCode::InvalidTokenProgram.into());
+        }
+
+        // TODO some issue with the return value
+        // Transfer excess from queue back to boring_vault.
+        // let excess = assets_out.get() - withdraw_request.asset_amount;
+        // if excess > 0 {
+        //     if token_program_id == &ctx.accounts.token_program.key() {
+        //         token_interface::transfer_checked(
+        //             CpiContext::new_with_signer(
+        //                 ctx.accounts.token_program.to_account_info(),
+        //                 token_interface::TransferChecked {
+        //                     from: ctx.accounts.queue_ata.to_account_info(),
+        //                     to: ctx.accounts.vault_ata.to_account_info(),
+        //                     mint: ctx.accounts.withdraw_mint.to_account_info(),
+        //                     authority: ctx.accounts.queue.to_account_info(),
+        //                 },
+        //                 &[&[
+        //                     BASE_SEED_QUEUE,
+        //                     &vault_id.to_le_bytes()[..],
+        //                     &[ctx.bumps.queue],
+        //                 ]],
+        //             ),
+        //             excess,
+        //             ctx.accounts.withdraw_mint.decimals,
+        //         )?;
+        //     } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+        //         token_interface::transfer_checked(
+        //             CpiContext::new_with_signer(
+        //                 ctx.accounts.token_program_2022.to_account_info(),
+        //                 token_interface::TransferChecked {
+        //                     from: ctx.accounts.queue_ata.to_account_info(),
+        //                     to: ctx.accounts.vault_ata.to_account_info(),
+        //                     mint: ctx.accounts.withdraw_mint.to_account_info(),
+        //                     authority: ctx.accounts.queue.to_account_info(),
+        //                 },
+        //                 &[&[
+        //                     BASE_SEED_QUEUE,
+        //                     &vault_id.to_le_bytes()[..],
+        //                     &[ctx.bumps.queue],
+        //                 ]],
+        //             ),
+        //             excess,
+        //             ctx.accounts.withdraw_mint.decimals,
+        //         )?;
+        //     } else {
+        //         return Err(QueueErrorCode::InvalidTokenProgram.into());
+        //     }
+        // }
+
         Ok(())
     }
 
     // TODO function to cancel withdraw, replace withdraw
-
-    // TODO function to solve withdraws. Create a Solve Authority, if equal public key solves are public, else on solve auth can do it
-    // Should validate enough time has passed, but we are not passed deadline
-    // Should call withdraw on program
-    // Excess can be transferred to the solver or boring vault
-    // Should close the withdraw request account
 }
 
 #[derive(Accounts)]
@@ -428,8 +582,9 @@ pub struct FulfillWithdraw<'info> {
     )]
     pub queue_shares: InterfaceAccount<'info, TokenAccount>,
 
+    pub token_program: Program<'info, Token>,
     pub token_program_2022: Program<'info, Token2022>,
-
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 
     pub clock: Sysvar<'info, Clock>,
@@ -441,8 +596,13 @@ pub struct FulfillWithdraw<'info> {
     pub boring_vault_program: Program<'info, BoringVaultSvm>,
 
     /// The vault state account
+    #[account(mut)]
     /// CHECK: Validated in CPI call
     pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(mut)]
+    /// CHECK: Checked in boring vault program instruction
+    pub boring_vault: SystemAccount<'info>,
 
     /// The vault's asset data for the withdraw mint
     /// CHECK: Validated in CPI call

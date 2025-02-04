@@ -68,7 +68,7 @@ pub fn calculate_shares_and_mint<'a>(
     user_shares: AccountInfo<'a>,
     boring_vault_state: AccountInfo<'a>,
     boring_vault_state_bump: u8,
-) -> Result<()> {
+) -> Result<u64> {
     let shares_to_mint = if is_base {
         accountant::calculate_shares_to_mint_using_base_asset(
             args.deposit_amount,
@@ -140,7 +140,7 @@ pub fn calculate_shares_and_mint<'a>(
         ),
         shares_to_mint,
     )?;
-    Ok(())
+    Ok(shares_to_mint)
 }
 
 pub fn calculate_assets_out<'a>(

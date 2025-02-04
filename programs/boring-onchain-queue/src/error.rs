@@ -16,4 +16,12 @@ pub enum QueueErrorCode {
     InvalidSecondsToDeadline,
     #[msg("Invalid Boring Vault Program")]
     InvalidBoringVaultProgram,
+    #[msg("Request not mature")]
+    RequestNotMature,
+    #[msg("Request deadline passed")]
+    RequestDeadlinePassed,
+    #[msg("Invalid withdraw mint")]
+    InvalidWithdrawMint,
+    #[msg("Invalid token program")]
+    InvalidTokenProgram,
 }

@@ -54,6 +54,7 @@ describe("boring-vault-svm", () => {
   let boringVaultShareMint: anchor.web3.PublicKey;
   let userJitoSolAta: anchor.web3.PublicKey;
   let vaultJitoSolAta: anchor.web3.PublicKey;
+  let queueJitoSolAta: anchor.web3.PublicKey;
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
   let solAssetDataPda: anchor.web3.PublicKey;
   let userShareAta: anchor.web3.PublicKey;
@@ -415,9 +416,10 @@ describe("boring-vault-svm", () => {
           Buffer.from(new Array(8).fill(0))],
           queueProgram.programId
         );
-      
-      queueShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, queueAccount, 0);
-
+        
+        queueShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, queueAccount, 0);
+        queueJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, queueAccount, 0); 
+        
       });
       
   it("Is initialized", async () => {
@@ -1445,6 +1447,44 @@ describe("boring-vault-svm", () => {
     .instruction();
 
     let txResult = await createAndProcessTransaction(client, deployer, ix_withdraw_request, [user]);
+    expect(txResult.result).to.be.null;
+  });
+
+  it("Allows requests to be solved", async () => {
+    await wait(86_401);
+
+    const solve_ix = await queueProgram.methods
+    .fulfillWithdraw(
+      new anchor.BN(0), // vault id 0
+      new anchor.BN(0), // request id 0
+    )
+    .accounts({
+      solver: user.publicKey,
+      user: user.publicKey,
+      queueState: queueStateAccount,
+      withdrawMint: JITOSOL,
+      userAta: userJitoSolAta,
+      queueAta: queueJitoSolAta,
+      vaultAta: vaultJitoSolAta,
+      withdrawRequest: userWithdrawRequest,
+      queue: queueAccount,
+      shareMint: boringVaultShareMint,
+      // @ts-ignore
+      queueShares: queueShareAta,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      boringVaultProgram: program.programId,
+      boringVaultState: boringVaultStateAccount,
+      boringVault: boringVaultAccount,
+      vaultAssetData: jitoSolAssetDataPda,
+      priceFeed: anchor.web3.PublicKey.default,
+    })
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, solve_ix, [user]);
     expect(txResult.result).to.be.null;
   });
 
