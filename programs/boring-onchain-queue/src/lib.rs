@@ -252,6 +252,7 @@ pub mod boring_onchain_queue {
         )?;
 
         let assets_out = assets_out.get();
+        // TODO does underflowing revert?
         let excess = assets_out - withdraw_request.asset_amount;
 
         // Transfer asset_amount from queue to user.
