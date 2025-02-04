@@ -134,7 +134,6 @@ pub mod boring_vault_svm {
         vault.teller.withdraw_authority = args.withdraw_authority;
 
         // Initialize manager state.
-        // TODO this will likely change to support multiple strategists.
         vault.manager.strategist = args.strategist;
 
         // Update program config.
@@ -238,7 +237,10 @@ pub mod boring_vault_svm {
         cpi_digest.is_valid = args.is_valid;
         Ok(())
     }
-    // TODO close_cpi_digest
+
+    pub fn close_cpi_digest(_ctx: Context<CloseCpiDigest>) -> Result<()> {
+        Ok(())
+    }
 
     // TODO update exchange rate provider
     // TODO set withdraw authority
@@ -1243,6 +1245,33 @@ pub struct UpdateCpiDigest<'info> {
             args.cpi_digest.as_ref(),
         ],
         bump,
+    )]
+    pub cpi_digest: Account<'info, CpiDigest>,
+}
+
+#[derive(Accounts)]
+#[instruction(args: UpdateCpiDigestArgs)]
+pub struct CloseCpiDigest<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [
+            BASE_SEED_CPI_DIGEST,
+            boring_vault_state.key().as_ref(),
+            args.cpi_digest.as_ref(),
+        ],
+        bump,
+        close = signer,
     )]
     pub cpi_digest: Account<'info, CpiDigest>,
 }

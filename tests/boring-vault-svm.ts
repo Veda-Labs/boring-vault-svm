@@ -244,8 +244,8 @@ describe("boring-vault-svm", () => {
   }
 
   before(async () => {
-    connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`);
-    // connection = new Connection(`https://api.mainnet-beta.solana.com`);
+    // connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`);
+    connection = new Connection(`https://api.mainnet-beta.solana.com`);
 
     // Helper function to create AddedAccount from public key
     const createAddedAccount = async (pubkeyStr: string): Promise<AddedAccount> => {
@@ -1013,6 +1013,78 @@ describe("boring-vault-svm", () => {
     expect((authJitoSolEndBalance - authJitoSolStartBalance).toString()).to.equal(expectedFees.toString()); // Fee should be transferred to authority
   });
 
+  it("Can update and close cpi digests", async () => {
+    // 1. View CPI Digest
+    const view_ix = await program.methods
+    .viewCpiDigest(
+      // @ts-ignore
+      {
+          vaultId: new anchor.BN(0),
+          ixProgramId: KAMINO_LEND_PROGRAM_ID,
+          ixData: Buffer.from([]),
+          operators: [],
+          expectedSize: 32,
+      }
+    )
+    .signers([deployer])
+    .view();
+
+    const digest = view_ix.digest;
+
+    // 2. Find CPI Digest Account
+    const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("cpi-digest"),
+        boringVaultStateAccount.toBuffer(),
+        Buffer.from(digest),
+      ],
+      program.programId
+    );
+
+    // 3. Update CPI Digest
+    const updateIx = await program.methods
+      .updateCpiDigest({
+        vaultId: new anchor.BN(0),
+        cpiDigest: digest,
+        isValid: true,
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        systemProgram: anchor.web3.SystemProgram.programId,
+        cpiDigest: cpiDigestAccount,
+      })
+      .instruction();
+
+    const updateTxResult = await createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+
+    expect(updateTxResult.result).to.be.null;
+
+    // 4. Close CPI Digest
+    const closeIx = await program.methods.updateCpiDigest({
+      vaultId: new anchor.BN(0),
+      cpiDigest: digest,
+      isValid: true,
+    })
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+      // @ts-ignore
+      cpiDigest: cpiDigestAccount,
+    })
+    .instruction();
+
+    const closeIxResult = await createAndProcessTransaction(client, deployer, closeIx, [authority]);
+
+    expect(closeIxResult.result).to.be.null;
+  });
+
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
 
     // Transfer SOL from user to vault.
@@ -1238,7 +1310,7 @@ describe("boring-vault-svm", () => {
     ]);
 
     console.log("Init User Metadata IX Data:", Buffer.from(initUserMetadataData).toString('hex'));
-    
+
     // Create the instruction
     const initUserMetadataIx = new anchor.web3.TransactionInstruction({
       programId: targetProgramId,
