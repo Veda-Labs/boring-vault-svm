@@ -4,12 +4,12 @@ use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::Token;
 use anchor_spl::token_2022::Token2022;
-
+mod utils;
 use anchor_spl::token_interface;
 use anchor_spl::token_interface::{Mint, TokenAccount};
 use boring_vault_svm::{program::BoringVaultSvm, AssetData, BoringVault};
 use rust_decimal::Decimal;
-
+use utils::validate;
 mod constants;
 use constants::*;
 mod error;
@@ -30,14 +30,38 @@ pub mod boring_onchain_queue {
     }
 
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
+        // Derive the vault state PDA
+        let (vault_state, _) = Pubkey::find_program_address(
+            &[
+                boring_vault_svm::BASE_SEED_BORING_VAULT_STATE,
+                &args.vault_id.to_le_bytes(),
+            ],
+            &args.boring_vault_program,
+        );
+
+        // Derive the expected share mint PDA
+        let (expected_share_mint, _) = Pubkey::find_program_address(
+            &[
+                boring_vault_svm::BASE_SEED_SHARE_TOKEN,
+                vault_state.as_ref(),
+            ],
+            &args.boring_vault_program,
+        );
+
+        // Verify the provided share mint matches the derived one
+        require!(
+            expected_share_mint == args.share_mint,
+            QueueErrorCode::InvalidShareMint
+        );
+
         let queue_state = &mut ctx.accounts.queue_state;
         queue_state.authority = args.authority;
         queue_state.boring_vault_program = args.boring_vault_program;
         queue_state.vault_id = args.vault_id;
+        queue_state.share_mint = args.share_mint;
         queue_state.solve_authority = args.solve_authority;
         queue_state.paused = false;
 
-        // TODO create share ata
         Ok(())
     }
 
@@ -55,13 +79,9 @@ pub mod boring_onchain_queue {
         Ok(())
     }
 
-    pub fn setup_user_withdraw_state(
-        ctx: Context<SetupUserWithdrawState>,
-        vault_id: u64,
-    ) -> Result<()> {
+    pub fn setup_user_withdraw_state(ctx: Context<SetupUserWithdrawState>) -> Result<()> {
         ctx.accounts.user_withdraw_state.last_nonce = 0;
 
-        msg!("Setup User Withdraw State for BoringVault {}", vault_id);
         Ok(())
     }
 
@@ -69,6 +89,11 @@ pub mod boring_onchain_queue {
         ctx: Context<RequestWithdraw>,
         args: RequestWithdrawArgs,
     ) -> Result<()> {
+        // Validate share_mint
+        if ctx.accounts.share_mint.key() != ctx.accounts.queue_state.share_mint {
+            return Err(QueueErrorCode::InvalidShareMint.into());
+        }
+
         // Transfer shares to queue.
         token_interface::transfer_checked(
             CpiContext::new(
@@ -87,6 +112,7 @@ pub mod boring_onchain_queue {
         let user_withdraw_state = &mut ctx.accounts.user_withdraw_state;
         let withdraw_request = &mut ctx.accounts.withdraw_request;
         let withdraw_asset_data = &ctx.accounts.withdraw_asset_data;
+        withdraw_request.vault_id = args.vault_id;
         withdraw_request.asset_out = ctx.accounts.withdraw_mint.key();
         withdraw_request.share_amount = args.share_amount;
 
@@ -162,6 +188,11 @@ pub mod boring_onchain_queue {
         _request_id: u64, // Used in context
     ) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
+
+        if withdraw_request.vault_id != vault_id {
+            return Err(QueueErrorCode::InvalidVaultId.into());
+        }
+
         let current_time = ctx.accounts.clock.unix_timestamp as u64;
         let creation_time = withdraw_request.creation_time;
         let maturity = creation_time + withdraw_request.seconds_to_maturity as u64;
@@ -226,6 +257,14 @@ pub mod boring_onchain_queue {
         // Transfer asset_amount from queue to user.
         let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
 
+        // Validate user's ata. Cpi Withdraw validates vault and queue atas
+        validate::validate_associated_token_accounts(
+            &ctx.accounts.withdraw_mint.key(),
+            token_program_id,
+            &ctx.accounts.user.key(),
+            &ctx.accounts.user_ata.key(),
+        )?;
+
         if token_program_id == &ctx.accounts.token_program.key() {
             token_interface::transfer_checked(
                 CpiContext::new_with_signer(
@@ -272,11 +311,7 @@ pub mod boring_onchain_queue {
                             mint: ctx.accounts.withdraw_mint.to_account_info(),
                             authority: ctx.accounts.queue.to_account_info(),
                         },
-                        &[&[
-                            BASE_SEED_QUEUE,
-                            &vault_id.to_le_bytes()[..],
-                            &[ctx.bumps.queue],
-                        ]],
+                        signer_seeds,
                     ),
                     excess,
                     ctx.accounts.withdraw_mint.decimals,
@@ -291,11 +326,7 @@ pub mod boring_onchain_queue {
                             mint: ctx.accounts.withdraw_mint.to_account_info(),
                             authority: ctx.accounts.queue.to_account_info(),
                         },
-                        &[&[
-                            BASE_SEED_QUEUE,
-                            &vault_id.to_le_bytes()[..],
-                            &[ctx.bumps.queue],
-                        ]],
+                        signer_seeds,
                     ),
                     excess,
                     ctx.accounts.withdraw_mint.decimals,
@@ -308,7 +339,35 @@ pub mod boring_onchain_queue {
         Ok(())
     }
 
-    // TODO function to cancel withdraw, replace withdraw
+    /// Note it is a bit redundant to validate vault_id and share_mint, as the queue_state is used to
+    /// validate the share_mint, but queue_state is derived using the vault_id, but this is a more explicit check
+    /// that the cancelled request does belong to the provided vault_id.
+    pub fn cancel_withdraw(
+        ctx: Context<CancelWithdraw>,
+        vault_id: u64,
+        _request_id: u64,
+    ) -> Result<()> {
+        // Transfer shares back to signer.
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program_2022.to_account_info(),
+                token_interface::TransferChecked {
+                    from: ctx.accounts.queue_shares.to_account_info(),
+                    to: ctx.accounts.user_shares.to_account_info(),
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    authority: ctx.accounts.queue.to_account_info(),
+                },
+                &[&[
+                    BASE_SEED_QUEUE,
+                    &vault_id.to_le_bytes()[..],
+                    &[ctx.bumps.queue],
+                ]],
+            ),
+            ctx.accounts.withdraw_request.share_amount,
+            ctx.accounts.share_mint.decimals,
+        )?;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -390,7 +449,6 @@ pub struct UpdateWithdrawAsset<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(vault_id: u64)]
 pub struct SetupUserWithdrawState<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -399,7 +457,7 @@ pub struct SetupUserWithdrawState<'info> {
         init,
         payer = signer,
         space = 8 + std::mem::size_of::<UserWithdrawState>(),
-        seeds = [BASE_SEED_USER_WITHDRAW_STATE, signer.key().as_ref(),  &vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_USER_WITHDRAW_STATE, signer.key().as_ref()],
         bump,
     )]
     pub user_withdraw_state: Account<'info, UserWithdrawState>,
@@ -432,7 +490,7 @@ pub struct RequestWithdraw<'info> {
 
     #[account(
         mut,
-        seeds = [BASE_SEED_USER_WITHDRAW_STATE, signer.key().as_ref(),  &args.vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_USER_WITHDRAW_STATE, signer.key().as_ref()],
         bump,
     )]
     pub user_withdraw_state: Account<'info, UserWithdrawState>,
@@ -454,9 +512,10 @@ pub struct RequestWithdraw<'info> {
     /// CHECK: Account used to hold shares.
     pub queue: SystemAccount<'info>,
 
-    // Share Token
     /// The vault's share mint
     #[account(mut)]
+    /// CHECK: Validated in instruction explicitly, even though
+    /// it is implicitly validated by the cpi
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     /// The user's share token 2022 account
@@ -511,15 +570,22 @@ pub struct FulfillWithdraw<'info> {
     /// CHECK: Used in PDA derivation
     pub user: AccountInfo<'info>,
 
+    // Share Token
+    /// The vault's share mint
+    #[account(mut)]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
     #[account(
         seeds = [BASE_SEED_QUEUE_STATE, &vault_id.to_le_bytes()[..]],
         bump,
         constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
-        constraint = queue_state.solve_authority == Pubkey::default() || solver.key() == queue_state.solve_authority @ QueueErrorCode::NotAuthorized
+        constraint = queue_state.solve_authority == Pubkey::default() || solver.key() == queue_state.solve_authority @ QueueErrorCode::NotAuthorized,
+        constraint = queue_state.share_mint == share_mint.key() @ QueueErrorCode::InvalidShareMint,
     )]
     pub queue_state: Account<'info, QueueState>,
 
     // Withdraw asset account
+    /// CHECK: Validated in instruction against request
     pub withdraw_mint: InterfaceAccount<'info, Mint>,
 
     #[account(mut)]
@@ -529,12 +595,12 @@ pub struct FulfillWithdraw<'info> {
 
     #[account(mut)]
     /// Queues's Token associated token account
-    /// CHECK: Validated in instruction
+    /// CHECK: Validated in cpi
     pub queue_ata: InterfaceAccount<'info, TokenAccount>,
 
     #[account(mut)]
     /// Vault's Token associated token account
-    /// CHECK: Validated in instruction
+    /// CHECK: Validated in cpi
     pub vault_ata: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
@@ -552,11 +618,6 @@ pub struct FulfillWithdraw<'info> {
     )]
     /// CHECK: Account used to hold shares.
     pub queue: SystemAccount<'info>,
-
-    // Share Token
-    /// The vault's share mint
-    #[account(mut)]
-    pub share_mint: InterfaceAccount<'info, Mint>,
 
     /// The queue's share token 2022 account
     #[account(
@@ -596,4 +657,63 @@ pub struct FulfillWithdraw<'info> {
     /// Price feed for the withdraw asset
     /// CHECK: Validated in CPI call
     pub price_feed: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64, request_id: u64)]
+pub struct CancelWithdraw<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // Share Token
+    /// The vault's share mint
+    #[account(mut)]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [BASE_SEED_QUEUE_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
+        constraint = queue_state.share_mint == share_mint.key() @ QueueErrorCode::InvalidShareMint,
+    )]
+    pub queue_state: Account<'info, QueueState>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_WITHDRAW_REQUEST, signer.key().as_ref(), &request_id.to_le_bytes()[..]],
+        bump,
+        close = signer,
+        constraint = vault_id == withdraw_request.vault_id @ QueueErrorCode::InvalidVaultId,
+    )]
+    /// CHECK: Signer key used in seeds, so request must belong to signer.
+    pub withdraw_request: Account<'info, WithdrawRequest>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_QUEUE, &vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    /// CHECK: Account used to hold shares.
+    pub queue: SystemAccount<'info>,
+
+    /// The user's share token 2022 account
+    #[account(
+            mut,
+            associated_token::mint = share_mint,
+            associated_token::authority = signer,
+            associated_token::token_program = token_program_2022,
+        )]
+    pub user_shares: InterfaceAccount<'info, TokenAccount>,
+
+    /// The queue's share token 2022 account
+    #[account(
+        mut,
+        associated_token::mint = share_mint,
+        associated_token::authority = queue,
+        associated_token::token_program = token_program_2022,
+    )]
+    pub queue_shares: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program_2022: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
 }

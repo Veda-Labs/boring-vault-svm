@@ -10,6 +10,7 @@ pub struct QueueState {
     pub authority: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
+    pub share_mint: Pubkey,
     pub solve_authority: Pubkey,
     pub paused: bool,
 }
@@ -27,6 +28,7 @@ pub struct WithdrawAssetData {
 // pda BASE_SEED_WITHDRAW_REQUEST + user.key() + last_nonce
 #[account]
 pub struct WithdrawRequest {
+    pub vault_id: u64,
     pub asset_out: Pubkey,
     pub share_amount: u64,
     pub asset_amount: u64,
@@ -46,6 +48,7 @@ pub struct DeployArgs {
     pub authority: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
+    pub share_mint: Pubkey,
     pub solve_authority: Pubkey,
 }
 

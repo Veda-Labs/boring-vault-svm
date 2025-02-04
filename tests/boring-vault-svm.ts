@@ -412,8 +412,7 @@ describe("boring-vault-svm", () => {
       [userWithdrawState, bump] = anchor.web3.PublicKey.findProgramAddressSync(
         [
           Buffer.from("boring-queue-user-withdraw-state"),
-          user.publicKey.toBuffer(),
-          Buffer.from(new Array(8).fill(0))],
+          user.publicKey.toBuffer()],
           queueProgram.programId
         );
         
@@ -1355,8 +1354,9 @@ describe("boring-vault-svm", () => {
       .deploy({
         authority: authority.publicKey,
         boringVaultProgram: program.programId,
-        solveAuthority: anchor.web3.SystemProgram.programId,
         vaultId: new anchor.BN(0),
+        shareMint: boringVaultShareMint,
+        solveAuthority: anchor.web3.SystemProgram.programId,
       })
       .accounts({
         signer: deployer.publicKey,
@@ -1414,9 +1414,10 @@ describe("boring-vault-svm", () => {
 
   it("Allows users to setup withdraw state", async () => {
     const ix = await queueProgram.methods
-    .setupUserWithdrawState(new anchor.BN(0))
+    .setupUserWithdrawState()
     .accounts({
       signer: user.publicKey,
+      // @ts-ignore
       userWithdrawState: userWithdrawState
     })
     .instruction();
@@ -1519,6 +1520,79 @@ describe("boring-vault-svm", () => {
     expect((userJitoSolEndBalance - userJitoSolStartBalance).toString()).to.equal("999700"); // User gained JitoSol
     expect((vaultJitoSolStartBalance - vaultJitoSolEndBalance).toString()).to.equal("999700"); // Vault lossed JitoSol
     expect((queueJitoSolStartBalance - queueJitoSolEndBalance).toString()).to.equal("0"); // Queue had no change
+
+  });
+
+  it("Allows users to cancel withdraw requests", async () => {
+    let bump;
+    [userWithdrawRequest, bump] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-queue-withdraw-request"),
+        user.publicKey.toBuffer(),
+        Buffer.from([1,0,0,0,0,0,0,0])],
+      queueProgram.programId
+    );
+
+    const ix_withdraw_request = await queueProgram.methods
+    .requestWithdraw(
+      // @ts-ignore
+      {
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1000000),
+        discount: new anchor.BN(3),
+        secondsToDeadline: new anchor.BN(3 * 86400)
+      }
+    )
+    .accounts({
+      signer: user.publicKey,
+      queueState: queueStateAccount,
+      withdrawMint: JITOSOL,
+      withdrawAssetData: jitoSolWithdrawAssetData,
+      userWithdrawState: userWithdrawState,
+      withdrawRequest: userWithdrawRequest,
+      queue: queueAccount,
+      shareMint: boringVaultShareMint,
+      // @ts-ignore
+      userShares: userShareAta,
+      queueShares: queueShareAta,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      boringVaultProgram: program.programId,
+      boringVaultState: boringVaultStateAccount,
+      vaultAssetData: jitoSolAssetDataPda,
+      priceFeed: anchor.web3.PublicKey.default,
+    })
+    .instruction();
+
+    let txResult = await createAndProcessTransaction(client, deployer, ix_withdraw_request, [user]);
+    expect(txResult.result).to.be.null;
+
+    // Now have user cancel their request.
+    const cancel_ix = await queueProgram.methods
+    .cancelWithdraw(new anchor.BN(0), new anchor.BN(1))
+    .accounts({
+      signer: user.publicKey,
+      shareMint: boringVaultShareMint,
+      queueState: queueStateAccount,
+      withdrawRequest: userWithdrawRequest,
+      queue: queueAccount,
+      // @ts-ignore
+      userShares: userShareAta,
+      queueShares: queueShareAta,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    })
+    .instruction();
+
+    let userShareStartBalance = await getTokenBalance(client, userShareAta);
+
+    let cancelResult = await createAndProcessTransaction(client, deployer, cancel_ix, [user]);
+    expect(cancelResult.result).to.be.null;
+
+    let userShareEndBalance = await getTokenBalance(client, userShareAta);
+
+    expect((userShareEndBalance - userShareStartBalance).toString()).to.equal("1000000"); // User gained Shares
 
   });
 

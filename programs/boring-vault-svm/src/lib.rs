@@ -13,7 +13,7 @@ pub use state::*;
 mod error;
 use error::*;
 mod constants;
-use constants::*;
+pub use constants::*;
 mod utils;
 use rust_decimal::Decimal;
 use utils::accountant;
@@ -25,10 +25,6 @@ declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 // https://github.com/solana-developers/program-examples/tree/main/tokens/token-2022/transfer-hook/whitelist/anchor
 // https://www.quicknode.com/guides/solana-development/anchor/token-2022
 
-// TODO boring_vault pda owns all SOL and tokens, I could optionally allow a strategist to use sub-accounts
-// that use the existing pda seeds but with additional u8 sub account id
-// then there can also be a config for deposits and withdraws to specify which sub account money should go into.
-// I would need to change manage such that the sub account id must be provided.
 #[program]
 pub mod boring_vault_svm {
     use super::*;
@@ -242,7 +238,7 @@ pub mod boring_vault_svm {
         cpi_digest.is_valid = args.is_valid;
         Ok(())
     }
-    // close_cpi_digest
+    // TODO close_cpi_digest
 
     // TODO update exchange rate provider
     // TODO claim fees
@@ -251,6 +247,7 @@ pub mod boring_vault_svm {
     // =============================== Exchange Rate Functions ===============================
 
     // TODO can refactor this into teller and accountant?
+    // TODO refactor accoutant into teller
     pub fn update_exchange_rate(
         ctx: Context<UpdateExchangeRate>,
         vault_id: u64,
