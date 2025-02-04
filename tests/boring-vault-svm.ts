@@ -951,6 +951,28 @@ describe("boring-vault-svm", () => {
 
     let txResult_unpause_1 = await createAndProcessTransaction(client, deployer, unpause_ix, [authority]);
     expect(txResult_unpause_1.result).to.be.null;
+
+    // 8th update - change exchange rate to a ridiculous low value
+    let res_7 = await updateExchangeRateAndWait(
+      program,
+      client,
+      new anchor.BN(0),
+      new anchor.BN(1000000000),
+      strategist,
+      86400,
+    );
+
+    // Unpause the vault
+    const unpause_ix_2 = await program.methods
+    .unpause(new anchor.BN(0))
+    .accounts({
+      signer: authority.publicKey,
+      boringVaultState: boringVaultStateAccount,
+    })
+    .instruction();
+
+    let txResult_unpause_2 = await createAndProcessTransaction(client, deployer, unpause_ix, [authority]);
+    expect(txResult_unpause_2.result).to.be.null;
   });
 
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
@@ -1083,7 +1105,6 @@ describe("boring-vault-svm", () => {
   });
 
   // TODO test where I transfer SOL to a different sub account and back
-  // TODO test where I transfer JitoSOL to a different sub account and back
 
   it("I Can lend JitoSOL on Mock Kamino", async () => {
     // Create lookup table for user
@@ -1484,8 +1505,21 @@ describe("boring-vault-svm", () => {
     })
     .instruction();
 
+    let userJitoSolStartBalance = await getTokenBalance(client, userJitoSolAta);
+    let vaultJitoSolStartBalance = await getTokenBalance(client, vaultJitoSolAta);
+    let queueJitoSolStartBalance = await getTokenBalance(client, queueJitoSolAta);
+
     let txResult = await createAndProcessTransaction(client, deployer, solve_ix, [user]);
     expect(txResult.result).to.be.null;
+
+    let userJitoSolEndBalance = await getTokenBalance(client, userJitoSolAta);
+    let vaultJitoSolEndBalance = await getTokenBalance(client, vaultJitoSolAta);
+    let queueJitoSolEndBalance = await getTokenBalance(client, queueJitoSolAta);
+
+    expect((userJitoSolEndBalance - userJitoSolStartBalance).toString()).to.equal("999700"); // User gained JitoSol
+    expect((vaultJitoSolStartBalance - vaultJitoSolEndBalance).toString()).to.equal("999700"); // Vault lossed JitoSol
+    expect((queueJitoSolStartBalance - queueJitoSolEndBalance).toString()).to.equal("0"); // Queue had no change
+
   });
 
   // TODO This test is super buggy and sometimes leaves the vault in a paused state, which can cause other tests to fail.

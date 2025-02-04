@@ -143,9 +143,16 @@ pub mod boring_onchain_queue {
         discount.set_scale(4).unwrap(); // BPS scale
         let discount_multiplier = Decimal::from(1).checked_sub(discount).unwrap();
         let asset_amount = asset_amount.checked_mul(discount_multiplier).unwrap();
+        // Scale up asset_amount by decimals.
+        let asset_amount = asset_amount
+            .checked_mul(Decimal::from(
+                10u64.pow(ctx.accounts.withdraw_mint.decimals as u32),
+            ))
+            .unwrap();
 
         withdraw_request.asset_amount = asset_amount.try_into().unwrap();
         user_withdraw_state.last_nonce += 1;
+
         Ok(())
     }
 
@@ -171,21 +178,6 @@ pub mod boring_onchain_queue {
         if ctx.accounts.withdraw_mint.key() != withdraw_request.asset_out {
             return Err(QueueErrorCode::InvalidWithdrawMint.into());
         }
-
-        msg!("=== Account Details ===");
-        msg!("signer (queue): {}", ctx.accounts.queue.key(),);
-        msg!(
-            "boring_vault_state: {}",
-            ctx.accounts.boring_vault_state.key(),
-        );
-        msg!("boring_vault: {}", ctx.accounts.boring_vault.key(),);
-        msg!("withdraw_mint: {}", ctx.accounts.withdraw_mint.key(),);
-        msg!("vault_asset_data: {}", ctx.accounts.vault_asset_data.key(),);
-        msg!("queue_ata: {}", ctx.accounts.queue_ata.key(),);
-        msg!("vault_ata: {}", ctx.accounts.vault_ata.key(),);
-        msg!("share_mint: {}", ctx.accounts.share_mint.key(),);
-        msg!("queue_shares: {}", ctx.accounts.queue_shares.key(),);
-        msg!("price_feed: {}", ctx.accounts.price_feed.key(),);
 
         // Withdraw from vault using CPI
         let withdraw_accounts = boring_vault_svm::cpi::accounts::Withdraw {
@@ -228,6 +220,9 @@ pub mod boring_onchain_queue {
             withdraw_args,
         )?;
 
+        let assets_out = assets_out.get();
+        let excess = assets_out - withdraw_request.asset_amount;
+
         // Transfer asset_amount from queue to user.
         let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
 
@@ -241,11 +236,7 @@ pub mod boring_onchain_queue {
                         mint: ctx.accounts.withdraw_mint.to_account_info(),
                         authority: ctx.accounts.queue.to_account_info(),
                     },
-                    &[&[
-                        BASE_SEED_QUEUE,
-                        &vault_id.to_le_bytes()[..],
-                        &[ctx.bumps.queue],
-                    ]],
+                    signer_seeds,
                 ),
                 ctx.accounts.withdraw_request.asset_amount,
                 ctx.accounts.withdraw_mint.decimals,
@@ -260,11 +251,7 @@ pub mod boring_onchain_queue {
                         mint: ctx.accounts.withdraw_mint.to_account_info(),
                         authority: ctx.accounts.queue.to_account_info(),
                     },
-                    &[&[
-                        BASE_SEED_QUEUE,
-                        &vault_id.to_le_bytes()[..],
-                        &[ctx.bumps.queue],
-                    ]],
+                    signer_seeds,
                 ),
                 ctx.accounts.withdraw_request.asset_amount,
                 ctx.accounts.withdraw_mint.decimals,
@@ -273,52 +260,50 @@ pub mod boring_onchain_queue {
             return Err(QueueErrorCode::InvalidTokenProgram.into());
         }
 
-        // TODO some issue with the return value
         // Transfer excess from queue back to boring_vault.
-        // let excess = assets_out.get() - withdraw_request.asset_amount;
-        // if excess > 0 {
-        //     if token_program_id == &ctx.accounts.token_program.key() {
-        //         token_interface::transfer_checked(
-        //             CpiContext::new_with_signer(
-        //                 ctx.accounts.token_program.to_account_info(),
-        //                 token_interface::TransferChecked {
-        //                     from: ctx.accounts.queue_ata.to_account_info(),
-        //                     to: ctx.accounts.vault_ata.to_account_info(),
-        //                     mint: ctx.accounts.withdraw_mint.to_account_info(),
-        //                     authority: ctx.accounts.queue.to_account_info(),
-        //                 },
-        //                 &[&[
-        //                     BASE_SEED_QUEUE,
-        //                     &vault_id.to_le_bytes()[..],
-        //                     &[ctx.bumps.queue],
-        //                 ]],
-        //             ),
-        //             excess,
-        //             ctx.accounts.withdraw_mint.decimals,
-        //         )?;
-        //     } else if token_program_id == &ctx.accounts.token_program_2022.key() {
-        //         token_interface::transfer_checked(
-        //             CpiContext::new_with_signer(
-        //                 ctx.accounts.token_program_2022.to_account_info(),
-        //                 token_interface::TransferChecked {
-        //                     from: ctx.accounts.queue_ata.to_account_info(),
-        //                     to: ctx.accounts.vault_ata.to_account_info(),
-        //                     mint: ctx.accounts.withdraw_mint.to_account_info(),
-        //                     authority: ctx.accounts.queue.to_account_info(),
-        //                 },
-        //                 &[&[
-        //                     BASE_SEED_QUEUE,
-        //                     &vault_id.to_le_bytes()[..],
-        //                     &[ctx.bumps.queue],
-        //                 ]],
-        //             ),
-        //             excess,
-        //             ctx.accounts.withdraw_mint.decimals,
-        //         )?;
-        //     } else {
-        //         return Err(QueueErrorCode::InvalidTokenProgram.into());
-        //     }
-        // }
+        if excess > 0 {
+            if token_program_id == &ctx.accounts.token_program.key() {
+                token_interface::transfer_checked(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        token_interface::TransferChecked {
+                            from: ctx.accounts.queue_ata.to_account_info(),
+                            to: ctx.accounts.vault_ata.to_account_info(),
+                            mint: ctx.accounts.withdraw_mint.to_account_info(),
+                            authority: ctx.accounts.queue.to_account_info(),
+                        },
+                        &[&[
+                            BASE_SEED_QUEUE,
+                            &vault_id.to_le_bytes()[..],
+                            &[ctx.bumps.queue],
+                        ]],
+                    ),
+                    excess,
+                    ctx.accounts.withdraw_mint.decimals,
+                )?;
+            } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+                token_interface::transfer_checked(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program_2022.to_account_info(),
+                        token_interface::TransferChecked {
+                            from: ctx.accounts.queue_ata.to_account_info(),
+                            to: ctx.accounts.vault_ata.to_account_info(),
+                            mint: ctx.accounts.withdraw_mint.to_account_info(),
+                            authority: ctx.accounts.queue.to_account_info(),
+                        },
+                        &[&[
+                            BASE_SEED_QUEUE,
+                            &vault_id.to_le_bytes()[..],
+                            &[ctx.bumps.queue],
+                        ]],
+                    ),
+                    excess,
+                    ctx.accounts.withdraw_mint.decimals,
+                )?;
+            } else {
+                return Err(QueueErrorCode::InvalidTokenProgram.into());
+            }
+        }
 
         Ok(())
     }
