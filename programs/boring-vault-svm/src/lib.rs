@@ -241,8 +241,88 @@ pub mod boring_vault_svm {
     // TODO close_cpi_digest
 
     // TODO update exchange rate provider
-    // TODO claim fees
     // TODO set withdraw authority
+
+    pub fn claim_fees_in_base(
+        ctx: Context<ClaimFeesInBase>,
+        vault_id: u64,
+        sub_account: u8,
+    ) -> Result<()> {
+        // Determine which token program to use based on the mint's owner
+        let token_program_id = ctx.accounts.base_mint.to_account_info().owner;
+        // Validate ATAs by checking against derived PDAs
+        teller::validate_associated_token_accounts(
+            &ctx.accounts.base_mint.key(),
+            &token_program_id,
+            &ctx.accounts.signer.key(),
+            &ctx.accounts.boring_vault.key(),
+            &ctx.accounts.signer_ata.key(),
+            &ctx.accounts.vault_ata.key(),
+        )?;
+
+        // Save assets_out
+        let assets_out = ctx
+            .accounts
+            .boring_vault_state
+            .teller
+            .fees_owed_in_base_asset;
+
+        // Zero out fees owed
+        ctx.accounts
+            .boring_vault_state
+            .teller
+            .fees_owed_in_base_asset = 0;
+
+        // Transfer asset to user.
+        if token_program_id == &ctx.accounts.token_program.key() {
+            // Transfer Token from vault to user
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.vault_ata.to_account_info(),
+                        to: ctx.accounts.signer_ata.to_account_info(),
+                        mint: ctx.accounts.base_mint.to_account_info(),
+                        authority: ctx.accounts.boring_vault.to_account_info(),
+                    },
+                    &[&[
+                        // PDA signer seeds for vault state
+                        BASE_SEED_BORING_VAULT,
+                        &vault_id.to_le_bytes()[..],
+                        &[sub_account],
+                        &[ctx.bumps.boring_vault],
+                    ]],
+                ),
+                assets_out,
+                ctx.accounts.base_mint.decimals,
+            )?;
+        } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+            // Transfer Token2022 from vault to user
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program_2022.to_account_info(),
+                    token_interface::TransferChecked {
+                        from: ctx.accounts.vault_ata.to_account_info(),
+                        to: ctx.accounts.signer_ata.to_account_info(),
+                        mint: ctx.accounts.base_mint.to_account_info(),
+                        authority: ctx.accounts.boring_vault.to_account_info(),
+                    },
+                    &[&[
+                        // PDA signer seeds for vault state
+                        BASE_SEED_BORING_VAULT,
+                        &vault_id.to_le_bytes()[..],
+                        &[sub_account],
+                        &[ctx.bumps.boring_vault],
+                    ]],
+                ),
+                assets_out,
+                ctx.accounts.base_mint.decimals,
+            )?;
+        } else {
+            return Err(BoringErrorCode::InvalidTokenProgram.into());
+        };
+        Ok(())
+    }
 
     // =============================== Exchange Rate Functions ===============================
 
@@ -1165,6 +1245,54 @@ pub struct UpdateCpiDigest<'info> {
         bump,
     )]
     pub cpi_digest: Account<'info, CpiDigest>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64, sub_account: u8)]
+pub struct ClaimFeesInBase<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    // base asset account
+    pub base_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized,
+        constraint = base_mint.key() == boring_vault_state.teller.base_asset @ BoringErrorCode::InvalidBaseAsset,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [
+            BASE_SEED_BORING_VAULT,
+            &vault_id.to_le_bytes()[..],
+            &[sub_account]
+            ],
+        bump,
+    )]
+    /// CHECK: Account used to hold assets.
+    pub boring_vault: SystemAccount<'info>,
+
+    #[account(mut)]
+    /// Signers's Token associated token account
+    /// CHECK: Validated in instruction
+    pub signer_ata: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(mut)]
+    /// Vault's Token associated token account
+    /// CHECK: Validated in instruction
+    pub vault_ata: InterfaceAccount<'info, TokenAccount>,
+
+    // Programs
+    pub token_program: Program<'info, Token>,
+    pub token_program_2022: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
 #[derive(Accounts)]

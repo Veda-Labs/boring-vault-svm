@@ -53,6 +53,7 @@ describe("boring-vault-svm", () => {
   let boringVaultAccount: anchor.web3.PublicKey;
   let boringVaultShareMint: anchor.web3.PublicKey;
   let userJitoSolAta: anchor.web3.PublicKey;
+  let authJitoSolAta: anchor.web3.PublicKey;
   let vaultJitoSolAta: anchor.web3.PublicKey;
   let queueJitoSolAta: anchor.web3.PublicKey;
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
@@ -382,6 +383,7 @@ describe("boring-vault-svm", () => {
     );
 
     userJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, user.publicKey, 1000000000000000000);
+    authJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, authority.publicKey, 0);
     vaultJitoSolAta = await setupATA(context, TOKEN_PROGRAM_ID, JITOSOL, boringVaultAccount, 1000000000); // 1 JitoSOL
     userShareAta = await setupATA(context, TOKEN_2022_PROGRAM_ID, boringVaultShareMint, user.publicKey, 0);
     vaultWSolAta = await setupATA(context, TOKEN_PROGRAM_ID, WSOL, boringVaultAccount, 1000000000); // Start with 1 wSOL.
@@ -974,6 +976,43 @@ describe("boring-vault-svm", () => {
     expect(txResult_unpause_2.result).to.be.null;
   });
 
+  it("Can claim fees", async () => {
+    let claim_fees_ix = await program.methods
+    .claimFeesInBase(
+      new anchor.BN(0),
+      0
+    )
+    .accounts({
+      signer: authority.publicKey,
+      baseMint: JITOSOL,
+      boringVaultState: boringVaultStateAccount,
+      boringVault: boringVaultAccount,
+      signerAta: authJitoSolAta,
+      vaultAta: vaultJitoSolAta,
+      // @ts-ignore
+      tokenProgram: TOKEN_PROGRAM_ID,
+      tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+      systemProgram: anchor.web3.SystemProgram.programId,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    })
+    .instruction();
+
+    const vaultState = await program.account.boringVault.fetch(boringVaultStateAccount);
+    let expectedFees = vaultState.teller.feesOwedInBaseAsset;
+
+    let authJitoSolStartBalance = await getTokenBalance(client, authJitoSolAta);
+
+    let txResult = await createAndProcessTransaction(client, authority, claim_fees_ix, [authority]);
+    expect(txResult.result).to.be.null;
+
+    let authJitoSolEndBalance = await getTokenBalance(client, authJitoSolAta);
+
+    const vaultStateAfter = await program.account.boringVault.fetch(boringVaultStateAccount);
+    expect(vaultStateAfter.teller.feesOwedInBaseAsset.toString()).to.equal("0"); // Fees should have been zeroed
+
+    expect((authJitoSolEndBalance - authJitoSolStartBalance).toString()).to.equal(expectedFees.toString()); // Fee should be transferred to authority
+  });
+
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
 
     // Transfer SOL from user to vault.
@@ -1198,6 +1237,8 @@ describe("boring-vault-svm", () => {
       lookupTableAddress.toBuffer(),
     ]);
 
+    console.log("Init User Metadata IX Data:", Buffer.from(initUserMetadataData).toString('hex'));
+    
     // Create the instruction
     const initUserMetadataIx = new anchor.web3.TransactionInstruction({
       programId: targetProgramId,

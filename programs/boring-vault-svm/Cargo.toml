@@ -24,4 +24,4 @@ anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
 anchor-spl = "0.30.1"
 switchboard-on-demand = "0.2.2"
 rust_decimal = "1.36.0"
-solana-program = "1.16.24"
+solana-program = "1.17.18"
