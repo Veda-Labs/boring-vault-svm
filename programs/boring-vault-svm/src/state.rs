@@ -22,6 +22,8 @@ pub struct VaultState {
     pub paused: bool,
     pub initialized: bool,
     pub share_mint: Pubkey,
+    pub deposit_sub_account: u8,
+    pub withdraw_sub_account: u8, // TODO Add function to set this in deploy, and afterwards
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -118,6 +120,7 @@ pub struct UpdateCpiDigestArgs {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct ManageArgs {
     pub vault_id: u64,
+    pub sub_account: u8,
     pub ix_program_id: Pubkey,
     pub ix_data: Vec<u8>,
     pub operators: Operators, // Could be stored in CpiDigest

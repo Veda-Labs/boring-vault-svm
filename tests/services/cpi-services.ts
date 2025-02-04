@@ -205,6 +205,7 @@ export class CpiService {
          // @ts-ignore
          {
              vaultId: params.vaultId,
+             subAccount: 0,
              ixProgramId: params.ixProgramId,
              ixData: params.ixData,
              operators: params.operators,

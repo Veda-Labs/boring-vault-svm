@@ -440,7 +440,7 @@ pub mod boring_vault_svm {
         // Derive the expected PDA for this digest
         let boring_vault_state_key = ctx.accounts.boring_vault_state.key();
         let seeds = &[
-            b"cpi-digest",
+            BASE_SEED_CPI_DIGEST,
             boring_vault_state_key.as_ref(),
             digest.as_ref(),
         ];
@@ -482,6 +482,7 @@ pub mod boring_vault_svm {
         let vault_seeds = &[
             BASE_SEED_BORING_VAULT,
             &args.vault_id.to_le_bytes()[..],
+            &[args.sub_account],
             &[ctx.bumps.boring_vault],
         ];
 
@@ -667,6 +668,7 @@ pub mod boring_vault_svm {
                         // PDA signer seeds for vault state
                         BASE_SEED_BORING_VAULT,
                         &vault_id.to_le_bytes()[..],
+                        &[ctx.accounts.boring_vault_state.config.withdraw_sub_account],
                         &[ctx.bumps.boring_vault],
                     ]],
                 ),
@@ -688,6 +690,7 @@ pub mod boring_vault_svm {
                         // PDA signer seeds for vault state
                         BASE_SEED_BORING_VAULT,
                         &vault_id.to_le_bytes()[..],
+                        &[ctx.accounts.boring_vault_state.config.withdraw_sub_account],
                         &[ctx.bumps.boring_vault],
                     ]],
                 ),
@@ -785,14 +788,6 @@ pub struct Deploy<'info> {
         bump,
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
-
-    #[account(
-        mut,
-        seeds = [BASE_SEED_BORING_VAULT, &config.vault_count.to_le_bytes()[..]],
-        bump,
-    )]
-    /// CHECK: Account used to hold assets.
-    pub boring_vault: SystemAccount<'info>,
 
     /// The mint of the share token.
     #[account(
@@ -928,7 +923,11 @@ pub struct DepositSol<'info> {
 
     #[account(
         mut,
-        seeds = [BASE_SEED_BORING_VAULT, &args.vault_id.to_le_bytes()[..]],
+        seeds = [
+            BASE_SEED_BORING_VAULT,
+            &args.vault_id.to_le_bytes()[..],
+            &[boring_vault_state.config.deposit_sub_account]
+            ],
         bump,
     )]
     /// CHECK: Account used to hold assets.
@@ -990,7 +989,11 @@ pub struct Deposit<'info> {
 
     #[account(
         mut,
-        seeds = [BASE_SEED_BORING_VAULT, &args.vault_id.to_le_bytes()[..]],
+        seeds = [
+            BASE_SEED_BORING_VAULT,
+            &args.vault_id.to_le_bytes()[..],
+            &[boring_vault_state.config.deposit_sub_account]
+            ],
         bump,
     )]
     /// CHECK: Account used to hold assets.
@@ -1071,7 +1074,11 @@ pub struct Withdraw<'info> {
 
     #[account(
         mut,
-        seeds = [BASE_SEED_BORING_VAULT, &args.vault_id.to_le_bytes()[..]],
+        seeds = [
+            BASE_SEED_BORING_VAULT,
+            &args.vault_id.to_le_bytes()[..],
+            &[boring_vault_state.config.withdraw_sub_account]
+            ],
         bump,
     )]
     /// CHECK: Account used to hold assets.
@@ -1204,7 +1211,11 @@ pub struct Manage<'info> {
 
     #[account(
         mut,
-        seeds = [BASE_SEED_BORING_VAULT, &args.vault_id.to_le_bytes()[..]],
+        seeds = [
+            BASE_SEED_BORING_VAULT,
+            &args.vault_id.to_le_bytes()[..],
+            &[args.sub_account]
+            ],
         bump,
     )]
     /// CHECK: Account used to hold assets.

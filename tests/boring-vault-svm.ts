@@ -347,7 +347,8 @@ describe("boring-vault-svm", () => {
     [boringVaultAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("boring-vault"),
-        Buffer.from(new Array(8).fill(0))
+        Buffer.from(new Array(8).fill(0)),
+        Buffer.from([0])
       ],
       program.programId
     );
@@ -464,7 +465,6 @@ describe("boring-vault-svm", () => {
       // @ts-ignore
       config: programConfigAccount,
       boringVaultState: boringVaultStateAccount,
-      boringVault: boringVaultAccount,
       shareMint: boringVaultShareMint,
       baseAsset: JITOSOL,
       signer: authority.publicKey,
@@ -1079,6 +1079,9 @@ describe("boring-vault-svm", () => {
     let vaultWSolEndBalance = await getTokenBalance(client, vaultWSolAta);
     expect((vaultWSolEndBalance - vaultWSolStartBalance).toString()).to.equal("2039280");
   });
+
+  // TODO test where I transfer SOL to a different sub account and back
+  // TODO test where I transfer JitoSOL to a different sub account and back
 
   it("I Can lend JitoSOL on Mock Kamino", async () => {
     // Create lookup table for user
