@@ -67,6 +67,7 @@ pub mod boring_onchain_queue {
 
     // TODO set solve authority
     // TODO pause and unpause
+    // TODO can you have a discount of zero
 
     // TODO test where we update the withdraw asset data again to stop withdraws
     pub fn update_withdraw_asset_data(
@@ -256,7 +257,7 @@ pub mod boring_onchain_queue {
         )?;
 
         let assets_out = assets_out.get();
-        // TODO does underflowing revert?
+        // Cannot underflow as withdraw min amount out is asset_amount
         let excess = assets_out - withdraw_request.asset_amount;
 
         // Transfer asset_amount from queue to user.
@@ -347,6 +348,7 @@ pub mod boring_onchain_queue {
     /// Note it is a bit redundant to validate vault_id and share_mint, as the queue_state is used to
     /// validate the share_mint, but queue_state is derived using the vault_id, but this is a more explicit check
     /// that the cancelled request does belong to the provided vault_id.
+    // TODO add logic such that withdraws can not be cancelled until deadline has passed
     pub fn cancel_withdraw(
         ctx: Context<CancelWithdraw>,
         vault_id: u64,

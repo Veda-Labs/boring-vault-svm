@@ -38,6 +38,7 @@ describe("boring-vault-svm", () => {
   let newAuthority: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   let strategist: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   let user: anchor.web3.Keypair = anchor.web3.Keypair.generate();
+  let payout: anchor.web3.Keypair = anchor.web3.Keypair.generate();
 
   let programConfigAccount: anchor.web3.PublicKey;
   let boringVaultStateAccount: anchor.web3.PublicKey;
@@ -45,6 +46,7 @@ describe("boring-vault-svm", () => {
   let boringVaultShareMint: anchor.web3.PublicKey;
   let userJitoSolAta: anchor.web3.PublicKey;
   let authJitoSolAta: anchor.web3.PublicKey;
+  let payoutJitoSolAta: anchor.web3.PublicKey;
   let vaultJitoSolAta: anchor.web3.PublicKey;
   let queueJitoSolAta: anchor.web3.PublicKey;
   let jitoSolAssetDataPda: anchor.web3.PublicKey;
@@ -292,6 +294,15 @@ describe("boring-vault-svm", () => {
       true
     ); // Start with 1 wSOL.
 
+    payoutJitoSolAta = await ths.setupATA(
+      context,
+      TOKEN_PROGRAM_ID,
+      JITOSOL,
+      payout.publicKey,
+      0,
+      false
+    );
+
     // Queue PDAs
     [queueProgramConfigAccount, bump] =
       anchor.web3.PublicKey.findProgramAddressSync(
@@ -376,7 +387,7 @@ describe("boring-vault-svm", () => {
         symbol: "BV",
         exchangeRateProvider: strategist.publicKey,
         exchangeRate: new anchor.BN(1000000000),
-        payoutAddress: strategist.publicKey,
+        payoutAddress: payout.publicKey,
         allowedExchangeRateChangeUpperBound: 10050,
         allowedExchangeRateChangeLowerBound: 9950,
         minimumUpdateDelayInSeconds: 3600,
@@ -1060,7 +1071,7 @@ describe("boring-vault-svm", () => {
         baseMint: JITOSOL,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
-        signerAta: authJitoSolAta,
+        payoutAta: payoutJitoSolAta,
         vaultAta: vaultJitoSolAta,
         // @ts-ignore
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -1075,9 +1086,9 @@ describe("boring-vault-svm", () => {
     );
     let expectedFees = vaultState.teller.feesOwedInBaseAsset;
 
-    let authJitoSolStartBalance = await ths.getTokenBalance(
+    let payoutJitoSolStartBalance = await ths.getTokenBalance(
       client,
-      authJitoSolAta
+      payoutJitoSolAta
     );
 
     let txResult = await ths.createAndProcessTransaction(
@@ -1088,9 +1099,9 @@ describe("boring-vault-svm", () => {
     );
     ths.expectTxToSucceed(txResult.result);
 
-    let authJitoSolEndBalance = await ths.getTokenBalance(
+    let payoutJitoSolEndBalance = await ths.getTokenBalance(
       client,
-      authJitoSolAta
+      payoutJitoSolAta
     );
 
     const vaultStateAfter = await program.account.boringVault.fetch(
@@ -1099,8 +1110,8 @@ describe("boring-vault-svm", () => {
     expect(vaultStateAfter.teller.feesOwedInBaseAsset.toString()).to.equal("0"); // Fees should have been zeroed
 
     expect(
-      (authJitoSolEndBalance - authJitoSolStartBalance).toString()
-    ).to.equal(expectedFees.toString()); // Fee should be transferred to authority
+      (payoutJitoSolEndBalance - payoutJitoSolStartBalance).toString()
+    ).to.equal(expectedFees.toString()); // Fee should be transferred to payout
   });
 
   it("Can update and close cpi digests", async () => {
@@ -1904,7 +1915,6 @@ describe("boring-vault-svm", () => {
     ); // User gained Shares
   });
 
-  // TODO This test is super buggy and sometimes leaves the vault in a paused state, which can cause other tests to fail.
   it("Can pause and unpause vault", async () => {
     // Check initial state
     let vaultState = await program.account.boringVault.fetch(
@@ -1928,13 +1938,8 @@ describe("boring-vault-svm", () => {
       [authority]
     );
 
-    // Check transaction succeeded or was already processed
-    expect(
-      pauseTxResult.result === null ||
-        pauseTxResult.result
-          .toString()
-          .includes("This transaction has already been processed")
-    ).to.be.true;
+    // Check transaction succeeded
+    ths.expectTxToSucceed(pauseTxResult.result);
 
     // Verify vault is paused
     vaultState = await program.account.boringVault.fetch(
@@ -1979,12 +1984,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Check transaction succeeded or was already processed
-    expect(
-      unpauseTxResult.result === null ||
-        unpauseTxResult.result
-          .toString()
-          .includes("This transaction has already been processed")
-    ).to.be.true;
+    ths.expectTxToSucceed(unpauseTxResult.result);
 
     // Verify vault is unpaused
     vaultState = await program.account.boringVault.fetch(
@@ -2010,11 +2010,426 @@ describe("boring-vault-svm", () => {
       updateRateIx2,
       [strategist]
     );
-    expect(
-      updateTxResult.result === null ||
-        updateTxResult.result
-          .toString()
-          .includes("This transaction has already been processed")
-    ).to.be.true;
+    ths.expectTxToSucceed(updateTxResult.result);
+  });
+
+  it("Can update exchange rate provider", async () => {
+    // Store original provider
+    const originalProvider = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).teller.exchangeRateProvider;
+
+    // Create a new dummy provider
+    const newProvider = anchor.web3.Keypair.generate().publicKey;
+
+    // Update the provider
+    const updateIx = await program.methods
+      .updateExchangeRateProvider(new anchor.BN(0), newProvider)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+
+    // Expect the tx to succeed
+    ths.expectTxToSucceed(txResult.result);
+
+    // Verify the provider was updated
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.teller.exchangeRateProvider.toString()).to.equal(
+      newProvider.toString()
+    );
+
+    // Change it back to original
+    const revertIx = await program.methods
+      .updateExchangeRateProvider(new anchor.BN(0), originalProvider)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+
+    // Expect the revert tx to succeed
+    ths.expectTxToSucceed(revertTxResult.result);
+
+    // Verify the provider was reverted
+    vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.teller.exchangeRateProvider.toString()).to.equal(
+      originalProvider.toString()
+    );
+  });
+
+  it("Can update withdraw authority", async () => {
+    // Store original provider
+    const originalAuthority = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).teller.withdrawAuthority;
+
+    // Create a new dummy authority
+    const newAuthority = anchor.web3.Keypair.generate().publicKey;
+
+    // Update the authority
+    const updateIx = await program.methods
+      .setWithdrawAuthority(new anchor.BN(0), newAuthority)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Verify the authority was updated
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.teller.withdrawAuthority.toString()).to.equal(
+      newAuthority.toString()
+    );
+
+    // Change it back to original
+    const revertIx = await program.methods
+      .setWithdrawAuthority(new anchor.BN(0), originalAuthority)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
+
+    // Verify the authority was reverted
+    vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.teller.withdrawAuthority.toString()).to.equal(
+      originalAuthority.toString()
+    );
+  });
+
+  it("Can update deposit sub account", async () => {
+    const originalSubAccount = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).config.depositSubAccount;
+    const newSubAccount = 2;
+
+    const updateIx = await program.methods
+      .setDepositSubAccount(new anchor.BN(0), newSubAccount)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.config.depositSubAccount).to.equal(newSubAccount);
+
+    // Revert
+    const revertIx = await program.methods
+      .setDepositSubAccount(new anchor.BN(0), originalSubAccount)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
+  });
+
+  it("Can update withdraw sub account", async () => {
+    const originalSubAccount = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).config.withdrawSubAccount;
+    const newSubAccount = 3;
+
+    const updateIx = await program.methods
+      .setWithdrawSubAccount(new anchor.BN(0), newSubAccount)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.config.withdrawSubAccount).to.equal(newSubAccount);
+
+    // Revert
+    const revertIx = await program.methods
+      .setWithdrawSubAccount(new anchor.BN(0), originalSubAccount)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
+  });
+
+  it("Can update payout address", async () => {
+    const originalPayout = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).teller.payoutAddress;
+    const newPayout = anchor.web3.Keypair.generate().publicKey;
+
+    const updateIx = await program.methods
+      .setPayout(new anchor.BN(0), newPayout)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.teller.payoutAddress.toString()).to.equal(
+      newPayout.toString()
+    );
+
+    // Revert
+    const revertIx = await program.methods
+      .setPayout(new anchor.BN(0), originalPayout)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
+  });
+
+  it("Can configure exchange rate update bounds", async () => {
+    const originalBounds = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).teller;
+    const newBounds = {
+      upperBound: 11000,
+      lowerBound: 9000,
+      minimumUpdateDelay: 3600,
+    };
+
+    const updateIx = await program.methods
+      .configureExchangeRateUpdateBounds(new anchor.BN(0), newBounds)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.teller.allowedExchangeRateChangeUpperBound).to.equal(
+      newBounds.upperBound
+    );
+    expect(vaultState.teller.allowedExchangeRateChangeLowerBound).to.equal(
+      newBounds.lowerBound
+    );
+    expect(vaultState.teller.minimumUpdateDelayInSeconds).to.equal(
+      newBounds.minimumUpdateDelay
+    );
+
+    // Revert
+    const revertIx = await program.methods
+      .configureExchangeRateUpdateBounds(new anchor.BN(0), {
+        upperBound: originalBounds.allowedExchangeRateChangeUpperBound,
+        lowerBound: originalBounds.allowedExchangeRateChangeLowerBound,
+        minimumUpdateDelay: originalBounds.minimumUpdateDelayInSeconds,
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
+  });
+
+  it("Can update fees", async () => {
+    const originalFees = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).teller;
+    const newPlatformFee = 50;
+    const newPerformanceFee = 1000;
+
+    const updateIx = await program.methods
+      .setFees(new anchor.BN(0), newPlatformFee, newPerformanceFee)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.teller.platformFeeBps).to.equal(newPlatformFee);
+    expect(vaultState.teller.performanceFeeBps).to.equal(newPerformanceFee);
+
+    // Revert
+    const revertIx = await program.methods
+      .setFees(
+        new anchor.BN(0),
+        originalFees.platformFeeBps,
+        originalFees.performanceFeeBps
+      )
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
+  });
+
+  it("Can update strategist", async () => {
+    const originalStrategist = (
+      await program.account.boringVault.fetch(boringVaultStateAccount)
+    ).manager.strategist;
+    const newStrategist = anchor.web3.Keypair.generate().publicKey;
+
+    const updateIx = await program.methods
+      .setStrategist(new anchor.BN(0), newStrategist)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    let vaultState = await program.account.boringVault.fetch(
+      boringVaultStateAccount
+    );
+    expect(vaultState.manager.strategist.toString()).to.equal(
+      newStrategist.toString()
+    );
+
+    // Revert
+    const revertIx = await program.methods
+      .setStrategist(new anchor.BN(0), originalStrategist)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
   });
 });

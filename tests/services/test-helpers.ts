@@ -119,7 +119,7 @@ export class TestHelperService {
   }
 
   static expectTxToSucceed(result: string) {
-    expect(result === null).to.be.true;
+    expect(result).to.be.null;
   }
 
   static async updateExchangeRateAndWait(

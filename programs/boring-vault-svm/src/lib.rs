@@ -16,7 +16,6 @@ mod constants;
 pub use constants::*;
 mod utils;
 use rust_decimal::Decimal;
-use utils::accountant;
 use utils::teller;
 
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
@@ -242,15 +241,158 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
-    // TODO update exchange rate provider
-    // TODO set withdraw authority
-    // TODO set deposit and withdraw sub accounts
-    // TODO set payout address
-    // hmmm actually the below just pays out to the authority which is a bit easier to handle account wise, so maybe we just delete that?
-    // TODO set exchange rate upper and lower bounds
-    // TODO set minimum update delay
-    // TODO set fees
-    // TODO set strategist
+    pub fn update_exchange_rate_provider(
+        ctx: Context<UpdateExchangeRateProvider>,
+        vault_id: u64,
+        new_provider: Pubkey,
+    ) -> Result<()> {
+        ctx.accounts
+            .boring_vault_state
+            .teller
+            .exchange_rate_provider = new_provider;
+
+        msg!(
+            "Vault {} - Exchange Rate Provider Updated: {}",
+            vault_id,
+            new_provider
+        );
+        Ok(())
+    }
+
+    pub fn set_withdraw_authority(
+        ctx: Context<SetWithdrawAuthority>,
+        vault_id: u64,
+        new_authority: Pubkey,
+    ) -> Result<()> {
+        ctx.accounts.boring_vault_state.teller.withdraw_authority = new_authority;
+        msg!(
+            "Vault {} - Withdraw Authority Updated: {}",
+            vault_id,
+            new_authority
+        );
+        Ok(())
+    }
+
+    pub fn set_deposit_sub_account(
+        ctx: Context<SetDepositSubAccount>,
+        vault_id: u64,
+        new_sub_account: u8,
+    ) -> Result<()> {
+        ctx.accounts.boring_vault_state.config.deposit_sub_account = new_sub_account;
+        msg!(
+            "Vault {} - Deposit Sub Account Updated: {}",
+            vault_id,
+            new_sub_account
+        );
+        Ok(())
+    }
+
+    pub fn set_withdraw_sub_account(
+        ctx: Context<SetWithdrawSubAccount>,
+        vault_id: u64,
+        new_sub_account: u8,
+    ) -> Result<()> {
+        ctx.accounts.boring_vault_state.config.withdraw_sub_account = new_sub_account;
+        msg!(
+            "Vault {} - Withdraw Sub Account Updated: {}",
+            vault_id,
+            new_sub_account
+        );
+        Ok(())
+    }
+
+    pub fn set_payout(ctx: Context<SetPayout>, vault_id: u64, new_payout: Pubkey) -> Result<()> {
+        require_keys_neq!(
+            new_payout,
+            Pubkey::default(),
+            BoringErrorCode::InvalidPayoutAddress
+        );
+        ctx.accounts.boring_vault_state.teller.payout_address = new_payout;
+        msg!(
+            "Vault {} - Payout Address Updated: {}",
+            vault_id,
+            new_payout
+        );
+        Ok(())
+    }
+
+    pub fn configure_exchange_rate_update_bounds(
+        ctx: Context<ConfigureExchangeRateUpdateBounds>,
+        vault_id: u64,
+        args: ConfigureExchangeRateUpdateBoundsArgs,
+    ) -> Result<()> {
+        // Validate upper bound
+        if args.upper_bound > MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
+            || args.upper_bound < BPS_SCALE
+        {
+            return Err(BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound.into());
+        }
+
+        // Validate lower bound
+        if args.lower_bound < MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
+            || args.lower_bound > BPS_SCALE
+        {
+            return Err(BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound.into());
+        }
+
+        let vault = &mut ctx.accounts.boring_vault_state;
+        vault.teller.allowed_exchange_rate_change_upper_bound = args.upper_bound;
+        vault.teller.allowed_exchange_rate_change_lower_bound = args.lower_bound;
+        vault.teller.minimum_update_delay_in_seconds = args.minimum_update_delay;
+
+        msg!(
+            "Vault {} - Exchange Rate Bounds Updated - Upper: {}, Lower: {}, Min Delay: {}",
+            vault_id,
+            args.upper_bound,
+            args.lower_bound,
+            args.minimum_update_delay
+        );
+        Ok(())
+    }
+
+    pub fn set_fees(
+        ctx: Context<SetFees>,
+        vault_id: u64,
+        platform_fee_bps: u16,
+        performance_fee_bps: u16,
+    ) -> Result<()> {
+        // Validate platform fee
+        if platform_fee_bps > MAXIMUM_PLATFORM_FEE_BPS {
+            return Err(BoringErrorCode::InvalidPlatformFeeBps.into());
+        }
+
+        // Validate performance fee
+        if performance_fee_bps > MAXIMUM_PERFORMANCE_FEE_BPS {
+            return Err(BoringErrorCode::InvalidPerformanceFeeBps.into());
+        }
+
+        let vault = &mut ctx.accounts.boring_vault_state;
+        vault.teller.platform_fee_bps = platform_fee_bps;
+        vault.teller.performance_fee_bps = performance_fee_bps;
+
+        msg!(
+            "Vault {} - Fees Updated - Platform: {} bps, Performance: {} bps",
+            vault_id,
+            platform_fee_bps,
+            performance_fee_bps
+        );
+        Ok(())
+    }
+
+    pub fn set_strategist(
+        ctx: Context<SetStrategist>,
+        vault_id: u64,
+        new_strategist: Pubkey,
+    ) -> Result<()> {
+        require_keys_neq!(new_strategist, Pubkey::default());
+        ctx.accounts.boring_vault_state.manager.strategist = new_strategist;
+        msg!(
+            "Vault {} - Strategist Updated: {}",
+            vault_id,
+            new_strategist
+        );
+        Ok(())
+    }
 
     pub fn claim_fees_in_base(
         ctx: Context<ClaimFeesInBase>,
@@ -263,9 +405,9 @@ pub mod boring_vault_svm {
         teller::validate_associated_token_accounts(
             &ctx.accounts.base_mint.key(),
             &token_program_id,
-            &ctx.accounts.signer.key(),
+            &ctx.accounts.boring_vault_state.teller.payout_address,
             &ctx.accounts.boring_vault.key(),
-            &ctx.accounts.signer_ata.key(),
+            &ctx.accounts.payout_ata.key(),
             &ctx.accounts.vault_ata.key(),
         )?;
 
@@ -282,7 +424,7 @@ pub mod boring_vault_svm {
             .teller
             .fees_owed_in_base_asset = 0;
 
-        // Transfer asset to user.
+        // Transfer asset to payout.
         if token_program_id == &ctx.accounts.token_program.key() {
             // Transfer Token from vault to user
             token_interface::transfer_checked(
@@ -290,7 +432,7 @@ pub mod boring_vault_svm {
                     ctx.accounts.token_program.to_account_info(),
                     token_interface::TransferChecked {
                         from: ctx.accounts.vault_ata.to_account_info(),
-                        to: ctx.accounts.signer_ata.to_account_info(),
+                        to: ctx.accounts.payout_ata.to_account_info(),
                         mint: ctx.accounts.base_mint.to_account_info(),
                         authority: ctx.accounts.boring_vault.to_account_info(),
                     },
@@ -306,13 +448,13 @@ pub mod boring_vault_svm {
                 ctx.accounts.base_mint.decimals,
             )?;
         } else if token_program_id == &ctx.accounts.token_program_2022.key() {
-            // Transfer Token2022 from vault to user
+            // Transfer Token2022 from vault to payout
             token_interface::transfer_checked(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program_2022.to_account_info(),
                     token_interface::TransferChecked {
                         from: ctx.accounts.vault_ata.to_account_info(),
-                        to: ctx.accounts.signer_ata.to_account_info(),
+                        to: ctx.accounts.payout_ata.to_account_info(),
                         mint: ctx.accounts.base_mint.to_account_info(),
                         authority: ctx.accounts.boring_vault.to_account_info(),
                     },
@@ -336,7 +478,6 @@ pub mod boring_vault_svm {
     // =============================== Exchange Rate Functions ===============================
 
     // TODO can refactor this into teller and accountant?
-    // TODO refactor accoutant into teller
     pub fn update_exchange_rate(
         ctx: Context<UpdateExchangeRate>,
         vault_id: u64,
@@ -1279,6 +1420,126 @@ pub struct CloseCpiDigest<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct UpdateExchangeRateProvider<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct SetWithdrawAuthority<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct SetDepositSubAccount<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct SetWithdrawSubAccount<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct SetPayout<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct ConfigureExchangeRateUpdateBounds<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct SetFees<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct SetStrategist<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
 #[instruction(vault_id: u64, sub_account: u8)]
 pub struct ClaimFeesInBase<'info> {
     #[account(mut)]
@@ -1310,9 +1571,9 @@ pub struct ClaimFeesInBase<'info> {
     pub boring_vault: SystemAccount<'info>,
 
     #[account(mut)]
-    /// Signers's Token associated token account
+    /// Payout's Token associated token account
     /// CHECK: Validated in instruction
-    pub signer_ata: InterfaceAccount<'info, TokenAccount>,
+    pub payout_ata: InterfaceAccount<'info, TokenAccount>,
 
     #[account(mut)]
     /// Vault's Token associated token account
