@@ -8,6 +8,19 @@ use anchor_spl::token_interface::Mint;
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
+pub fn to_decimal<T: Into<Decimal>>(amount: T, decimals: u8) -> Result<Decimal> {
+    let mut decimal = amount.into();
+    decimal.set_scale(decimals as u32).unwrap();
+    Ok(decimal)
+}
+pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Result<T> {
+    decimal
+        .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
+        .unwrap()
+        .try_into()
+        .map_err(|_| error!(BoringErrorCode::DecimalConversionFailed))
+}
+
 pub fn before_deposit(is_paused: bool, allow_deposits: bool) -> Result<()> {
     require!(!is_paused, BoringErrorCode::VaultPaused);
     require!(allow_deposits, BoringErrorCode::AssetNotAllowed);
@@ -54,6 +67,56 @@ pub fn validate_associated_token_accounts(
     Ok(())
 }
 
+pub fn transfer_tokens_to<'a>(
+    token_program: AccountInfo<'a>,
+    from: AccountInfo<'a>,
+    to: AccountInfo<'a>,
+    mint: AccountInfo<'a>,
+    authority: AccountInfo<'a>,
+    amount: u64,
+    decimals: u8,
+    seeds: &[&[&[u8]]],
+) -> Result<()> {
+    token_interface::transfer_checked(
+        CpiContext::new_with_signer(
+            token_program,
+            token_interface::TransferChecked {
+                from,
+                to,
+                mint,
+                authority,
+            },
+            seeds,
+        ),
+        amount,
+        decimals,
+    )
+}
+
+pub fn transfer_tokens_from<'a>(
+    token_program: AccountInfo<'a>,
+    from: AccountInfo<'a>,
+    to: AccountInfo<'a>,
+    mint: AccountInfo<'a>,
+    authority: AccountInfo<'a>,
+    amount: u64,
+    decimals: u8,
+) -> Result<()> {
+    token_interface::transfer_checked(
+        CpiContext::new(
+            token_program,
+            token_interface::TransferChecked {
+                from,
+                to,
+                mint,
+                authority,
+            },
+        ),
+        amount,
+        decimals,
+    )
+}
+
 pub fn calculate_shares_and_mint<'a>(
     is_base: bool,
     args: DepositArgs,
@@ -78,14 +141,8 @@ pub fn calculate_shares_and_mint<'a>(
         )?
     } else if asset_data.is_pegged_to_base_asset {
         // Asset is pegged to base asset, so just need to convert amount to be in terms of base asset decimals.
-        let mut deposit_amount = Decimal::from(args.deposit_amount);
-        deposit_amount.set_scale(asset_decimals as u32).unwrap();
-        // Convert to base asset decimals, which is share decimals.
-        deposit_amount = deposit_amount
-            .checked_mul(Decimal::from(10u64.pow(share_decimals as u32)))
-            .unwrap();
-
-        let deposit_amount: u64 = deposit_amount.try_into().unwrap();
+        let deposit_amount = to_decimal(args.deposit_amount, asset_decimals)?;
+        let deposit_amount: u64 = from_decimal(deposit_amount, share_decimals)?;
 
         calculate_shares_to_mint_using_base_asset(
             deposit_amount,
@@ -157,12 +214,8 @@ pub fn calculate_assets_out<'a>(
         // Asset is pegged to base asset, so find assets out in base then scale assets out to be in terms of withdraw asset decimals.
         let assets_out_in_base =
             calculate_assets_out_in_base_asset(args.share_amount, exchange_rate, share_decimals)?;
-        let mut assets_out_in_base = Decimal::from(assets_out_in_base);
-        assets_out_in_base.set_scale(share_decimals as u32).unwrap();
-        let assets_out = assets_out_in_base
-            .checked_mul(Decimal::from(10u64.pow(asset_decimals as u32)))
-            .unwrap();
-        let assets_out: u64 = assets_out.try_into().unwrap();
+        let assets_out_in_base = to_decimal(assets_out_in_base, share_decimals)?;
+        let assets_out = from_decimal(assets_out_in_base, asset_decimals)?;
 
         assets_out
     } else {
@@ -222,20 +275,20 @@ pub fn get_rate_in_quote(
             price
         };
 
-        let mut exchange_rate = Decimal::from(boring_vault_state.teller.exchange_rate);
-        exchange_rate
-            .set_scale(boring_vault_state.teller.decimals as u32)
-            .unwrap();
+        let exchange_rate = to_decimal(
+            boring_vault_state.teller.exchange_rate,
+            boring_vault_state.teller.decimals,
+        )?;
+
         // price[base/asset]
         // exchange_rate[base/share]
         // want asset/share =  exchange_rate[base/share] / price[base/asset]
         let rate = exchange_rate.checked_div(price).unwrap();
 
         // Scale rate to quote decimals.
-        let rate = rate
-            .checked_mul(Decimal::from(10u64.pow(quote.decimals as u32)))
-            .unwrap();
-        Ok(rate.try_into().unwrap())
+        let rate = from_decimal(rate, quote.decimals)?;
+
+        Ok(rate)
     }
 }
 
@@ -246,23 +299,16 @@ fn calculate_shares_to_mint_using_base_asset(
     share_decimals: u8,
     share_premium_bps: u16,
 ) -> Result<u64> {
-    let mut deposit_amount = Decimal::from(deposit_amount);
-    deposit_amount
-        .set_scale(deposit_asset_decimals as u32)
-        .unwrap();
-    let mut exchange_rate = Decimal::from(exchange_rate);
-    exchange_rate.set_scale(share_decimals as u32).unwrap();
+    let deposit_amount = to_decimal(deposit_amount, deposit_asset_decimals)?;
+    let exchange_rate = to_decimal(exchange_rate, share_decimals)?;
 
     // Calculate shares_to_mint = deposit_amount[base] / exchange_rate[base/share]
     let shares_to_mint = deposit_amount.checked_div(exchange_rate).unwrap();
     let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
 
     // Scale up shares to mint by share decimals.
-    let shares_to_mint = shares_to_mint
-        .checked_mul(Decimal::from(10u64.pow(share_decimals as u32)))
-        .unwrap();
+    let shares_to_mint = from_decimal(shares_to_mint, share_decimals)?;
 
-    let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();
     Ok(shares_to_mint)
 }
 
@@ -275,12 +321,8 @@ fn calculate_shares_to_mint_using_deposit_asset(
     share_decimals: u8, // same as base decimals
     share_premium_bps: u16,
 ) -> Result<u64> {
-    let mut deposit_amount = Decimal::from(deposit_amount);
-    deposit_amount
-        .set_scale(deposit_asset_decimals as u32)
-        .unwrap();
-    let mut exchange_rate = Decimal::from(exchange_rate);
-    exchange_rate.set_scale(share_decimals as u32).unwrap();
+    let deposit_amount = to_decimal(deposit_amount, deposit_asset_decimals)?;
+    let exchange_rate = to_decimal(exchange_rate, share_decimals)?;
 
     let asset_price = if inverse_price_feed {
         Decimal::from(1).checked_div(asset_price).unwrap() // 1 / price
@@ -297,18 +339,14 @@ fn calculate_shares_to_mint_using_deposit_asset(
     let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
 
     // Scale up shares to mint by share decimals.
-    let shares_to_mint = shares_to_mint
-        .checked_mul(Decimal::from(10u64.pow(share_decimals as u32)))
-        .unwrap();
+    let shares_to_mint = from_decimal(shares_to_mint, share_decimals)?;
 
-    let shares_to_mint: u64 = shares_to_mint.try_into().unwrap();
     Ok(shares_to_mint)
 }
 
 fn factor_in_share_premium(shares_to_mint: Decimal, share_premium_bps: u16) -> Result<Decimal> {
     if share_premium_bps > 0 {
-        let mut premium_bps = Decimal::from(share_premium_bps);
-        premium_bps.set_scale(4).unwrap();
+        let premium_bps = to_decimal(share_premium_bps, BPS_DECIMALS)?;
         let premium_amount = shares_to_mint.checked_mul(premium_bps).unwrap();
         Ok(shares_to_mint.checked_sub(premium_amount).unwrap())
     } else {
@@ -321,20 +359,15 @@ fn calculate_assets_out_in_base_asset(
     exchange_rate: u64,
     decimals: u8, // same for base and shares
 ) -> Result<u64> {
-    let mut share_amount = Decimal::from(share_amount);
-    share_amount.set_scale(decimals as u32).unwrap();
-    let mut exchange_rate = Decimal::from(exchange_rate);
-    exchange_rate.set_scale(decimals as u32).unwrap();
+    let share_amount = to_decimal(share_amount, decimals)?;
+    let exchange_rate = to_decimal(exchange_rate, decimals)?;
 
     // Calculate assets_out = share_amount[share] * exchange_rate[base/share]
     let assets_out = share_amount.checked_mul(exchange_rate).unwrap();
 
     // Scale up assets out by decimals.
-    let assets_out = assets_out
-        .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
-        .unwrap();
+    let assets_out = from_decimal(assets_out, decimals)?;
 
-    let assets_out: u64 = assets_out.try_into().unwrap();
     Ok(assets_out)
 }
 
@@ -346,10 +379,8 @@ fn calculate_assets_out_using_withdraw_asset(
     withdraw_asset_decimals: u8,
     share_decimals: u8,
 ) -> Result<u64> {
-    let mut share_amount = Decimal::from(share_amount);
-    share_amount.set_scale(share_decimals as u32).unwrap();
-    let mut exchange_rate = Decimal::from(exchange_rate);
-    exchange_rate.set_scale(share_decimals as u32).unwrap();
+    let share_amount = to_decimal(share_amount, share_decimals)?;
+    let exchange_rate = to_decimal(exchange_rate, share_decimals)?;
 
     let asset_price = if inverse_price_feed {
         Decimal::from(1).checked_div(asset_price).unwrap() // 1 / price
@@ -365,10 +396,7 @@ fn calculate_assets_out_using_withdraw_asset(
         .unwrap();
 
     // Scale up assets out by withdraw asset decimals.
-    let assets_out = assets_out
-        .checked_mul(Decimal::from(10u64.pow(withdraw_asset_decimals as u32)))
-        .unwrap();
+    let assets_out = from_decimal(assets_out, withdraw_asset_decimals)?;
 
-    let assets_out: u64 = assets_out.try_into().unwrap();
     Ok(assets_out)
 }

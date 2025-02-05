@@ -44,4 +44,6 @@ pub enum BoringErrorCode {
     InvalidDecimals,
     #[msg("Invalid Base Asset")]
     InvalidBaseAsset,
+    #[msg("Decimal conversion failed")]
+    DecimalConversionFailed,
 }

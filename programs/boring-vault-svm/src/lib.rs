@@ -423,60 +423,36 @@ pub mod boring_vault_svm {
             .teller
             .fees_owed_in_base_asset = 0;
 
+        let seeds = &[
+            // PDA signer seeds for vault state
+            BASE_SEED_BORING_VAULT,
+            &vault_id.to_le_bytes()[..],
+            &[sub_account],
+            &[ctx.bumps.boring_vault],
+        ];
+
         // Transfer asset to payout.
-        if token_program_id == &ctx.accounts.token_program.key() {
-            // Transfer Token from vault to user
-            token_interface::transfer_checked(
-                CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
-                    token_interface::TransferChecked {
-                        from: ctx.accounts.vault_ata.to_account_info(),
-                        to: ctx.accounts.payout_ata.to_account_info(),
-                        mint: ctx.accounts.base_mint.to_account_info(),
-                        authority: ctx.accounts.boring_vault.to_account_info(),
-                    },
-                    &[&[
-                        // PDA signer seeds for vault state
-                        BASE_SEED_BORING_VAULT,
-                        &vault_id.to_le_bytes()[..],
-                        &[sub_account],
-                        &[ctx.bumps.boring_vault],
-                    ]],
-                ),
-                assets_out,
-                ctx.accounts.base_mint.decimals,
-            )?;
-        } else if token_program_id == &ctx.accounts.token_program_2022.key() {
-            // Transfer Token2022 from vault to payout
-            token_interface::transfer_checked(
-                CpiContext::new_with_signer(
-                    ctx.accounts.token_program_2022.to_account_info(),
-                    token_interface::TransferChecked {
-                        from: ctx.accounts.vault_ata.to_account_info(),
-                        to: ctx.accounts.payout_ata.to_account_info(),
-                        mint: ctx.accounts.base_mint.to_account_info(),
-                        authority: ctx.accounts.boring_vault.to_account_info(),
-                    },
-                    &[&[
-                        // PDA signer seeds for vault state
-                        BASE_SEED_BORING_VAULT,
-                        &vault_id.to_le_bytes()[..],
-                        &[sub_account],
-                        &[ctx.bumps.boring_vault],
-                    ]],
-                ),
-                assets_out,
-                ctx.accounts.base_mint.decimals,
-            )?;
-        } else {
-            return Err(BoringErrorCode::InvalidTokenProgram.into());
-        };
+        teller::transfer_tokens_to(
+            if token_program_id == &ctx.accounts.token_program.key() {
+                ctx.accounts.token_program.to_account_info()
+            } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+                ctx.accounts.token_program_2022.to_account_info()
+            } else {
+                return Err(BoringErrorCode::InvalidTokenProgram.into());
+            },
+            ctx.accounts.vault_ata.to_account_info(),
+            ctx.accounts.payout_ata.to_account_info(),
+            ctx.accounts.base_mint.to_account_info(),
+            ctx.accounts.boring_vault.to_account_info(),
+            assets_out,
+            ctx.accounts.base_mint.decimals,
+            &[seeds],
+        )?;
         Ok(())
     }
 
     // =============================== Exchange Rate Functions ===============================
 
-    // TODO can refactor this into teller and accountant?
     pub fn update_exchange_rate(
         ctx: Context<UpdateExchangeRate>,
         vault_id: u64,
@@ -484,29 +460,23 @@ pub mod boring_vault_svm {
     ) -> Result<()> {
         let current_time = ctx.accounts.clock.unix_timestamp as u64;
         let vault_decimals = ctx.accounts.share_mint.decimals;
-        let mut new_exchange_rate_d = Decimal::from(new_exchange_rate);
-        new_exchange_rate_d
-            .set_scale(vault_decimals as u32)
-            .unwrap();
+        let new_exchange_rate_d = teller::to_decimal(new_exchange_rate, vault_decimals)?;
         let current_exchange_rate = ctx.accounts.boring_vault_state.teller.exchange_rate;
-        let mut current_exchange_rate_d = Decimal::from(current_exchange_rate);
-        current_exchange_rate_d
-            .set_scale(vault_decimals as u32)
-            .unwrap();
-        let mut upper_bound = Decimal::from(
+        let current_exchange_rate_d = teller::to_decimal(current_exchange_rate, vault_decimals)?;
+        let upper_bound = teller::to_decimal(
             ctx.accounts
                 .boring_vault_state
                 .teller
                 .allowed_exchange_rate_change_upper_bound,
-        );
-        upper_bound.set_scale(BPS_DECIMALS as u32).unwrap();
-        let mut lower_bound = Decimal::from(
+            BPS_DECIMALS,
+        )?;
+        let lower_bound = teller::to_decimal(
             ctx.accounts
                 .boring_vault_state
                 .teller
                 .allowed_exchange_rate_change_lower_bound,
-        );
-        lower_bound.set_scale(BPS_DECIMALS as u32).unwrap();
+            BPS_DECIMALS,
+        )?;
 
         let last_update_time = ctx.accounts.boring_vault_state.teller.last_update_timestamp;
         let total_shares_last_update = ctx
@@ -538,19 +508,17 @@ pub mod boring_vault_svm {
             let mut platform_fees_owed_in_base_asset: u64 = 0;
             let mut performance_fees_owed_in_base_asset: u64 = 0;
             // First determine platform fee
-            let mut share_supply_to_use_d = if current_total_shares > total_shares_last_update {
-                Decimal::from(total_shares_last_update)
+            let share_supply_to_use_d = if current_total_shares > total_shares_last_update {
+                teller::to_decimal(total_shares_last_update, vault_decimals)?
             } else {
-                Decimal::from(current_total_shares)
+                teller::to_decimal(current_total_shares, vault_decimals)?
             };
-            share_supply_to_use_d
-                .set_scale(vault_decimals as u32)
-                .unwrap();
 
             if ctx.accounts.boring_vault_state.teller.platform_fee_bps > 0 {
-                let mut platform_fee_d =
-                    Decimal::from(ctx.accounts.boring_vault_state.teller.platform_fee_bps);
-                platform_fee_d.set_scale(BPS_DECIMALS as u32).unwrap();
+                let platform_fee_d = teller::to_decimal(
+                    ctx.accounts.boring_vault_state.teller.platform_fee_bps,
+                    BPS_DECIMALS,
+                )?;
                 // Figure out how much time as passed since last update.
                 let time_passed = current_time - last_update_time;
 
@@ -574,11 +542,8 @@ pub mod boring_vault_svm {
                 let platform_fee_in_base_asset = platform_fee_in_base_asset
                     .checked_mul(time_passed_in_years)
                     .unwrap();
-                platform_fees_owed_in_base_asset = platform_fee_in_base_asset
-                    .checked_mul(Decimal::from(10u64.pow(vault_decimals as u32)))
-                    .unwrap()
-                    .try_into()
-                    .unwrap();
+                platform_fees_owed_in_base_asset =
+                    teller::from_decimal(platform_fee_in_base_asset, vault_decimals)?;
             }
 
             if new_exchange_rate
@@ -589,25 +554,23 @@ pub mod boring_vault_svm {
                     .exchange_rate_high_water_mark
             {
                 if ctx.accounts.boring_vault_state.teller.performance_fee_bps > 0 {
-                    let mut high_water_mark_d = Decimal::from(
+                    let high_water_mark_d = teller::to_decimal(
                         ctx.accounts
                             .boring_vault_state
                             .teller
                             .exchange_rate_high_water_mark,
-                    );
-                    high_water_mark_d.set_scale(vault_decimals as u32).unwrap();
-                    let mut performance_fee_d =
-                        Decimal::from(ctx.accounts.boring_vault_state.teller.performance_fee_bps);
-                    performance_fee_d.set_scale(BPS_DECIMALS as u32).unwrap();
+                        vault_decimals,
+                    )?;
+                    let performance_fee_d = teller::to_decimal(
+                        ctx.accounts.boring_vault_state.teller.performance_fee_bps,
+                        BPS_DECIMALS,
+                    )?;
                     let delta_rate = new_exchange_rate_d.checked_sub(high_water_mark_d).unwrap();
                     let yield_earned = delta_rate.checked_mul(share_supply_to_use_d).unwrap();
                     let performance_fee_in_base_asset =
                         yield_earned.checked_mul(performance_fee_d).unwrap();
-                    performance_fees_owed_in_base_asset = performance_fee_in_base_asset
-                        .checked_mul(Decimal::from(10u64.pow(vault_decimals as u32)))
-                        .unwrap()
-                        .try_into()
-                        .unwrap();
+                    performance_fees_owed_in_base_asset =
+                        teller::from_decimal(performance_fee_in_base_asset, vault_decimals)?;
                 }
 
                 // Always update high water mark
@@ -774,39 +737,21 @@ pub mod boring_vault_svm {
             &ctx.accounts.user_ata.key(),
             &ctx.accounts.vault_ata.key(),
         )?;
-        if token_program_id == &ctx.accounts.token_program.key() {
-            // Transfer Token from user to vault
-            token_interface::transfer_checked(
-                CpiContext::new(
-                    ctx.accounts.token_program.to_account_info(),
-                    token_interface::TransferChecked {
-                        from: ctx.accounts.user_ata.to_account_info(),
-                        to: ctx.accounts.vault_ata.to_account_info(),
-                        mint: ctx.accounts.deposit_mint.to_account_info(),
-                        authority: ctx.accounts.signer.to_account_info(),
-                    },
-                ),
-                args.deposit_amount,
-                ctx.accounts.deposit_mint.decimals,
-            )?;
-        } else if token_program_id == &ctx.accounts.token_program_2022.key() {
-            // Transfer Token2022 from user to vault
-            token_interface::transfer_checked(
-                CpiContext::new(
-                    ctx.accounts.token_program_2022.to_account_info(),
-                    token_interface::TransferChecked {
-                        from: ctx.accounts.user_ata.to_account_info(),
-                        to: ctx.accounts.vault_ata.to_account_info(),
-                        mint: ctx.accounts.deposit_mint.to_account_info(),
-                        authority: ctx.accounts.signer.to_account_info(),
-                    },
-                ),
-                args.deposit_amount,
-                ctx.accounts.deposit_mint.decimals,
-            )?;
-        } else {
-            return Err(BoringErrorCode::InvalidTokenProgram.into());
-        };
+        teller::transfer_tokens_from(
+            if token_program_id == &ctx.accounts.token_program.key() {
+                ctx.accounts.token_program.to_account_info()
+            } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+                ctx.accounts.token_program_2022.to_account_info()
+            } else {
+                return Err(BoringErrorCode::InvalidTokenProgram.into());
+            },
+            ctx.accounts.user_ata.to_account_info(),
+            ctx.accounts.vault_ata.to_account_info(),
+            ctx.accounts.deposit_mint.to_account_info(),
+            ctx.accounts.signer.to_account_info(),
+            args.deposit_amount,
+            ctx.accounts.deposit_mint.decimals,
+        )?;
 
         let is_base = ctx.accounts.deposit_mint.key()
             == ctx.accounts.boring_vault_state.teller.base_asset.key();
@@ -877,54 +822,31 @@ pub mod boring_vault_svm {
             ctx.accounts.price_feed.to_account_info(),
         )?;
 
+        let seeds = &[
+            // PDA signer seeds for vault state
+            BASE_SEED_BORING_VAULT,
+            &vault_id.to_le_bytes()[..],
+            &[ctx.accounts.boring_vault_state.config.withdraw_sub_account],
+            &[ctx.bumps.boring_vault],
+        ];
+
         // Transfer asset to user.
-        if token_program_id == &ctx.accounts.token_program.key() {
-            // Transfer Token from vault to user
-            token_interface::transfer_checked(
-                CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
-                    token_interface::TransferChecked {
-                        from: ctx.accounts.vault_ata.to_account_info(),
-                        to: ctx.accounts.user_ata.to_account_info(),
-                        mint: ctx.accounts.withdraw_mint.to_account_info(),
-                        authority: ctx.accounts.boring_vault.to_account_info(),
-                    },
-                    &[&[
-                        // PDA signer seeds for vault state
-                        BASE_SEED_BORING_VAULT,
-                        &vault_id.to_le_bytes()[..],
-                        &[ctx.accounts.boring_vault_state.config.withdraw_sub_account],
-                        &[ctx.bumps.boring_vault],
-                    ]],
-                ),
-                assets_out,
-                ctx.accounts.withdraw_mint.decimals,
-            )?;
-        } else if token_program_id == &ctx.accounts.token_program_2022.key() {
-            // Transfer Token2022 from vault to user
-            token_interface::transfer_checked(
-                CpiContext::new_with_signer(
-                    ctx.accounts.token_program_2022.to_account_info(),
-                    token_interface::TransferChecked {
-                        from: ctx.accounts.vault_ata.to_account_info(),
-                        to: ctx.accounts.user_ata.to_account_info(),
-                        mint: ctx.accounts.withdraw_mint.to_account_info(),
-                        authority: ctx.accounts.boring_vault.to_account_info(),
-                    },
-                    &[&[
-                        // PDA signer seeds for vault state
-                        BASE_SEED_BORING_VAULT,
-                        &vault_id.to_le_bytes()[..],
-                        &[ctx.accounts.boring_vault_state.config.withdraw_sub_account],
-                        &[ctx.bumps.boring_vault],
-                    ]],
-                ),
-                assets_out,
-                ctx.accounts.withdraw_mint.decimals,
-            )?;
-        } else {
-            return Err(BoringErrorCode::InvalidTokenProgram.into());
-        };
+        teller::transfer_tokens_to(
+            if token_program_id == &ctx.accounts.token_program.key() {
+                ctx.accounts.token_program.to_account_info()
+            } else if token_program_id == &ctx.accounts.token_program_2022.key() {
+                ctx.accounts.token_program_2022.to_account_info()
+            } else {
+                return Err(BoringErrorCode::InvalidTokenProgram.into());
+            },
+            ctx.accounts.vault_ata.to_account_info(),
+            ctx.accounts.user_ata.to_account_info(),
+            ctx.accounts.withdraw_mint.to_account_info(),
+            ctx.accounts.boring_vault.to_account_info(),
+            assets_out,
+            ctx.accounts.withdraw_mint.decimals,
+            &[seeds],
+        )?;
 
         Ok(assets_out)
     }
