@@ -26,31 +26,9 @@ import {
   BanksTransactionResultWithMeta,
   ProgramTestContext,
 } from "solana-bankrun";
+import { TestHelperService as ths } from "./";
 
 export class CpiService {
-  static testTxNonce = 10_000;
-
-  static async createAndProcessTransaction(
-    client: BanksClient,
-    payer: Keypair,
-    instruction: TransactionInstruction,
-    additionalSigners: Keypair[] = []
-  ): Promise<BanksTransactionResultWithMeta> {
-    const tx = new Transaction();
-    const [latestBlockhash] = await client.getLatestBlockhash();
-    tx.recentBlockhash = latestBlockhash;
-    tx.feePayer = payer.publicKey;
-    tx.add(instruction);
-    tx.add(
-      ComputeBudgetProgram.setComputeUnitLimit({
-        units: 1_400_000 + this.testTxNonce,
-      })
-    );
-    tx.sign(payer, ...additionalSigners);
-    this.testTxNonce++;
-    return await client.tryProcessTransaction(tx);
-  }
-
   static getJitoSolDepositAccounts(params: {
     stakePool: PublicKey;
     withdrawAuth: PublicKey;
@@ -184,7 +162,7 @@ export class CpiService {
       })
       .instruction();
 
-    const updateTxResult = await CpiService.createAndProcessTransaction(
+    const updateTxResult = await ths.createAndProcessTransaction(
       params.client,
       params.deployer,
       updateIx,
@@ -217,7 +195,7 @@ export class CpiService {
       .remainingAccounts(remainingAccounts)
       .instruction();
 
-    return await CpiService.createAndProcessTransaction(
+    return await ths.createAndProcessTransaction(
       params.client,
       params.deployer,
       manageIx,

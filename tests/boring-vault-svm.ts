@@ -31,7 +31,7 @@ import {
   Connection,
   TransactionInstruction,
 } from "@solana/web3.js";
-import { CpiService } from "./services";
+import { CpiService, TestHelperService as ths } from "./services";
 import bs58 from "bs58";
 
 import dotenv from "dotenv";
@@ -128,170 +128,6 @@ describe("boring-vault-svm", () => {
     KAMINO_LEND_JITO_SOL_OBLIGATION.toString(),
     KAMINO_LEND_JITO_SOL_MARKET.toString(),
   ];
-
-  async function createAndProcessTransaction(
-    client: BanksClient,
-    payer: Keypair,
-    instruction: TransactionInstruction,
-    additionalSigners: Keypair[] = []
-  ): Promise<BanksTransactionResultWithMeta> {
-    const tx = new Transaction();
-    const [latestBlockhash] = await client.getLatestBlockhash();
-    tx.recentBlockhash = latestBlockhash;
-    tx.feePayer = payer.publicKey;
-    tx.add(instruction);
-    tx.add(
-      ComputeBudgetProgram.setComputeUnitLimit({
-        units: 1_400_000 + testTxNonce, // Add nonce so each tx is unique even if they are included in the same block.
-      })
-    );
-    tx.sign(payer, ...additionalSigners);
-
-    testTxNonce++;
-    return await client.tryProcessTransaction(tx);
-  }
-
-  async function setupATA(
-    context: ProgramTestContext,
-    programId: PublicKey,
-    mintAccount: PublicKey,
-    owner: PublicKey,
-    amount: number
-  ): Promise<PublicKey> {
-    const tokenAccData = Buffer.alloc(ACCOUNT_SIZE);
-
-    // Check if this is a wSOL account
-    const isNative = mintAccount.equals(WSOL);
-    const rentExempt = isNative ? BigInt(2039280) : BigInt(0); // Minimum rent exempt balance for native accounts
-
-    AccountLayout.encode(
-      {
-        mint: mintAccount,
-        owner,
-        amount: BigInt(amount),
-        delegateOption: 0,
-        delegate: PublicKey.default,
-        delegatedAmount: BigInt(0),
-        state: 1,
-        isNativeOption: isNative ? 1 : 0,
-        isNative: isNative ? rentExempt : BigInt(0), // For native accounts, this holds the rent exempt amount
-        closeAuthorityOption: 0,
-        closeAuthority: PublicKey.default,
-      },
-      tokenAccData
-    );
-
-    const ata = getAssociatedTokenAddressSync(
-      mintAccount,
-      owner,
-      true,
-      programId
-    );
-    const ataAccountInfo = {
-      lamports: isNative ? Number(rentExempt) + amount : 1_000_000_000, // Add rent exempt balance for native accounts
-      data: tokenAccData,
-      owner: programId,
-      executable: false,
-    };
-
-    context.setAccount(ata, ataAccountInfo);
-    return ata;
-  }
-
-  async function wait(seconds: number) {
-    const currentClock = await client.getClock();
-    context.setClock(
-      new Clock(
-        currentClock.slot,
-        currentClock.epochStartTimestamp,
-        currentClock.epoch,
-        currentClock.leaderScheduleEpoch,
-        currentClock.unixTimestamp + BigInt(seconds)
-      )
-    );
-  }
-
-  // Helper function to get token balance from bankrun
-  async function getTokenBalance(
-    client: BanksClient,
-    tokenAccount: PublicKey
-  ): Promise<bigint> {
-    const account = await client.getAccount(tokenAccount);
-    if (!account) throw new Error("Account not found");
-
-    return AccountLayout.decode(account.data).amount;
-  }
-
-  function expectTxToSucceed(result: string) {
-    expect(result === null).to.be.true;
-  }
-
-  async function updateExchangeRateAndWait(
-    program: Program<BoringVaultSvm>,
-    client: BanksClient,
-    vaultId: anchor.BN,
-    newExchangeRate: anchor.BN,
-    exchangeRateProvider: Keypair,
-    waitTimeInSeconds: number = 86400 // 1 day default
-  ): Promise<{
-    feesOwed: bigint;
-    platformFees: bigint;
-    performanceFees: bigint;
-  }> {
-    // Update exchange rate
-    const ix = await program.methods
-      .updateExchangeRate(vaultId, newExchangeRate)
-      .accounts({
-        signer: exchangeRateProvider.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
-      })
-      .instruction();
-
-    const txResult = await createAndProcessTransaction(client, deployer, ix, [
-      exchangeRateProvider,
-    ]);
-
-    // Expect the tx to succeed.
-    expectTxToSucceed(txResult.result);
-
-    // Wait specified time
-    await wait(waitTimeInSeconds);
-
-    // Get program logs
-    const logs = txResult.meta?.logMessages || [];
-
-    // Find the fee messages
-    const platformFeeLog = logs.find((log) =>
-      log.includes("Platform fees owed:")
-    );
-    const performanceFeeLog = logs.find((log) =>
-      log.includes("Performance fees owed:")
-    );
-
-    // Extract the fee amounts (optional)
-    const platformFees = platformFeeLog
-      ? BigInt(platformFeeLog.split("Program log: Platform fees owed: ")[1])
-      : BigInt(0);
-    const performanceFees = performanceFeeLog
-      ? BigInt(
-          performanceFeeLog.split("Program log: Performance fees owed: ")[1]
-        )
-      : BigInt(0);
-
-    // Get updated vault state to return fees
-    const vaultState = await program.account.boringVault.fetch(
-      boringVaultStateAccount
-    );
-
-    return {
-      feesOwed: BigInt(vaultState.teller.feesOwedInBaseAsset.toNumber()),
-      platformFees: platformFees,
-      performanceFees: performanceFees,
-    };
-  }
 
   before(async () => {
     connection = new Connection(
@@ -430,40 +266,45 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
-    userJitoSolAta = await setupATA(
+    userJitoSolAta = await ths.setupATA(
       context,
       TOKEN_PROGRAM_ID,
       JITOSOL,
       user.publicKey,
-      1000000000000000000
+      1000000000000000000,
+      false
     );
-    authJitoSolAta = await setupATA(
+    authJitoSolAta = await ths.setupATA(
       context,
       TOKEN_PROGRAM_ID,
       JITOSOL,
       authority.publicKey,
-      0
+      0,
+      false
     );
-    vaultJitoSolAta = await setupATA(
+    vaultJitoSolAta = await ths.setupATA(
       context,
       TOKEN_PROGRAM_ID,
       JITOSOL,
       boringVaultAccount,
-      1000000000
+      1000000000,
+      false
     ); // 1 JitoSOL
-    userShareAta = await setupATA(
+    userShareAta = await ths.setupATA(
       context,
       TOKEN_2022_PROGRAM_ID,
       boringVaultShareMint,
       user.publicKey,
-      0
+      0,
+      false
     );
-    vaultWSolAta = await setupATA(
+    vaultWSolAta = await ths.setupATA(
       context,
       TOKEN_PROGRAM_ID,
       WSOL,
       boringVaultAccount,
-      1000000000
+      1000000000,
+      true
     ); // Start with 1 wSOL.
 
     // Queue PDAs
@@ -500,19 +341,21 @@ describe("boring-vault-svm", () => {
       queueProgram.programId
     );
 
-    queueShareAta = await setupATA(
+    queueShareAta = await ths.setupATA(
       context,
       TOKEN_2022_PROGRAM_ID,
       boringVaultShareMint,
       queueAccount,
-      0
+      0,
+      false
     );
-    queueJitoSolAta = await setupATA(
+    queueJitoSolAta = await ths.setupATA(
       context,
       TOKEN_PROGRAM_ID,
       JITOSOL,
       queueAccount,
-      0
+      0,
+      false
     );
   });
 
@@ -526,12 +369,12 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
     ]);
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
     const programConfig = await program.account.programConfig.fetch(
       programConfigAccount
@@ -569,12 +412,12 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       authority,
     ]);
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
     const programConfig = await program.account.programConfig.fetch(
       programConfigAccount
@@ -603,12 +446,15 @@ describe("boring-vault-svm", () => {
         })
         .instruction();
 
-      let txResult = await createAndProcessTransaction(client, deployer, ix, [
-        authority,
-      ]);
+      let txResult = await ths.createAndProcessTransaction(
+        client,
+        deployer,
+        ix,
+        [authority]
+      );
 
       // Expect the tx to succeed.
-      expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult.result);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -627,12 +473,15 @@ describe("boring-vault-svm", () => {
         })
         .instruction();
 
-      let txResult = await createAndProcessTransaction(client, deployer, ix, [
-        newAuthority,
-      ]);
+      let txResult = await ths.createAndProcessTransaction(
+        client,
+        deployer,
+        ix,
+        [newAuthority]
+      );
 
       // Expect the tx to succeed.
-      expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult.result);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -656,12 +505,15 @@ describe("boring-vault-svm", () => {
         })
         .instruction();
 
-      let txResult = await createAndProcessTransaction(client, deployer, ix, [
-        newAuthority,
-      ]);
+      let txResult = await ths.createAndProcessTransaction(
+        client,
+        deployer,
+        ix,
+        [newAuthority]
+      );
 
       // Expect the tx to succeed.
-      expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult.result);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -680,7 +532,7 @@ describe("boring-vault-svm", () => {
         })
         .instruction();
 
-      let txResult = await createAndProcessTransaction(
+      let txResult = await ths.createAndProcessTransaction(
         client,
         deployer,
         acceptIx,
@@ -688,7 +540,7 @@ describe("boring-vault-svm", () => {
       );
 
       // Expect the tx to succeed.
-      expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult.result);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -726,12 +578,12 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       authority,
     ]);
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
     const assetData = await program.account.assetData.fetch(
       jitoSolAssetDataPda
@@ -768,12 +620,15 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [
-      authority,
-    ]);
+    let txResult_0 = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      ix_0,
+      [authority]
+    );
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0.result);
 
     let depositAmount = new anchor.BN(1000000000);
     const ix_1 = await program.methods
@@ -799,16 +654,19 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let userShareStartBalance = await getTokenBalance(client, userShareAta);
+    let userShareStartBalance = await ths.getTokenBalance(client, userShareAta);
     let userSolStartBalance = await client.getBalance(user.publicKey);
-    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [
-      user,
-    ]);
+    let txResult_1 = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      ix_1,
+      [user]
+    );
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1.result);
 
-    let userShareEndBalance = await getTokenBalance(client, userShareAta);
+    let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
     let userSolEndBalance = await client.getBalance(user.publicKey);
     expect(BigInt(userShareEndBalance - userShareStartBalance) > BigInt(0));
     expect(
@@ -842,12 +700,15 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult_0 = await createAndProcessTransaction(client, deployer, ix_0, [
-      authority,
-    ]);
+    let txResult_0 = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      ix_0,
+      [authority]
+    );
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0.result);
 
     let depositAmount = new anchor.BN(1000000000);
     const ix_1 = await program.methods
@@ -876,24 +737,36 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let userShareStartBalance = await getTokenBalance(client, userShareAta);
-    let userJitoSolStartBalance = await getTokenBalance(client, userJitoSolAta);
-    let vaultJitoSolStartBalance = await getTokenBalance(
+    let userShareStartBalance = await ths.getTokenBalance(client, userShareAta);
+    let userJitoSolStartBalance = await ths.getTokenBalance(
+      client,
+      userJitoSolAta
+    );
+    let vaultJitoSolStartBalance = await ths.getTokenBalance(
       client,
       vaultJitoSolAta
     );
 
-    let txResult_1 = await createAndProcessTransaction(client, deployer, ix_1, [
-      user,
-    ]);
+    let txResult_1 = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      ix_1,
+      [user]
+    );
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1.result);
 
     // We expect this to be 1 share larger because of the previous deposit.
-    let userShareEndBalance = await getTokenBalance(client, userShareAta);
-    let userJitoSolEndBalance = await getTokenBalance(client, userJitoSolAta);
-    let vaultJitoSolEndBalance = await getTokenBalance(client, vaultJitoSolAta);
+    let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
+    let userJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      userJitoSolAta
+    );
+    let vaultJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      vaultJitoSolAta
+    );
     expect(
       BigInt(userShareEndBalance - userShareStartBalance) == BigInt(1000000000)
     ); // Should mint 1 share since JitoSol is base
@@ -932,14 +805,17 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let userShareStartBalance = await getTokenBalance(client, userShareAta);
-    let userJitoSolStartBalance = await getTokenBalance(client, userJitoSolAta);
-    let vaultJitoSolStartBalance = await getTokenBalance(
+    let userShareStartBalance = await ths.getTokenBalance(client, userShareAta);
+    let userJitoSolStartBalance = await ths.getTokenBalance(
+      client,
+      userJitoSolAta
+    );
+    let vaultJitoSolStartBalance = await ths.getTokenBalance(
       client,
       vaultJitoSolAta
     );
 
-    let txResult_1 = await createAndProcessTransaction(
+    let txResult_1 = await ths.createAndProcessTransaction(
       client,
       deployer,
       withdraw_ix,
@@ -947,11 +823,17 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the tx to succeed.
-    expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1.result);
 
-    let userShareEndBalance = await getTokenBalance(client, userShareAta);
-    let userJitoSolEndBalance = await getTokenBalance(client, userJitoSolAta);
-    let vaultJitoSolEndBalance = await getTokenBalance(client, vaultJitoSolAta);
+    let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
+    let userJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      userJitoSolAta
+    );
+    let vaultJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      vaultJitoSolAta
+    );
     expect(
       BigInt(userShareStartBalance - userShareEndBalance) == BigInt(1000000000)
     ); // Should burned 1 share since JitoSol is base
@@ -964,15 +846,19 @@ describe("boring-vault-svm", () => {
   });
 
   it("Can update exchange rate and calculate fees owed", async () => {
-    await wait(86_400);
+    await ths.wait(client, context, 86_400);
 
     // First update - all fees should be zero
-    let res_0 = await updateExchangeRateAndWait(
+    let res_0 = await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(1000000000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -981,12 +867,16 @@ describe("boring-vault-svm", () => {
     expect(res_0.performanceFees).to.equal(BigInt(0));
 
     // Second update - all fees should be non-zero
-    let res_1 = await updateExchangeRateAndWait(
+    let res_1 = await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(1000500000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -999,12 +889,16 @@ describe("boring-vault-svm", () => {
     );
 
     // Third update - only platform fees should increase
-    let res_2 = await updateExchangeRateAndWait(
+    let res_2 = await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(1000300000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -1015,12 +909,16 @@ describe("boring-vault-svm", () => {
     expect(res_2.feesOwed - res_1.feesOwed).to.equal(res_2.platformFees);
 
     // Fourth update - only platform fees should increase
-    let res_3 = await updateExchangeRateAndWait(
+    let res_3 = await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(1000400000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -1031,12 +929,16 @@ describe("boring-vault-svm", () => {
     expect(res_3.feesOwed - res_2.feesOwed).to.equal(res_3.platformFees);
 
     // Fifth update - both platform and performance fees should increase
-    let res_4 = await updateExchangeRateAndWait(
+    let res_4 = await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(1000700000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -1049,12 +951,16 @@ describe("boring-vault-svm", () => {
     );
 
     // Sixth update - change exchange rate to a ridiculous value
-    let res_5 = await updateExchangeRateAndWait(
+    let res_5 = await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(2000000000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -1076,13 +982,13 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult_unpause = await createAndProcessTransaction(
+    let txResult_unpause = await ths.createAndProcessTransaction(
       client,
       deployer,
       unpause_ix,
       [authority]
     );
-    expectTxToSucceed(txResult_unpause.result);
+    ths.expectTxToSucceed(txResult_unpause.result);
 
     boringVaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -1090,12 +996,16 @@ describe("boring-vault-svm", () => {
     expect(boringVaultState.config.paused).to.be.false;
 
     // Seventh update - change exchange rate to a ridiculous low value
-    let res_6 = await updateExchangeRateAndWait(
+    let res_6 = await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(100000000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -1117,21 +1027,25 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult_unpause_1 = await createAndProcessTransaction(
+    let txResult_unpause_1 = await ths.createAndProcessTransaction(
       client,
       deployer,
       unpause_ix_1,
       [authority]
     );
-    expectTxToSucceed(txResult_unpause_1.result);
+    ths.expectTxToSucceed(txResult_unpause_1.result);
 
     // 8th update - change exchange rate to a ridiculous low value
-    await updateExchangeRateAndWait(
+    await ths.updateExchangeRateAndWait(
       program,
       client,
+      context,
       new anchor.BN(0),
       new anchor.BN(1000000000),
       strategist,
+      boringVaultStateAccount,
+      boringVaultShareMint,
+      deployer,
       86400
     );
 
@@ -1144,13 +1058,13 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult_unpause_2 = await createAndProcessTransaction(
+    let txResult_unpause_2 = await ths.createAndProcessTransaction(
       client,
       deployer,
       unpause_ix_2,
       [authority]
     );
-    expectTxToSucceed(txResult_unpause_2.result);
+    ths.expectTxToSucceed(txResult_unpause_2.result);
   });
 
   it("Can claim fees", async () => {
@@ -1176,17 +1090,23 @@ describe("boring-vault-svm", () => {
     );
     let expectedFees = vaultState.teller.feesOwedInBaseAsset;
 
-    let authJitoSolStartBalance = await getTokenBalance(client, authJitoSolAta);
+    let authJitoSolStartBalance = await ths.getTokenBalance(
+      client,
+      authJitoSolAta
+    );
 
-    let txResult = await createAndProcessTransaction(
+    let txResult = await ths.createAndProcessTransaction(
       client,
       authority,
       claim_fees_ix,
       [authority]
     );
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
-    let authJitoSolEndBalance = await getTokenBalance(client, authJitoSolAta);
+    let authJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      authJitoSolAta
+    );
 
     const vaultStateAfter = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -1242,14 +1162,14 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    const updateTxResult = await createAndProcessTransaction(
+    const updateTxResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       updateIx,
       [authority]
     );
 
-    expectTxToSucceed(updateTxResult.result);
+    ths.expectTxToSucceed(updateTxResult.result);
 
     // 4. Close CPI Digest
     const closeIx = await program.methods
@@ -1266,14 +1186,14 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    const closeIxResult = await createAndProcessTransaction(
+    const closeIxResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       closeIx,
       [authority]
     );
 
-    expectTxToSucceed(closeIxResult.result);
+    ths.expectTxToSucceed(closeIxResult.result);
   });
 
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
@@ -1284,7 +1204,7 @@ describe("boring-vault-svm", () => {
       lamports: 100_000_000, // 0.1 SOL in lamports
     });
 
-    let transferTxResult = await createAndProcessTransaction(
+    let transferTxResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       transferSolIx,
@@ -1292,7 +1212,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the transfer to succeed
-    expectTxToSucceed(transferTxResult.result);
+    ths.expectTxToSucceed(transferTxResult.result);
 
     const remainingAccounts = CpiService.getJitoSolDepositAccounts({
       stakePool: JITO_SOL_STAKE_POOL,
@@ -1328,7 +1248,7 @@ describe("boring-vault-svm", () => {
       remainingAccounts
     );
 
-    expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0.result);
   });
 
   it("Can transfer sol and wrap it", async () => {
@@ -1367,7 +1287,7 @@ describe("boring-vault-svm", () => {
       transferAccounts
     );
 
-    expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0.result);
 
     // Now that our wSOL ata has SOL, we can wrap it.
     // Create the transfer instruction data
@@ -1379,7 +1299,7 @@ describe("boring-vault-svm", () => {
       { pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false }, // token program
     ];
 
-    let vaultWSolStartBalance = await getTokenBalance(client, vaultWSolAta);
+    let vaultWSolStartBalance = await ths.getTokenBalance(client, vaultWSolAta);
 
     const txResult_1 = await CpiService.executeCpi(
       {
@@ -1402,9 +1322,9 @@ describe("boring-vault-svm", () => {
       wrapAccounts
     );
 
-    expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1.result);
 
-    let vaultWSolEndBalance = await getTokenBalance(client, vaultWSolAta);
+    let vaultWSolEndBalance = await ths.getTokenBalance(client, vaultWSolAta);
     expect((vaultWSolEndBalance - vaultWSolStartBalance).toString()).to.equal(
       "2039280"
     );
@@ -1483,7 +1403,7 @@ describe("boring-vault-svm", () => {
     tx.add(initUserMetadataIx);
     tx.sign(user);
     let result = await client.tryProcessTransaction(tx);
-    expectTxToSucceed(result.result);
+    ths.expectTxToSucceed(result.result);
   });
 
   it("I Can lend JitoSOL on Real Kamino", async () => {
@@ -1559,7 +1479,7 @@ describe("boring-vault-svm", () => {
     tx.add(initUserMetadataIx);
     tx.sign(user);
     let result = await client.tryProcessTransaction(tx);
-    expectTxToSucceed(result.result);
+    ths.expectTxToSucceed(result.result);
   });
 
   it("Can lend JitoSOL on Kamino", async () => {
@@ -1606,7 +1526,7 @@ describe("boring-vault-svm", () => {
       createLookupTableAccounts
     );
 
-    expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0.result);
 
     // Step 1: Call Init User Metadata on Kamino Lend Program.
     const targetProgramId = mockKaminoLendProgram.programId;
@@ -1665,7 +1585,7 @@ describe("boring-vault-svm", () => {
       },
       initUserMetadataAccounts
     );
-    expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1.result);
 
     // Step 2: Call Init Obligation on Kamino Lend Program.
     // const initObligationAccounts = [
@@ -1687,10 +1607,10 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
     ]);
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
     const queueConfig = await queueProgram.account.programConfig.fetch(
       queueProgramConfigAccount
@@ -1717,10 +1637,10 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
     ]);
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
     const queueState = await queueProgram.account.queueState.fetch(
       queueStateAccount
@@ -1753,10 +1673,10 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       authority,
     ]);
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
     const withdrawAssetData =
       await queueProgram.account.withdrawAssetData.fetch(
@@ -1780,10 +1700,10 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(client, deployer, ix, [
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       user,
     ]);
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
   });
 
   it("Allows users to make withdraw requests", async () => {
@@ -1827,17 +1747,17 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(
+    let txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       ix_withdraw_request,
       [user]
     );
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
   });
 
   it("Allows requests to be solved", async () => {
-    await wait(86_401);
+    await ths.wait(client, context, 86_401);
 
     const solve_ix = await queueProgram.methods
       .fulfillWithdraw(
@@ -1870,27 +1790,39 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let userJitoSolStartBalance = await getTokenBalance(client, userJitoSolAta);
-    let vaultJitoSolStartBalance = await getTokenBalance(
+    let userJitoSolStartBalance = await ths.getTokenBalance(
+      client,
+      userJitoSolAta
+    );
+    let vaultJitoSolStartBalance = await ths.getTokenBalance(
       client,
       vaultJitoSolAta
     );
-    let queueJitoSolStartBalance = await getTokenBalance(
+    let queueJitoSolStartBalance = await ths.getTokenBalance(
       client,
       queueJitoSolAta
     );
 
-    let txResult = await createAndProcessTransaction(
+    let txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       solve_ix,
       [user]
     );
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
-    let userJitoSolEndBalance = await getTokenBalance(client, userJitoSolAta);
-    let vaultJitoSolEndBalance = await getTokenBalance(client, vaultJitoSolAta);
-    let queueJitoSolEndBalance = await getTokenBalance(client, queueJitoSolAta);
+    let userJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      userJitoSolAta
+    );
+    let vaultJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      vaultJitoSolAta
+    );
+    let queueJitoSolEndBalance = await ths.getTokenBalance(
+      client,
+      queueJitoSolAta
+    );
 
     expect(
       (userJitoSolEndBalance - userJitoSolStartBalance).toString()
@@ -1929,6 +1861,7 @@ describe("boring-vault-svm", () => {
         queueState: queueStateAccount,
         withdrawMint: JITOSOL,
         withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
         userWithdrawState: userWithdrawState,
         withdrawRequest: userWithdrawRequest,
         queue: queueAccount,
@@ -1946,13 +1879,13 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(
+    let txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       ix_withdraw_request,
       [user]
     );
-    expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult.result);
 
     // Now have user cancel their request.
     const cancel_ix = await queueProgram.methods
@@ -1971,17 +1904,17 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let userShareStartBalance = await getTokenBalance(client, userShareAta);
+    let userShareStartBalance = await ths.getTokenBalance(client, userShareAta);
 
-    let cancelResult = await createAndProcessTransaction(
+    let cancelResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       cancel_ix,
       [user]
     );
-    expectTxToSucceed(cancelResult.result);
+    ths.expectTxToSucceed(cancelResult.result);
 
-    let userShareEndBalance = await getTokenBalance(client, userShareAta);
+    let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
 
     expect((userShareEndBalance - userShareStartBalance).toString()).to.equal(
       "1000000"
@@ -2005,7 +1938,7 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let pauseTxResult = await createAndProcessTransaction(
+    let pauseTxResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       pauseIx,
@@ -2038,7 +1971,7 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let txResult = await createAndProcessTransaction(
+    let txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       updateRateIx,
@@ -2055,7 +1988,7 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let unpauseTxResult = await createAndProcessTransaction(
+    let unpauseTxResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       unpauseIx,
@@ -2088,7 +2021,7 @@ describe("boring-vault-svm", () => {
       })
       .instruction();
 
-    let updateTxResult = await createAndProcessTransaction(
+    let updateTxResult = await ths.createAndProcessTransaction(
       client,
       deployer,
       updateRateIx2,
