@@ -122,6 +122,21 @@ export class TestHelperService {
     expect(result).to.be.null;
   }
 
+  static expectTxToFail(result: string, logs: string[], errorMessage: string) {
+    expect(result).to.not.be.null;
+    // Look through logs for our error
+    const foundError = logs.some((log) =>
+      log.toLowerCase().includes(errorMessage.toLowerCase())
+    );
+
+    expect(
+      foundError,
+      `AssertionError: Expected to find error "${errorMessage}" in logs:\n${logs
+        .map((log) => `        ${log}`)
+        .join("\n")}`
+    ).to.be.true;
+  }
+
   static async updateExchangeRateAndWait(
     program: Program<BoringVaultSvm>,
     client: BanksClient,

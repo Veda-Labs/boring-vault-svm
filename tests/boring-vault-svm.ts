@@ -1805,7 +1805,11 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       user,
     ]);
-    expect(txResult.result).to.not.be.null; // Should fail
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
   });
 
   it("Cannot pause/unpause queue without authority", async () => {
@@ -1824,7 +1828,11 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [user]
     );
-    expect(pauseTxResult.result).to.not.be.null; // Should fail
+    ths.expectTxToFail(
+      pauseTxResult.result,
+      pauseTxResult.meta.logMessages,
+      "Not authorized"
+    ); // Should fail
 
     // Try to unpause with wrong signer
     const unpauseIx = await queueProgram.methods
@@ -1841,7 +1849,11 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [user]
     );
-    expect(unpauseTxResult.result).to.not.be.null; // Should fail
+    ths.expectTxToFail(
+      unpauseTxResult.result,
+      unpauseTxResult.meta.logMessages,
+      "Not authorized"
+    ); // Should fail
   });
 
   it("Can update withdraw assets", async () => {
@@ -2171,7 +2183,11 @@ describe("boring-vault-svm", () => {
       cancel_ix,
       [user]
     );
-    expect(earlyResult.result).to.not.be.null; // Should fail
+    ths.expectTxToFail(
+      earlyResult.result,
+      earlyResult.meta.logMessages,
+      "Request deadline not passed"
+    ); // Should fail
 
     // Wait until after deadline (3 days maturity + 3 days deadline = 6 days)
     await ths.wait(client, context, 6 * 86400);
@@ -2249,7 +2265,11 @@ describe("boring-vault-svm", () => {
       updateRateIx,
       [strategist]
     );
-    expect(txResult.result).to.not.be.null; // Transaction should fail
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Vault paused"
+    ); // Transaction should fail
 
     // Unpause the vault
     const unpauseIx = await program.methods
@@ -2715,5 +2735,194 @@ describe("boring-vault-svm", () => {
       [authority]
     );
     ths.expectTxToSucceed(revertTxResult.result);
+  });
+
+  it("Set fees - failure cases", async () => {
+    // Try with non-authority signer
+    const nonAuthUpdateIx = await program.methods
+      .setFees(new anchor.BN(0), 50, 1000)
+      .accounts({
+        signer: user.publicKey, // Using non-authority signer
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      nonAuthUpdateIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "NotAuthorized"
+    );
+
+    // Try with invalid platform fee (>10000 bps)
+    const invalidPlatformFeeIx = await program.methods
+      .setFees(new anchor.BN(0), 10001, 1000)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidPlatformFeeIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Platform Fee BPS"
+    );
+
+    // Try with invalid performance fee (>10000 bps)
+    const invalidPerformanceFeeIx = await program.methods
+      .setFees(new anchor.BN(0), 50, 10001)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidPerformanceFeeIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Performance Fee BPS"
+    );
+  });
+
+  it("Initialize - failure cases", async () => {
+    // Try to initialize again with same config account
+    const [configAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("boring-config")],
+      program.programId
+    );
+
+    const initializeIx = await program.methods
+      .initialize(authority.publicKey)
+      .accounts({
+        signer: authority.publicKey,
+        // @ts-ignore
+        config: configAccount,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    const txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      initializeIx,
+      [authority]
+    );
+
+    // Should fail with a raw anchor error (no custom error message)
+    expect(txResult.result).to.not.be.null;
+  });
+
+  it("Deploy - failure cases", async () => {
+    const [newVaultState] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-vault-state"),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8),
+      ],
+      program.programId
+    );
+
+    const [newVaultShareMint] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("share-token"), newVaultState.toBuffer()],
+      program.programId
+    );
+
+    const deployArgs = {
+      authority: user.publicKey,
+      name: "Test Vault",
+      symbol: "tVAULT",
+      exchangeRateProvider: authority.publicKey,
+      exchangeRate: new anchor.BN(1_000_000),
+      payoutAddress: authority.publicKey,
+      allowedExchangeRateChangeLowerBound: 9000, // -10%
+      allowedExchangeRateChangeUpperBound: 11000, // +10%
+      minimumUpdateDelayInSeconds: 3600, // 1 hour
+      platformFeeBps: 100, // 1%
+      performanceFeeBps: 1000, // 10%
+      withdrawAuthority: authority.publicKey,
+      strategist: authority.publicKey,
+    };
+
+    // Try with non-authority signer
+    const nonAuthDeployIx = await program.methods
+      .deploy(deployArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: user.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      nonAuthDeployIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+
+    // // Try with empty name
+    // const invalidNameArgs = {
+    //   ...deployArgs,
+    //   name: "",
+    // };
+    // // ... test case for empty name
+
+    // // Try with empty symbol
+    // const invalidSymbolArgs = {
+    //   ...deployArgs,
+    //   symbol: "",
+    // };
+    // // ... test case for empty symbol
+
+    // // Try with invalid exchange rate provider (zero address)
+    // const invalidExchangeRateProviderArgs = {
+    //   ...deployArgs,
+    //   exchangeRateProvider: anchor.web3.PublicKey.default,
+    // };
+    // // ... test case for invalid exchange rate provider
+
+    // // Try with invalid exchange rate bounds (lower > upper)
+    // const invalidBoundsArgs = {
+    //   ...deployArgs,
+    //   allowedExchangeRateChangeLowerBound: 11000,
+    //   allowedExchangeRateChangeUpperBound: 9000,
+    // };
+    // // ... test case for invalid bounds
+
+    // // Try with invalid minimum update delay (0)
+    // const invalidDelayArgs = {
+    //   ...deployArgs,
+    //   minimumUpdateDelayInSeconds: 0,
+    // };
+    // // ... test case for invalid delay
+
+    // // Continue with existing tests for fees, base asset, payout address...
   });
 });
