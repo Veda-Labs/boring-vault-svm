@@ -1,28 +1,36 @@
+//! Boring Vault SVM - A Solana program for managing vaults with share tokens
+//!
+//! This program implements functionality for:
+//! - Vault deployment and management
+//! - Asset deposits and withdrawals
+//! - Exchange rate updates and fee calculations
+//! - Share token minting and burning
 #![allow(unexpected_cfgs)]
 
-use anchor_lang::prelude::*;
-mod state;
-use anchor_lang::solana_program::program::invoke_signed;
-use anchor_lang::system_program;
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::Token;
-use anchor_spl::token_2022::Token2022;
-use anchor_spl::token_interface;
-use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
-pub use state::*;
-mod error;
-use error::*;
-mod constants;
-pub use constants::*;
-mod utils;
+use anchor_lang::{prelude::*, solana_program::program::invoke_signed, system_program};
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::Token,
+    token_2022::Token2022,
+    token_interface::{self, Mint, TokenAccount, TokenInterface},
+};
 use rust_decimal::Decimal;
+
+// Internal modules
+mod constants;
+mod error;
+mod state;
+mod utils;
+
+// Public re-exports
+pub use constants::*;
+pub use error::*;
+pub use state::*;
+
+// Internal module usage
 use utils::teller;
 
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
-
-// Good resources for figuring out how to setup extensions
-// https://github.com/solana-developers/program-examples/tree/main/tokens/token-2022/transfer-hook/whitelist/anchor
-// https://www.quicknode.com/guides/solana-development/anchor/token-2022
 
 #[program]
 pub mod boring_vault_svm {
@@ -71,9 +79,6 @@ pub mod boring_vault_svm {
     /// * `BoringErrorCode::InvalidPlatformFeeBps` - If platform fee exceeds maximum
     /// * `BoringErrorCode::InvalidPerformanceFeeBps` - If performance fee exceeds maximum
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
-        // Make sure the signer is the authority.
-        require_keys_eq!(ctx.accounts.signer.key(), ctx.accounts.config.authority);
-
         // Make sure the authority is not the zero address.
         require_keys_neq!(args.authority, Pubkey::default());
 
@@ -146,12 +151,28 @@ pub mod boring_vault_svm {
 
     // =============================== Authority Functions ===============================
 
+    /// Pauses the vault, preventing deposits and withdrawals
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
     pub fn pause(ctx: Context<Pause>, vault_id: u64) -> Result<()> {
         ctx.accounts.boring_vault_state.config.paused = true;
         msg!("Vault {} paused", vault_id);
         Ok(())
     }
 
+    /// Unpauses the vault, allowing deposits and withdrawals
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
     pub fn unpause(ctx: Context<Unpause>, vault_id: u64) -> Result<()> {
         ctx.accounts.boring_vault_state.config.paused = false;
         msg!("Vault {} unpaused", vault_id);
@@ -202,11 +223,17 @@ pub mod boring_vault_svm {
     }
     // functions to change fees, payout address, etc.
 
-    /// Updates the asset data
+    /// Updates the asset data configuration for a given asset
     ///
     /// # Arguments
     /// * `ctx` - The context of accounts
-    /// * `args` - The new asset data
+    /// * `args` - The asset data update arguments including:
+    ///     * `vault_id` - The vault ID
+    ///     * `asset_data` - The new asset data configuration
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
+    /// * `BoringErrorCode::InvalidPriceFeed` - If price feed is invalid for non-pegged asset
     pub fn update_asset_data(
         ctx: Context<UpdateAssetData>,
         args: UpdateAssetDataArgs,
@@ -227,6 +254,11 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Updates the CPI digest for managing vault assets
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `args` - The CPI digest update arguments
     pub fn update_cpi_digest(
         ctx: Context<UpdateCpiDigest>,
         args: UpdateCpiDigestArgs,
@@ -236,10 +268,23 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Closes a CPI digest account
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
     pub fn close_cpi_digest(_ctx: Context<CloseCpiDigest>) -> Result<()> {
         Ok(())
     }
 
+    /// Updates the exchange rate provider for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `new_provider` - The new exchange rate provider address
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
     pub fn update_exchange_rate_provider(
         ctx: Context<UpdateExchangeRateProvider>,
         vault_id: u64,
@@ -258,6 +303,15 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Sets the withdraw authority for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `new_authority` - The new withdraw authority address
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
     pub fn set_withdraw_authority(
         ctx: Context<SetWithdrawAuthority>,
         vault_id: u64,
@@ -272,6 +326,15 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Sets the deposit sub-account for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `new_sub_account` - The new sub-account number
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
     pub fn set_deposit_sub_account(
         ctx: Context<SetDepositSubAccount>,
         vault_id: u64,
@@ -286,6 +349,15 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Sets the withdraw sub-account for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `new_sub_account` - The new sub-account number
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
     pub fn set_withdraw_sub_account(
         ctx: Context<SetWithdrawSubAccount>,
         vault_id: u64,
@@ -300,6 +372,16 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Sets the payout address for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `new_payout` - The new payout address
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
+    /// * `BoringErrorCode::InvalidPayoutAddress` - If payout address is zero address
     pub fn set_payout(ctx: Context<SetPayout>, vault_id: u64, new_payout: Pubkey) -> Result<()> {
         require_keys_neq!(
             new_payout,
@@ -315,6 +397,20 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Configures the exchange rate update bounds
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `args` - Configuration arguments including:
+    ///     * `upper_bound` - Maximum allowed increase in exchange rate (in bps)
+    ///     * `lower_bound` - Maximum allowed decrease in exchange rate (in bps)
+    ///     * `minimum_update_delay` - Minimum time between updates
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
+    /// * `BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound` - If upper bound is invalid
+    /// * `BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound` - If lower bound is invalid
     pub fn configure_exchange_rate_update_bounds(
         ctx: Context<ConfigureExchangeRateUpdateBounds>,
         vault_id: u64,
@@ -349,6 +445,18 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Sets the platform and performance fees for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `platform_fee_bps` - Platform fee in basis points
+    /// * `performance_fee_bps` - Performance fee in basis points
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
+    /// * `BoringErrorCode::InvalidPlatformFeeBps` - If platform fee exceeds maximum
+    /// * `BoringErrorCode::InvalidPerformanceFeeBps` - If performance fee exceeds maximum
     pub fn set_fees(
         ctx: Context<SetFees>,
         vault_id: u64,
@@ -378,6 +486,15 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Sets the strategist for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `new_strategist` - The new strategist address
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::NotAuthorized` - If signer is not the vault authority
     pub fn set_strategist(
         ctx: Context<SetStrategist>,
         vault_id: u64,
@@ -393,6 +510,15 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
+    /// Claims accumulated fees in base asset
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `sub_account` - The sub-account to claim from
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::InvalidTokenProgram` - If token program doesn't match mint
     pub fn claim_fees_in_base(
         ctx: Context<ClaimFeesInBase>,
         vault_id: u64,
@@ -453,6 +579,15 @@ pub mod boring_vault_svm {
 
     // =============================== Exchange Rate Functions ===============================
 
+    /// Updates the exchange rate for the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    /// * `new_exchange_rate` - The new exchange rate
+    ///
+    /// # Returns
+    /// * `Result<()>` - Result indicating success or failure
     pub fn update_exchange_rate(
         ctx: Context<UpdateExchangeRate>,
         vault_id: u64,
@@ -611,6 +746,14 @@ pub mod boring_vault_svm {
 
     // =============================== Strategist Functions ===============================
 
+    /// Executes a management operation on the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `args` - Management arguments including CPI call details
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::InvalidCpiDigest` - If CPI digest is invalid
     pub fn manage(ctx: Context<Manage>, args: ManageArgs) -> Result<()> {
         let cpi_digest = &ctx.accounts.cpi_digest;
         require!(cpi_digest.is_valid, BoringErrorCode::InvalidCpiDigest);
@@ -682,6 +825,20 @@ pub mod boring_vault_svm {
 
     // ================================ Deposit Functions ================================
 
+    /// Deposits SOL into the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `args` - Deposit arguments including:
+    ///     * `deposit_amount` - Amount of SOL to deposit
+    ///     * `min_mint_amount` - Minimum amount of shares to mint
+    ///
+    /// # Returns
+    /// * `u64` - Amount of shares minted
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::VaultPaused` - If vault is paused
+    /// * `BoringErrorCode::AssetNotAllowed` - If deposits are not allowed
     pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<u64> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,
@@ -720,6 +877,21 @@ pub mod boring_vault_svm {
         Ok(shares_out)
     }
 
+    /// Deposits tokens into the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `args` - Deposit arguments including:
+    ///     * `deposit_amount` - Amount of tokens to deposit
+    ///     * `min_mint_amount` - Minimum amount of shares to mint
+    ///
+    /// # Returns
+    /// * `u64` - Amount of shares minted
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::VaultPaused` - If vault is paused
+    /// * `BoringErrorCode::AssetNotAllowed` - If deposits are not allowed
+    /// * `BoringErrorCode::InvalidTokenProgram` - If token program doesn't match mint
     pub fn deposit(ctx: Context<Deposit>, args: DepositArgs) -> Result<u64> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,
@@ -776,6 +948,21 @@ pub mod boring_vault_svm {
 
     // ================================ Withdraw Functions ================================
 
+    /// Withdraws assets from the vault
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `args` - Withdraw arguments including:
+    ///     * `share_amount` - Amount of shares to burn
+    ///     * `min_asset_amount` - Minimum amount of assets to receive
+    ///
+    /// # Returns
+    /// * `u64` - Amount of assets withdrawn
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::VaultPaused` - If vault is paused
+    /// * `BoringErrorCode::AssetNotAllowed` - If withdrawals are not allowed
+    /// * `BoringErrorCode::InvalidTokenProgram` - If token program doesn't match mint
     pub fn withdraw(ctx: Context<Withdraw>, args: WithdrawArgs) -> Result<u64> {
         teller::before_withdraw(
             ctx.accounts.boring_vault_state.config.paused,
@@ -853,6 +1040,14 @@ pub mod boring_vault_svm {
 
     // ================================== View Functions ==================================
 
+    /// Views the CPI digest for a management operation
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `args` - Management arguments to generate digest for
+    ///
+    /// # Returns
+    /// * `[u8; 32]` - The CPI digest
     pub fn view_cpi_digest(ctx: Context<ViewCpiDigest>, args: ManageArgs) -> Result<[u8; 32]> {
         // Hash the CPI call down to a digest
         let digest = args.operators.apply_operators(
@@ -865,14 +1060,41 @@ pub mod boring_vault_svm {
         Ok(digest)
     }
 
+    /// Gets the current exchange rate
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    ///
+    /// # Returns
+    /// * `u64` - The current exchange rate
     pub fn get_rate(ctx: Context<GetRate>, _vault_id: u64) -> Result<u64> {
         teller::get_rate(ctx.accounts.boring_vault_state.to_owned())
     }
 
+    /// Gets the current exchange rate (safe version)
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    ///
+    /// # Returns
+    /// * `u64` - The current exchange rate
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::VaultPaused` - If vault is paused
     pub fn get_rate_safe(ctx: Context<GetRateSafe>, _vault_id: u64) -> Result<u64> {
         teller::get_rate(ctx.accounts.boring_vault_state.to_owned())
     }
 
+    /// Gets the exchange rate in terms of quote asset
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    ///
+    /// # Returns
+    /// * `u64` - The exchange rate in quote asset
     pub fn get_rate_in_quote(ctx: Context<GetRateInQuote>, _vault_id: u64) -> Result<u64> {
         teller::get_rate_in_quote(
             ctx.accounts.boring_vault_state.to_owned(),
@@ -882,6 +1104,17 @@ pub mod boring_vault_svm {
         )
     }
 
+    /// Gets the exchange rate in terms of quote asset (safe version)
+    ///
+    /// # Arguments
+    /// * `ctx` - The context of accounts
+    /// * `vault_id` - The vault ID
+    ///
+    /// # Returns
+    /// * `u64` - The exchange rate in quote asset
+    ///
+    /// # Errors
+    /// * `BoringErrorCode::VaultPaused` - If vault is paused
     pub fn get_rate_in_quote_safe(ctx: Context<GetRateInQuoteSafe>, _vault_id: u64) -> Result<u64> {
         teller::get_rate_in_quote(
             ctx.accounts.boring_vault_state.to_owned(),
@@ -919,6 +1152,7 @@ pub struct Deploy<'info> {
         mut,
         seeds = [BASE_SEED_CONFIG],
         bump,
+        constraint = config.authority == signer.key() @ BoringErrorCode::NotAuthorized,
     )]
     pub config: Account<'info, ProgramConfig>,
 

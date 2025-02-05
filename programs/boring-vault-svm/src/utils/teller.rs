@@ -1,18 +1,38 @@
-use crate::constants::*;
-use crate::BoringErrorCode;
-use crate::{AssetData, BoringVault};
-use crate::{DepositArgs, WithdrawArgs};
+//! Teller module - Handles exchange rate calculations, token transfers, and share calculations
+//!
+//! This module provides utilities for:
+//! - Converting between decimals and integers
+//! - Validating token accounts
+//! - Calculating shares for deposits/withdrawals
+//! - Managing token transfers
+//! - Computing exchange rates
+
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface;
-use anchor_spl::token_interface::Mint;
+use anchor_spl::token_interface::{self, Mint};
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
+// Internal modules
+use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
+
+// ================================ Decimal Conversions ================================
+
+/// Converts a value to a Decimal with specified decimal places
+///
+/// # Arguments
+/// * `amount` - The value to convert
+/// * `decimals` - Number of decimal places
 pub fn to_decimal<T: Into<Decimal>>(amount: T, decimals: u8) -> Result<Decimal> {
     let mut decimal = amount.into();
     decimal.set_scale(decimals as u32).unwrap();
     Ok(decimal)
 }
+
+/// Converts a Decimal back to the specified numeric type
+///
+/// # Arguments
+/// * `decimal` - The Decimal to convert
+/// * `decimals` - Number of decimal places for the result
 pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Result<T> {
     decimal
         .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
@@ -21,18 +41,31 @@ pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Resu
         .map_err(|_| error!(BoringErrorCode::DecimalConversionFailed))
 }
 
+// ================================ Validation Functions ================================
+
+/// Validates state before deposit
 pub fn before_deposit(is_paused: bool, allow_deposits: bool) -> Result<()> {
     require!(!is_paused, BoringErrorCode::VaultPaused);
     require!(allow_deposits, BoringErrorCode::AssetNotAllowed);
     Ok(())
 }
 
+/// Validates state before withdrawal
 pub fn before_withdraw(is_paused: bool, allow_withdrawals: bool) -> Result<()> {
     require!(!is_paused, BoringErrorCode::VaultPaused);
     require!(allow_withdrawals, BoringErrorCode::AssetNotAllowed);
     Ok(())
 }
 
+/// Validates associated token accounts
+///
+/// # Arguments
+/// * `token` - Token mint address
+/// * `token_program` - Token program ID
+/// * `user` - User's wallet address
+/// * `vault` - Vault address
+/// * `user_ata` - User's token account
+/// * `vault_ata` - Vault's token account
 pub fn validate_associated_token_accounts(
     token: &Pubkey,
     token_program: &Pubkey,
@@ -67,6 +100,9 @@ pub fn validate_associated_token_accounts(
     Ok(())
 }
 
+// ================================ Token Transfer Functions ================================
+
+/// Transfers tokens to a destination with signer seeds
 pub fn transfer_tokens_to<'a>(
     token_program: AccountInfo<'a>,
     from: AccountInfo<'a>,
@@ -93,6 +129,7 @@ pub fn transfer_tokens_to<'a>(
     )
 }
 
+/// Transfers tokens from a source
 pub fn transfer_tokens_from<'a>(
     token_program: AccountInfo<'a>,
     from: AccountInfo<'a>,
@@ -117,6 +154,9 @@ pub fn transfer_tokens_from<'a>(
     )
 }
 
+// ================================ Share Calculation Functions ================================
+
+/// Calculates shares to mint and performs minting operation
 pub fn calculate_shares_and_mint<'a>(
     is_base: bool,
     args: DepositArgs,
@@ -199,6 +239,7 @@ pub fn calculate_shares_and_mint<'a>(
     Ok(shares_to_mint)
 }
 
+/// Calculates assets to withdraw
 pub fn calculate_assets_out<'a>(
     is_base: bool,
     args: WithdrawArgs,
@@ -247,10 +288,14 @@ pub fn calculate_assets_out<'a>(
     Ok(assets_out)
 }
 
+// ================================ Exchange Rate Functions ================================
+
+/// Gets the current exchange rate
 pub fn get_rate(boring_vault_state: Account<'_, BoringVault>) -> Result<u64> {
     Ok(boring_vault_state.teller.exchange_rate)
 }
 
+/// Gets the exchange rate in terms of quote asset
 pub fn get_rate_in_quote(
     boring_vault_state: Account<'_, BoringVault>,
     quote: InterfaceAccount<'_, Mint>,
@@ -292,6 +337,9 @@ pub fn get_rate_in_quote(
     }
 }
 
+// ================================ Internal Helper Functions ================================
+
+/// Calculates shares to mint using base asset
 fn calculate_shares_to_mint_using_base_asset(
     deposit_amount: u64,
     exchange_rate: u64,
@@ -312,6 +360,7 @@ fn calculate_shares_to_mint_using_base_asset(
     Ok(shares_to_mint)
 }
 
+/// Calculates shares to mint using deposit asset
 fn calculate_shares_to_mint_using_deposit_asset(
     deposit_amount: u64,
     exchange_rate: u64,
@@ -344,6 +393,7 @@ fn calculate_shares_to_mint_using_deposit_asset(
     Ok(shares_to_mint)
 }
 
+/// Applies share premium to calculated shares
 fn factor_in_share_premium(shares_to_mint: Decimal, share_premium_bps: u16) -> Result<Decimal> {
     if share_premium_bps > 0 {
         let premium_bps = to_decimal(share_premium_bps, BPS_DECIMALS)?;
@@ -354,6 +404,7 @@ fn factor_in_share_premium(shares_to_mint: Decimal, share_premium_bps: u16) -> R
     }
 }
 
+/// Calculates assets to withdraw in base asset
 fn calculate_assets_out_in_base_asset(
     share_amount: u64,
     exchange_rate: u64,
@@ -371,6 +422,7 @@ fn calculate_assets_out_in_base_asset(
     Ok(assets_out)
 }
 
+/// Calculates assets to withdraw using withdraw asset
 fn calculate_assets_out_using_withdraw_asset(
     share_amount: u64,
     exchange_rate: u64,
