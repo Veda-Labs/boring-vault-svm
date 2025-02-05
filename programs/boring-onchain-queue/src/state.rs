@@ -55,6 +55,7 @@ pub struct DeployArgs {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct UpdateWithdrawAssetArgs {
     pub vault_id: u64,
+    pub allow_withdraws: bool,
     pub seconds_to_maturity: u32,
     pub minimum_seconds_to_deadline: u32,
     pub minimum_discount: u16,

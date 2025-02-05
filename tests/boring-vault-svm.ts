@@ -1658,25 +1658,22 @@ describe("boring-vault-svm", () => {
     expect(queueState.paused).to.be.false;
   });
 
-  it("Can update withdraw assets", async () => {
+  // ... existing tests ...
+
+  it("Can set solve authority", async () => {
+    // Store original solve authority
+    const queueState = await queueProgram.account.queueState.fetch(
+      queueStateAccount
+    );
+    const originalSolveAuthority = queueState.solveAuthority;
+
+    // Set new solve authority
+    const newSolveAuthority = anchor.web3.Keypair.generate().publicKey;
     const ix = await queueProgram.methods
-      .updateWithdrawAssetData(
-        // @ts-ignore
-        {
-          vaultId: new anchor.BN(0),
-          secondsToMaturity: new anchor.BN(86400),
-          minimumSecondsToDeadline: new anchor.BN(2 * 86400),
-          minimumDiscount: new anchor.BN(1),
-          maximumDiscount: new anchor.BN(10),
-          minimumShares: new anchor.BN(1000),
-        }
-      )
+      .setSolveAuthority(new anchor.BN(0), newSolveAuthority)
       .accounts({
         signer: authority.publicKey,
         queueState: queueStateAccount,
-        withdrawMint: JITOSOL,
-        withdrawAssetData: jitoSolWithdrawAssetData,
-        // Looks like system program is included by default?
       })
       .instruction();
 
@@ -1685,10 +1682,265 @@ describe("boring-vault-svm", () => {
     ]);
     ths.expectTxToSucceed(txResult.result);
 
-    const withdrawAssetData =
-      await queueProgram.account.withdrawAssetData.fetch(
-        jitoSolWithdrawAssetData
+    // Verify solve authority was changed
+    const updatedState = await queueProgram.account.queueState.fetch(
+      queueStateAccount
+    );
+    expect(updatedState.solveAuthority.equals(newSolveAuthority)).to.be.true;
+
+    // Revert back to original
+    const revertIx = await queueProgram.methods
+      .setSolveAuthority(new anchor.BN(0), originalSolveAuthority)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    let revertTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(revertTxResult.result);
+
+    // Verify reverted back
+    const finalState = await queueProgram.account.queueState.fetch(
+      queueStateAccount
+    );
+    expect(finalState.solveAuthority.equals(originalSolveAuthority)).to.be.true;
+  });
+
+  it("Can pause and unpause queue", async () => {
+    // Store original pause state
+    const queueState = await queueProgram.account.queueState.fetch(
+      queueStateAccount
+    );
+    const originalPauseState = queueState.paused;
+
+    // Pause queue
+    const pauseIx = await queueProgram.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    let pauseTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(pauseTxResult.result);
+
+    // Verify queue is paused
+    const pausedState = await queueProgram.account.queueState.fetch(
+      queueStateAccount
+    );
+    expect(pausedState.paused).to.be.true;
+
+    // Unpause queue
+    const unpauseIx = await queueProgram.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    let unpauseTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(unpauseTxResult.result);
+
+    // Verify queue is unpaused
+    const unpausedState = await queueProgram.account.queueState.fetch(
+      queueStateAccount
+    );
+    expect(unpausedState.paused).to.be.false;
+
+    // If original state was paused, pause it again to restore original state
+    if (originalPauseState) {
+      const restoreIx = await queueProgram.methods
+        .pause(new anchor.BN(0))
+        .accounts({
+          signer: authority.publicKey,
+          queueState: queueStateAccount,
+        })
+        .instruction();
+
+      let restoreTxResult = await ths.createAndProcessTransaction(
+        client,
+        deployer,
+        restoreIx,
+        [authority]
       );
+      ths.expectTxToSucceed(restoreTxResult.result);
+    }
+
+    // Verify final state matches original
+    const finalState = await queueProgram.account.queueState.fetch(
+      queueStateAccount
+    );
+    expect(finalState.paused).to.equal(originalPauseState);
+  });
+
+  it("Cannot set solve authority without authority", async () => {
+    // Try to set new solve authority with wrong signer
+    const newSolveAuthority = anchor.web3.Keypair.generate().publicKey;
+    const ix = await queueProgram.methods
+      .setSolveAuthority(new anchor.BN(0), newSolveAuthority)
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      user,
+    ]);
+    expect(txResult.result).to.not.be.null; // Should fail
+  });
+
+  it("Cannot pause/unpause queue without authority", async () => {
+    // Try to pause with wrong signer
+    const pauseIx = await queueProgram.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    let pauseTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [user]
+    );
+    expect(pauseTxResult.result).to.not.be.null; // Should fail
+
+    // Try to unpause with wrong signer
+    const unpauseIx = await queueProgram.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    let unpauseTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [user]
+    );
+    expect(unpauseTxResult.result).to.not.be.null; // Should fail
+  });
+
+  it("Can update withdraw assets", async () => {
+    // Initial update
+    const initialState = {
+      vaultId: new anchor.BN(0),
+      allowWithdraws: true,
+      secondsToMaturity: 86400,
+      minimumSecondsToDeadline: 2 * 86400,
+      minimumDiscount: 1,
+      maximumDiscount: 10,
+      minimumShares: new anchor.BN(1000),
+    };
+
+    const ix = await queueProgram.methods
+      .updateWithdrawAssetData(initialState)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToSucceed(txResult.result);
+
+    // Verify initial state
+    let withdrawAssetData = await queueProgram.account.withdrawAssetData.fetch(
+      jitoSolWithdrawAssetData
+    );
+    expect(withdrawAssetData.allowWithdrawals).to.be.true;
+    expect(withdrawAssetData.secondsToMaturity).to.equal(86400);
+    expect(withdrawAssetData.minimumSecondsToDeadline).to.equal(2 * 86400);
+    expect(withdrawAssetData.minimumDiscount).to.equal(1);
+    expect(withdrawAssetData.maximumDiscount).to.equal(10);
+    expect(withdrawAssetData.minimumShares.toNumber()).to.equal(1000);
+
+    // Update to disable withdrawals
+    const disabledState = {
+      ...initialState,
+      allowWithdraws: false,
+    };
+
+    const disableIx = await queueProgram.methods
+      .updateWithdrawAssetData(disabledState)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      disableIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Verify withdrawals are disabled
+    withdrawAssetData = await queueProgram.account.withdrawAssetData.fetch(
+      jitoSolWithdrawAssetData
+    );
+    expect(withdrawAssetData.allowWithdrawals).to.be.false;
+    // Verify other fields remained unchanged
+    expect(withdrawAssetData.secondsToMaturity).to.equal(86400);
+    expect(withdrawAssetData.minimumSecondsToDeadline).to.equal(2 * 86400);
+    expect(withdrawAssetData.minimumDiscount).to.equal(1);
+    expect(withdrawAssetData.maximumDiscount).to.equal(10);
+    expect(withdrawAssetData.minimumShares.toNumber()).to.equal(1000);
+
+    // Revert back to initial state
+    const revertIx = await queueProgram.methods
+      .updateWithdrawAssetData(initialState)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      revertIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Verify state is back to initial
+    withdrawAssetData = await queueProgram.account.withdrawAssetData.fetch(
+      jitoSolWithdrawAssetData
+    );
     expect(withdrawAssetData.allowWithdrawals).to.be.true;
     expect(withdrawAssetData.secondsToMaturity).to.equal(86400);
     expect(withdrawAssetData.minimumSecondsToDeadline).to.equal(2 * 86400);
@@ -1842,7 +2094,7 @@ describe("boring-vault-svm", () => {
     ).to.equal("0"); // Queue had no change
   });
 
-  it("Allows users to cancel withdraw requests", async () => {
+  it("Allows users to cancel withdraw requests only after deadline", async () => {
     let bump;
     [userWithdrawRequest, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
@@ -1853,6 +2105,7 @@ describe("boring-vault-svm", () => {
       queueProgram.programId
     );
 
+    // Create withdraw request
     const ix_withdraw_request = await queueProgram.methods
       .requestWithdraw(
         // @ts-ignore
@@ -1860,7 +2113,7 @@ describe("boring-vault-svm", () => {
           vaultId: new anchor.BN(0),
           shareAmount: new anchor.BN(1000000),
           discount: new anchor.BN(3),
-          secondsToDeadline: new anchor.BN(3 * 86400),
+          secondsToDeadline: new anchor.BN(3 * 86400), // 3 days deadline
         }
       )
       .accounts({
@@ -1894,7 +2147,7 @@ describe("boring-vault-svm", () => {
     );
     ths.expectTxToSucceed(txResult.result);
 
-    // Now have user cancel their request.
+    // Try to cancel before deadline - should fail
     const cancel_ix = await queueProgram.methods
       .cancelWithdraw(new anchor.BN(0), new anchor.BN(1))
       .accounts({
@@ -1908,9 +2161,22 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
+    let earlyResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      cancel_ix,
+      [user]
+    );
+    expect(earlyResult.result).to.not.be.null; // Should fail
+
+    // Wait until after deadline (3 days maturity + 3 days deadline = 6 days)
+    await ths.wait(client, context, 6 * 86400);
+
+    // Now try to cancel after deadline
     let userShareStartBalance = await ths.getTokenBalance(client, userShareAta);
 
     let cancelResult = await ths.createAndProcessTransaction(
@@ -1923,9 +2189,14 @@ describe("boring-vault-svm", () => {
 
     let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
 
+    // Verify shares were returned
     expect((userShareEndBalance - userShareStartBalance).toString()).to.equal(
       "1000000"
     ); // User gained Shares
+
+    // Verify withdraw request account was closed
+    const withdrawRequestAccount = await client.getAccount(userWithdrawRequest);
+    expect(withdrawRequestAccount).to.be.null;
   });
 
   it("Can pause and unpause vault", async () => {
