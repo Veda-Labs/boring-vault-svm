@@ -428,7 +428,6 @@ describe("boring-vault-svm", () => {
     expect(boringVault.config.shareMint.equals(boringVaultShareMint)).to.be
       .true;
     expect(boringVault.config.paused).to.be.false;
-    expect(boringVault.config.initialized).to.be.true;
   });
 
   it("Can transfer authority", async () => {
@@ -551,6 +550,7 @@ describe("boring-vault-svm", () => {
     }
   });
 
+  // TODO
   it("Can update asset data", async () => {
     const ix = await program.methods
       .updateAssetData({
@@ -591,6 +591,51 @@ describe("boring-vault-svm", () => {
     expect(assetData.priceFeed.equals(anchor.web3.PublicKey.default)).to.be
       .true;
     expect(assetData.inversePriceFeed).to.be.false;
+
+    // Update JitoSol asset data again
+    const ix_0 = await program.methods
+      .updateAssetData({
+        vaultId: new anchor.BN(0),
+        assetData: {
+          allowDeposits: true,
+          allowWithdrawals: true,
+          sharePremiumBps: 0,
+          isPeggedToBaseAsset: true,
+          priceFeed: anchor.web3.PublicKey.default,
+          inversePriceFeed: false,
+        },
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        systemProgram: anchor.web3.SystemProgram.programId,
+        asset: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+      })
+      .instruction();
+
+    let txResult_0 = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      ix_0,
+      [authority]
+    );
+
+    // Expect the tx to succeed.
+    ths.expectTxToSucceed(txResult_0.result);
+
+    // Make sure changes took affect.
+    const assetDataAfterUpdate = await program.account.assetData.fetch(
+      jitoSolAssetDataPda
+    );
+    expect(assetDataAfterUpdate.allowDeposits).to.be.true;
+    expect(assetDataAfterUpdate.allowWithdrawals).to.be.true;
+    expect(assetDataAfterUpdate.sharePremiumBps).to.equal(0);
+    expect(assetDataAfterUpdate.isPeggedToBaseAsset).to.be.true;
+    expect(assetDataAfterUpdate.priceFeed.equals(anchor.web3.PublicKey.default))
+      .to.be.true;
+    expect(assetDataAfterUpdate.inversePriceFeed).to.be.false;
   });
 
   it("Can deposit SOL into a vault", async () => {
@@ -674,38 +719,6 @@ describe("boring-vault-svm", () => {
   });
 
   it("Can deposit JitoSOL into a vault", async () => {
-    const ix_0 = await program.methods
-      .updateAssetData({
-        vaultId: new anchor.BN(0),
-        assetData: {
-          allowDeposits: true,
-          allowWithdrawals: true,
-          sharePremiumBps: 0,
-          isPeggedToBaseAsset: true,
-          priceFeed: anchor.web3.PublicKey.default,
-          inversePriceFeed: false,
-        },
-      })
-      .accounts({
-        signer: authority.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        systemProgram: anchor.web3.SystemProgram.programId,
-        asset: JITOSOL,
-        assetData: jitoSolAssetDataPda,
-      })
-      .instruction();
-
-    let txResult_0 = await ths.createAndProcessTransaction(
-      client,
-      deployer,
-      ix_0,
-      [authority]
-    );
-
-    // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult_0.result);
-
     let depositAmount = new anchor.BN(1000000000);
     const ix_1 = await program.methods
       .deposit({

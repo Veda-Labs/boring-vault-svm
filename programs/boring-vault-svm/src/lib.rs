@@ -84,7 +84,6 @@ pub mod boring_vault_svm {
         vault.config.vault_id = ctx.accounts.config.vault_count;
         vault.config.authority = args.authority;
         vault.config.share_mint = ctx.accounts.share_mint.key();
-        vault.config.initialized = true;
         vault.config.paused = false;
 
         // Initialize teller state.
@@ -490,7 +489,6 @@ pub mod boring_vault_svm {
             .set_scale(vault_decimals as u32)
             .unwrap();
         let current_exchange_rate = ctx.accounts.boring_vault_state.teller.exchange_rate;
-        msg!("Current exchange rate: {}", current_exchange_rate);
         let mut current_exchange_rate_d = Decimal::from(current_exchange_rate);
         current_exchange_rate_d
             .set_scale(vault_decimals as u32)
@@ -720,7 +718,7 @@ pub mod boring_vault_svm {
     }
 
     // ================================ Deposit Functions ================================
-    // TODO could add deposit authority logic like I did for withdraw authority
+
     pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<u64> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,

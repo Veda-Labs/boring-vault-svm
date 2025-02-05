@@ -16,11 +16,12 @@ pub struct BoringVault {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct VaultState {
+    /// Immutable after deployment
     pub vault_id: u64,
     pub authority: Pubkey,
     pub pending_authority: Pubkey,
     pub paused: bool,
-    pub initialized: bool,
+    /// Immutable after deployment
     pub share_mint: Pubkey,
     pub deposit_sub_account: u8,
     pub withdraw_sub_account: u8,
@@ -28,7 +29,9 @@ pub struct VaultState {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct TellerState {
+    /// Immutable after deployment
     pub base_asset: Pubkey,
+    /// Immutable after deployment
     pub decimals: u8,
     pub exchange_rate_provider: Pubkey,
     pub exchange_rate: u64,
