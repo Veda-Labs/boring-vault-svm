@@ -97,7 +97,7 @@ export class CpiService {
     remainingAccounts: AccountMeta[]
   ): Promise<BanksTransactionResultWithMeta> {
     // 1. View CPI Digest
-    const view_ix = await params.program.methods
+    const digest = await params.program.methods
       .viewCpiDigest(
         // @ts-ignore
         {
@@ -111,8 +111,6 @@ export class CpiService {
       .signers([params.deployer])
       .remainingAccounts(remainingAccounts)
       .view();
-
-    const digest = view_ix.digest;
 
     // 2. Find CPI Digest Account
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(

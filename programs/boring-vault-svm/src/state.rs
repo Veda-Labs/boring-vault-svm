@@ -23,7 +23,7 @@ pub struct VaultState {
     pub initialized: bool,
     pub share_mint: Pubkey,
     pub deposit_sub_account: u8,
-    pub withdraw_sub_account: u8, // TODO Add function to set this in deploy, and afterwards
+    pub withdraw_sub_account: u8,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -116,7 +116,6 @@ pub struct UpdateCpiDigestArgs {
     pub is_valid: bool,
 }
 
-// TODO this could probs use a ViewCpiDigestArgs struct to prevernt repetition
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct ManageArgs {
     pub vault_id: u64,
@@ -131,9 +130,4 @@ pub struct ManageArgs {
 #[derive(Debug)]
 pub struct CpiDigest {
     pub is_valid: bool,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct ViewCpiDigestReturn {
-    pub digest: [u8; 32],
 }

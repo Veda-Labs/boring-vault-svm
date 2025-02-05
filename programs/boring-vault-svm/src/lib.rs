@@ -244,6 +244,13 @@ pub mod boring_vault_svm {
 
     // TODO update exchange rate provider
     // TODO set withdraw authority
+    // TODO set deposit and withdraw sub accounts
+    // TODO set payout address
+    // hmmm actually the below just pays out to the authority which is a bit easier to handle account wise, so maybe we just delete that?
+    // TODO set exchange rate upper and lower bounds
+    // TODO set minimum update delay
+    // TODO set fees
+    // TODO set strategist
 
     pub fn claim_fees_in_base(
         ctx: Context<ClaimFeesInBase>,
@@ -784,13 +791,8 @@ pub mod boring_vault_svm {
     }
 
     // ================================== View Functions ==================================
-    // TODO preview_deposit
-    // TODO preview_withdraw
 
-    pub fn view_cpi_digest(
-        ctx: Context<ViewCpiDigest>,
-        args: ManageArgs,
-    ) -> Result<ViewCpiDigestReturn> {
+    pub fn view_cpi_digest(ctx: Context<ViewCpiDigest>, args: ManageArgs) -> Result<[u8; 32]> {
         // Hash the CPI call down to a digest
         let digest = args.operators.apply_operators(
             &args.ix_program_id,
@@ -799,7 +801,7 @@ pub mod boring_vault_svm {
             args.expected_size,
         )?;
 
-        Ok(ViewCpiDigestReturn { digest })
+        Ok(digest)
     }
 
     pub fn get_rate(ctx: Context<GetRate>, _vault_id: u64) -> Result<u64> {

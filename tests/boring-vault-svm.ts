@@ -1105,7 +1105,7 @@ describe("boring-vault-svm", () => {
 
   it("Can update and close cpi digests", async () => {
     // 1. View CPI Digest
-    const view_ix = await program.methods
+    const digest = await program.methods
       .viewCpiDigest(
         // @ts-ignore
         {
@@ -1118,8 +1118,6 @@ describe("boring-vault-svm", () => {
       )
       .signers([deployer])
       .view();
-
-    const digest = view_ix.digest;
 
     // 2. Find CPI Digest Account
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
