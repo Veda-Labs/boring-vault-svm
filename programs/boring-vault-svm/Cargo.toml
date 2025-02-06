@@ -9,12 +9,19 @@ crate-type = ["cdylib", "lib"]
 name = "boring_vault_svm"
 
 [features]
-default = []
+default = ["custom-heap", "custom-panic"]
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+custom-heap = []
+custom-panic = []
+anchor-debug = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = "0.30.1"
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
+anchor-spl = "0.30.1"
+switchboard-on-demand = "0.2.2"
+rust_decimal = "1.36.0"
+solana-program = "1.17.18"
