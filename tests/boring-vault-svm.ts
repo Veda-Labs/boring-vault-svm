@@ -116,9 +116,10 @@ describe("boring-vault-svm", () => {
 
   before(async () => {
     connection = new Connection(
-      `https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+      process.env.ALCHEMY_API_KEY
+        ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+        : "https://api.mainnet-beta.solana.com"
     );
-    // connection = new Connection(`https://api.mainnet-beta.solana.com`);
 
     // Helper function to create AddedAccount from public key
     const createAddedAccount = async (
@@ -1440,18 +1441,6 @@ describe("boring-vault-svm", () => {
       discriminator,
       lookupTableAddress.toBuffer(),
     ]);
-
-    // Use dev test tx LUT to make sure this method of creating instruciton data is valid
-    // Which it is the outputted instruction data in hex and bs58 are the same as the test tx.
-    const testInitUserMetadataData = Buffer.concat([
-      discriminator,
-      new anchor.web3.PublicKey(
-        "8xzmgxayzKLzEVQYti1rZpE5Bwad9dURmtGytfhbzkEe"
-      ).toBuffer(),
-    ]);
-    const encoded = bs58.encode(testInitUserMetadataData);
-    console.log("Instruction data: ", testInitUserMetadataData.toString("hex"));
-    console.log("Encoded Data:", encoded);
 
     // Create the instruction
     const initUserMetadataIx = new anchor.web3.TransactionInstruction({
