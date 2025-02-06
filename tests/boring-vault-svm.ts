@@ -31,8 +31,6 @@ describe("boring-vault-svm", () => {
   let client: BanksClient;
   let connection: Connection;
 
-  let testTxNonce = 0;
-
   let deployer: anchor.web3.Keypair;
   let authority: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   let newAuthority: anchor.web3.Keypair = anchor.web3.Keypair.generate();
@@ -1208,7 +1206,7 @@ describe("boring-vault-svm", () => {
     const transferSolIx = anchor.web3.SystemProgram.transfer({
       fromPubkey: user.publicKey,
       toPubkey: boringVaultAccount,
-      lamports: 100_000_000, // 0.1 SOL in lamports
+      lamports: 10_000_000_000, // 10 SOL in lamports
     });
 
     let transferTxResult = await ths.createAndProcessTransaction(
@@ -1336,8 +1334,6 @@ describe("boring-vault-svm", () => {
       "2039280"
     );
   });
-
-  // TODO test where I transfer SOL to a different sub account and back
 
   it("I Can lend JitoSOL on Mock Kamino", async () => {
     // Create lookup table for user
@@ -3417,6 +3413,7 @@ describe("boring-vault-svm", () => {
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
         asset: anchor.web3.PublicKey.default,
+        // @ts-ignore
         assetData: solAssetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -3478,6 +3475,7 @@ describe("boring-vault-svm", () => {
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
         asset: anchor.web3.PublicKey.default,
+        // @ts-ignore
         assetData: solAssetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -3560,8 +3558,7 @@ describe("boring-vault-svm", () => {
     );
     ths.expectTxToSucceed(txResult.result);
 
-    // TODO try to debug this
-    // const sharesOut = txResult.meta.returnData.data;
+    let expectedShares = ths.getU64ReturnFromLogs(txResult);
 
     // Get final balances
     const finalUserSol = await client.getBalance(user.publicKey);
@@ -3575,8 +3572,8 @@ describe("boring-vault-svm", () => {
     expect(Number(finalVaultSol)).to.equal(
       Number(initialVaultSol) + depositArgs.depositAmount.toNumber()
     );
-    expect(Number(finalUserShares)).to.be.greaterThan(
-      Number(initialUserShares)
+    expect(Number(finalUserShares)).to.equal(
+      Number(initialUserShares) + expectedShares
     );
   });
 
@@ -3592,6 +3589,7 @@ describe("boring-vault-svm", () => {
       .deposit(depositArgs)
       .accounts({
         signer: user.publicKey,
+        // @ts-ignore
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3625,6 +3623,7 @@ describe("boring-vault-svm", () => {
       .deposit(depositArgs)
       .accounts({
         signer: user.publicKey,
+        // @ts-ignore
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3676,6 +3675,7 @@ describe("boring-vault-svm", () => {
       .deposit(depositArgs)
       .accounts({
         signer: user.publicKey,
+        // @ts-ignore
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3738,6 +3738,7 @@ describe("boring-vault-svm", () => {
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
         asset: JITOSOL,
+        // @ts-ignore
         assetData: jitoSolAssetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -3756,6 +3757,7 @@ describe("boring-vault-svm", () => {
       .deposit(depositArgs)
       .accounts({
         signer: user.publicKey,
+        // @ts-ignore
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3825,6 +3827,7 @@ describe("boring-vault-svm", () => {
       .deposit(highSlippageArgs)
       .accounts({
         signer: user.publicKey,
+        // @ts-ignore
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3866,6 +3869,7 @@ describe("boring-vault-svm", () => {
       .deposit(depositArgs)
       .accounts({
         signer: user.publicKey,
+        // @ts-ignore
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3890,6 +3894,8 @@ describe("boring-vault-svm", () => {
     );
     ths.expectTxToSucceed(txResult.result);
 
+    let expectedShares = ths.getU64ReturnFromLogs(txResult);
+
     // Get final balances
     const finalUserTokens = await ths.getTokenBalance(client, userJitoSolAta);
     const finalVaultTokens = await ths.getTokenBalance(client, vaultJitoSolAta);
@@ -3902,10 +3908,809 @@ describe("boring-vault-svm", () => {
     expect(Number(finalVaultTokens)).to.equal(
       Number(initialVaultTokens) + depositArgs.depositAmount.toNumber()
     );
-    expect(Number(finalUserShares)).to.be.greaterThan(
-      Number(initialUserShares)
+    expect(Number(finalUserShares)).to.equal(
+      Number(initialUserShares) + expectedShares
     );
   });
 
-  // TODO withdraw test
+  it("Withdraw - enforces constraints and updates state correctly", async () => {
+    const withdrawArgs = {
+      vaultId: new anchor.BN(0),
+      shareAmount: new anchor.BN(1_000_000_000),
+      minAssetsAmount: new anchor.BN(900_000_000),
+    };
+
+    // Try withdraw with invalid user ATA (using vault's ATA instead)
+    const invalidUserAtaIx = await program.methods
+      .withdraw(withdrawArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        withdrawMint: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        userAta: vaultJitoSolAta, // Using vault's ATA instead of user's
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidUserAtaIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Token Account"
+    );
+
+    // Try withdraw with invalid vault ATA (using user's ATA instead)
+    const invalidVaultAtaIx = await program.methods
+      .withdraw(withdrawArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        withdrawMint: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        userAta: userJitoSolAta,
+        vaultAta: userJitoSolAta, // Using user's ATA instead of vault's
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidVaultAtaIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Token Account"
+    );
+
+    // Try to withdraw when vault is paused
+    // First pause the vault
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try withdraw when paused
+    const pausedWithdrawIx = await program.methods
+      .withdraw(withdrawArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        withdrawMint: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pausedWithdrawIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Vault paused"
+    );
+
+    // Unpause vault but disable withdrawals in asset data
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Update asset data to disable withdrawals
+    const updateAssetDataIx = await program.methods
+      .updateAssetData({
+        vaultId: new anchor.BN(0),
+        assetData: {
+          allowDeposits: true,
+          allowWithdrawals: false,
+          sharePremiumBps: 0,
+          isPeggedToBaseAsset: true,
+          priceFeed: anchor.web3.PublicKey.default,
+          inversePriceFeed: false,
+        },
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: JITOSOL,
+        // @ts-ignore
+        assetData: jitoSolAssetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateAssetDataIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try withdraw when withdrawals are disabled
+    const disabledWithdrawIx = await program.methods
+      .withdraw(withdrawArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        withdrawMint: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      disabledWithdrawIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Asset not allowed"
+    );
+
+    // Re-enable withdrawals
+    const restoreAssetDataIx = await program.methods
+      .updateAssetData({
+        vaultId: new anchor.BN(0),
+        assetData: {
+          allowDeposits: true,
+          allowWithdrawals: true,
+          sharePremiumBps: 0,
+          isPeggedToBaseAsset: true,
+          priceFeed: anchor.web3.PublicKey.default,
+          inversePriceFeed: false,
+        },
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: JITOSOL,
+        // @ts-ignore
+        assetData: jitoSolAssetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      restoreAssetDataIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Get initial balances
+    const initialUserTokens = await ths.getTokenBalance(client, userJitoSolAta);
+    const initialVaultTokens = await ths.getTokenBalance(
+      client,
+      vaultJitoSolAta
+    );
+    const initialUserShares = await ths.getTokenBalance(client, userShareAta);
+
+    // Try a successful withdraw
+    const successWithdrawIx = await program.methods
+      .withdraw(withdrawArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        withdrawMint: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      successWithdrawIx,
+      [user]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    let expectedAssets = ths.getU64ReturnFromLogs(txResult);
+
+    // Get final balances
+    const finalUserTokens = await ths.getTokenBalance(client, userJitoSolAta);
+    const finalVaultTokens = await ths.getTokenBalance(client, vaultJitoSolAta);
+    const finalUserShares = await ths.getTokenBalance(client, userShareAta);
+
+    // Verify state changes
+    expect(Number(finalUserTokens)).to.equal(
+      Number(initialUserTokens) + expectedAssets
+    );
+    expect(Number(finalVaultTokens)).to.be.lessThan(Number(initialVaultTokens));
+    expect(Number(finalUserShares)).to.equal(
+      Number(initialUserShares) - withdrawArgs.shareAmount.toNumber()
+    );
+
+    // Set withdraw authority and try withdraw again
+    let someOtherAuthority = anchor.web3.Keypair.generate();
+    const setWithdrawAuthorityIx = await program.methods
+      .setWithdrawAuthority(new anchor.BN(0), someOtherAuthority.publicKey)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      setWithdrawAuthorityIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try withdraw with non-authority user
+    const unauthorizedWithdrawIx = await program.methods
+      .withdraw(withdrawArgs)
+      .accounts({
+        signer: user.publicKey, // Not the withdraw authority
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        withdrawMint: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unauthorizedWithdrawIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+  });
+
+  it("Update Exchange Rate - failure cases", async () => {
+    // Try to update exchange rate with non-provider account
+    const unauthorizedUpdateIx = await program.methods
+      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1_100_000_000))
+      .accounts({
+        signer: user.publicKey, // Not the exchange rate provider
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        shareMint: boringVaultShareMint,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unauthorizedUpdateIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+
+    // Pause the vault
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try to update exchange rate when paused
+    const pausedUpdateIx = await program.methods
+      .updateExchangeRate(new anchor.BN(0), new anchor.BN(1_100_000_000))
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        shareMint: boringVaultShareMint,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pausedUpdateIx,
+      [strategist]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Vault paused"
+    );
+
+    // Unpause the vault for future tests
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+  });
+
+  it("Manage - enforces constraints and executes CPIs correctly", async () => {
+    // Setup transfer instruction from sub-account 0 to 1
+    const transferAmount = new anchor.BN(1_234_567_890); // 1.234567890 SOL
+    const transfer0to1IxData = CpiService.createTransferIxData(
+      transferAmount.toNumber()
+    );
+
+    const [boringVaultSubAccount1] =
+      anchor.web3.PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("boring-vault"),
+          new anchor.BN(0).toArrayLike(Buffer, "le", 8),
+          Buffer.from([1]), // sub-account 1
+        ],
+        program.programId
+      );
+
+    const transfer0to1Accounts = [
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false }, // from (sub-account 0)
+      { pubkey: boringVaultSubAccount1, isWritable: true, isSigner: false }, // to (sub-account 1)
+      {
+        pubkey: anchor.web3.SystemProgram.programId,
+        isWritable: false,
+        isSigner: false,
+      },
+    ];
+
+    // Setup transfer instruction from sub-account 1 back to 0
+    const transfer1to0IxData = CpiService.createTransferIxData(
+      transferAmount.toNumber()
+    );
+
+    const transfer1to0Accounts = [
+      { pubkey: boringVaultSubAccount1, isWritable: true, isSigner: false }, // from (sub-account 1)
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false }, // to (sub-account 0)
+      {
+        pubkey: anchor.web3.SystemProgram.programId,
+        isWritable: false,
+        isSigner: false,
+      },
+    ];
+
+    // Get CPI digests
+    const digest0to1 = await program.methods
+      .viewCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          subAccount: 0,
+          ixProgramId: anchor.web3.SystemProgram.programId,
+          ixData: transfer0to1IxData,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
+      .signers([deployer])
+      .remainingAccounts(transfer0to1Accounts)
+      .view();
+
+    const [cpiDigest0to1Account] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("cpi-digest"),
+        boringVaultStateAccount.toBuffer(),
+        Buffer.from(digest0to1),
+      ],
+      program.programId
+    );
+
+    // Update CPI digest
+    const updateDigestIx = await program.methods
+      .updateCpiDigest({
+        vaultId: new anchor.BN(0),
+        cpiDigest: digest0to1,
+        isValid: true,
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        systemProgram: anchor.web3.SystemProgram.programId,
+        cpiDigest: cpiDigest0to1Account,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateDigestIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Attempt manage while paused
+    const pausedManageIx = await program.methods
+      .manage(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          subAccount: 0,
+          ixProgramId: anchor.web3.SystemProgram.programId,
+          ixData: transfer0to1IxData,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        cpiDigest: cpiDigest0to1Account,
+      })
+      .remainingAccounts(transfer0to1Accounts)
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pausedManageIx,
+      [strategist]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Vault paused"
+    );
+
+    // Unpause vault
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try to manage with non-strategist
+    const nonStrategist = anchor.web3.Keypair.generate();
+    const unauthorizedManageIx = await program.methods
+      .manage(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          subAccount: 0,
+          ixProgramId: anchor.web3.SystemProgram.programId,
+          ixData: transfer0to1IxData,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
+      .accounts({
+        signer: nonStrategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        cpiDigest: cpiDigest0to1Account,
+      })
+      .remainingAccounts(transfer0to1Accounts)
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unauthorizedManageIx,
+      [nonStrategist]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+
+    // Setup second CPI digest (1->0)
+    const digest1to0 = await program.methods
+      .viewCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          ixProgramId: anchor.web3.SystemProgram.programId,
+          ixData: transfer1to0IxData,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
+      .signers([deployer])
+      .remainingAccounts(transfer1to0Accounts)
+      .view();
+
+    const [cpiDigest1to0Account] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("cpi-digest"),
+        boringVaultStateAccount.toBuffer(),
+        Buffer.from(digest1to0),
+      ],
+      program.programId
+    );
+
+    // Update second CPI digest
+    const updateDigest1to0Ix = await program.methods
+      .updateCpiDigest({
+        vaultId: new anchor.BN(0),
+        cpiDigest: digest1to0,
+        isValid: true,
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        // @ts-ignore
+        systemProgram: anchor.web3.SystemProgram.programId,
+        cpiDigest: cpiDigest1to0Account,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateDigest1to0Ix,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try to execute transfer 0->1 with wrong digest (using 1->0 digest)
+    const wrongDigestManageIx = await program.methods
+      .manage(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          subAccount: 0,
+          ixProgramId: anchor.web3.SystemProgram.programId,
+          ixData: transfer0to1IxData,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        cpiDigest: cpiDigest1to0Account, // Wrong digest!
+      })
+      .remainingAccounts(transfer0to1Accounts)
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      wrongDigestManageIx,
+      [strategist]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid CPI Digest"
+    );
+
+    // Execute successful transfer 0->1
+    const initialBalance0 = await client.getBalance(boringVaultAccount);
+    const initialBalance1 = await client.getBalance(boringVaultSubAccount1);
+
+    const manage0to1Ix = await program.methods
+      .manage(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          subAccount: 0,
+          ixProgramId: anchor.web3.SystemProgram.programId,
+          ixData: transfer0to1IxData,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        cpiDigest: cpiDigest0to1Account,
+      })
+      .remainingAccounts(transfer0to1Accounts)
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      manage0to1Ix,
+      [strategist]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    const finalBalance0 = await client.getBalance(boringVaultAccount);
+    const finalBalance1 = await client.getBalance(boringVaultSubAccount1);
+
+    expect(Number(finalBalance0)).to.equal(
+      Number(initialBalance0) - transferAmount.toNumber()
+    );
+    expect(Number(finalBalance1)).to.equal(
+      Number(initialBalance1) + transferAmount.toNumber()
+    );
+
+    // Execute transfer back from 1->0
+    const initialBalance0ForReturn = await client.getBalance(
+      boringVaultAccount
+    );
+    const initialBalance1ForReturn = await client.getBalance(
+      boringVaultSubAccount1
+    );
+
+    const manage1to0Ix = await program.methods
+      .manage(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          subAccount: 1, // Using sub-account 1
+          ixProgramId: anchor.web3.SystemProgram.programId,
+          ixData: transfer1to0IxData,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
+      .accounts({
+        signer: strategist.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultSubAccount1, // Using sub-account 1
+        cpiDigest: cpiDigest1to0Account,
+      })
+      .remainingAccounts(transfer1to0Accounts)
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      manage1to0Ix,
+      [strategist]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    const finalBalance0ForReturn = await client.getBalance(boringVaultAccount);
+    const finalBalance1ForReturn = await client.getBalance(
+      boringVaultSubAccount1
+    );
+
+    expect(Number(finalBalance0ForReturn)).to.equal(
+      Number(initialBalance0ForReturn) + transferAmount.toNumber()
+    );
+    expect(Number(finalBalance1ForReturn)).to.equal(
+      Number(initialBalance1ForReturn) - transferAmount.toNumber()
+    );
+  });
 });

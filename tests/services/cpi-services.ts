@@ -77,6 +77,13 @@ export class CpiService {
     };
   }
 
+  static createTransferIxData(amount: number): Buffer {
+    const buffer = Buffer.alloc(12); // 4 bytes discriminator + 8 bytes for u64
+    buffer.write("0200000000", "hex"); // Transfer instruction discriminator (4 bytes)
+    buffer.writeBigUInt64LE(BigInt(amount), 4); // Write amount after 4-byte discriminator
+    return buffer;
+  }
+
   static async executeCpi(
     params: {
       program: Program<BoringVaultSvm>;

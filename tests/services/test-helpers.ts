@@ -119,6 +119,9 @@ export class TestHelperService {
   }
 
   static expectTxToSucceed(result: string) {
+    if (result != null) {
+      console.log("Result: ", result);
+    }
     expect(result).to.be.null;
   }
 
@@ -135,6 +138,28 @@ export class TestHelperService {
         .map((log) => `        ${log}`)
         .join("\n")}`
     ).to.be.true;
+  }
+
+  static getU64ReturnFromLogs(
+    txResult: BanksTransactionResultWithMeta
+  ): number {
+    // Find the return log - it contains "Program return:"
+    const returnLog = txResult.meta.logMessages.find((log) =>
+      log.includes("Program return:")
+    );
+    if (!returnLog) {
+      throw new Error("No return log found");
+    }
+
+    // Extract the base64 encoded return value
+    const base64Value = returnLog.split(" ").pop();
+    if (!base64Value) {
+      throw new Error("No return value found in log");
+    }
+
+    // Decode base64 to buffer and read as u64
+    const buffer = Buffer.from(base64Value, "base64");
+    return Number(buffer.readBigUInt64LE(0));
   }
 
   static async updateExchangeRateAndWait(
