@@ -185,11 +185,6 @@ pub mod boring_onchain_queue {
         ctx: Context<RequestWithdraw>,
         args: RequestWithdrawArgs,
     ) -> Result<()> {
-        // Validate share_mint
-        if ctx.accounts.share_mint.key() != ctx.accounts.queue_state.share_mint {
-            return Err(QueueErrorCode::InvalidShareMint.into());
-        }
-
         // Transfer shares to queue.
         token_interface::transfer_checked(
             CpiContext::new(
@@ -277,8 +272,6 @@ pub mod boring_onchain_queue {
     ///
     /// # Errors
     /// * `RequestDeadlineNotPassed` - If request deadline hasn't passed yet
-    /// * `InvalidVaultId` - If vault ID doesn't match request
-    /// * `QueuePaused` - If queue is paused
     /// * `InvalidShareMint` - If share mint doesn't match queue state
     pub fn cancel_withdraw(ctx: Context<CancelWithdraw>, _request_id: u64) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
@@ -328,7 +321,6 @@ pub mod boring_onchain_queue {
     /// * `RequestNotMature` - If maturity period hasn't passed
     /// * `RequestDeadlinePassed` - If request has expired
     /// * `InvalidWithdrawMint` - If withdraw mint doesn't match request
-    /// * `InvalidVaultId` - If vault ID doesn't match request
     /// * `QueuePaused` - If queue is paused
     /// * `InvalidTokenProgram` - If token program doesn't match mint
     pub fn fulfill_withdraw(
@@ -353,6 +345,15 @@ pub mod boring_onchain_queue {
         if ctx.accounts.withdraw_mint.key() != withdraw_request.asset_out {
             return Err(QueueErrorCode::InvalidWithdrawMint.into());
         }
+
+        // Validate user's ata. Cpi Withdraw validates vault and queue atas
+        let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
+        validate_associated_token_accounts(
+            &ctx.accounts.withdraw_mint.key(),
+            token_program_id,
+            &ctx.accounts.user.key(),
+            &ctx.accounts.user_ata.key(),
+        )?;
 
         // Withdraw from vault using CPI
         let withdraw_accounts = boring_vault_svm::cpi::accounts::Withdraw {
@@ -398,17 +399,6 @@ pub mod boring_onchain_queue {
         let assets_out = assets_out.get();
         // Cannot underflow as withdraw min amount out is asset_amount
         let excess = assets_out - withdraw_request.asset_amount;
-
-        // Transfer asset_amount from queue to user.
-        let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
-
-        // Validate user's ata. Cpi Withdraw validates vault and queue atas
-        validate_associated_token_accounts(
-            &ctx.accounts.withdraw_mint.key(),
-            token_program_id,
-            &ctx.accounts.user.key(),
-            &ctx.accounts.user_ata.key(),
-        )?;
 
         // Transfer asset_amount from queue to user
         let token_program = if token_program_id == &ctx.accounts.token_program.key() {
@@ -597,7 +587,8 @@ pub struct RequestWithdraw<'info> {
     #[account(
         seeds = [BASE_SEED_QUEUE_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused
+        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
+        constraint = queue_state.share_mint == share_mint.key() @ QueueErrorCode::InvalidShareMint,
     )]
     pub queue_state: Account<'info, QueueState>,
 
@@ -805,7 +796,6 @@ pub struct CancelWithdraw<'info> {
     #[account(
         seeds = [BASE_SEED_QUEUE_STATE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
         constraint = queue_state.share_mint == share_mint.key() @ QueueErrorCode::InvalidShareMint,
     )]
     pub queue_state: Account<'info, QueueState>,

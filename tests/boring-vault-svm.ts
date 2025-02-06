@@ -1654,8 +1654,6 @@ describe("boring-vault-svm", () => {
     expect(queueState.paused).to.be.false;
   });
 
-  // ... existing tests ...
-
   it("Can set solve authority", async () => {
     // Store original solve authority
     const queueState = await queueProgram.account.queueState.fetch(
@@ -2101,7 +2099,7 @@ describe("boring-vault-svm", () => {
     ).to.equal("0"); // Queue had no change
   });
 
-  it("Allows users to cancel withdraw requests only after deadline", async () => {
+  it("Allows users to cancel withdraw requests only after deadline, and with proper share mint", async () => {
     let bump;
     [userWithdrawRequest, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       [
@@ -2153,6 +2151,36 @@ describe("boring-vault-svm", () => {
       [user]
     );
     ths.expectTxToSucceed(txResult.result);
+
+    // Try to cancel with wrong share mint
+    const wrongShareMintIx = await queueProgram.methods
+      .cancelWithdraw(new anchor.BN(1))
+      .accounts({
+        signer: user.publicKey,
+        shareMint: JITOSOL, // Wrong mint!
+        queueState: queueStateAccount,
+        withdrawRequest: userWithdrawRequest,
+        queue: queueAccount,
+        // @ts-ignore
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      })
+      .instruction();
+
+    let wrongShareMintResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      wrongShareMintIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      wrongShareMintResult.result,
+      wrongShareMintResult.meta.logMessages,
+      "Invalid share mint"
+    ); // Should fail
 
     // Try to cancel before deadline - should fail
     const cancel_ix = await queueProgram.methods
@@ -4711,6 +4739,711 @@ describe("boring-vault-svm", () => {
     );
     expect(Number(finalBalance1ForReturn)).to.equal(
       Number(initialBalance1ForReturn) - transferAmount.toNumber()
+    );
+  });
+
+  it("Initialize Queue - failure cases", async () => {
+    // Try to initialize again with same config account
+    const [configAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("config")],
+      queueProgram.programId
+    );
+
+    const initializeIx = await queueProgram.methods
+      .initialize(authority.publicKey)
+      .accounts({
+        signer: authority.publicKey,
+        // @ts-ignore
+        config: configAccount,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    const txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      initializeIx,
+      [authority]
+    );
+
+    // Should fail with a raw anchor error (no custom error message)
+    expect(txResult.result).to.not.be.null;
+  });
+
+  it("Deploy Queue - failure cases", async () => {
+    const [newQueueStateAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-queue-state"),
+        Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]),
+      ],
+      queueProgram.programId
+    );
+
+    const [newQueueAccount] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("boring-queue"), Buffer.from([1, 0, 0, 0, 0, 0, 0, 0])],
+      queueProgram.programId
+    );
+
+    const ix = await queueProgram.methods
+      .deploy({
+        authority: authority.publicKey,
+        boringVaultProgram: program.programId,
+        vaultId: new anchor.BN(1), // use a vault id of 1 to cause share mint to be wrong.
+        shareMint: boringVaultShareMint, // share mint for vault id 0
+        solveAuthority: anchor.web3.SystemProgram.programId,
+      })
+      .accounts({
+        signer: deployer.publicKey,
+        // @ts-ignore
+        config: queueProgramConfigAccount,
+        queueState: newQueueStateAccount,
+        queue: newQueueAccount,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      deployer,
+    ]);
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid share mint"
+    );
+  });
+
+  // Initial update
+  const initialState = {
+    vaultId: new anchor.BN(0),
+    allowWithdraws: true,
+    secondsToMaturity: 86400,
+    minimumSecondsToDeadline: 2 * 86400,
+    minimumDiscount: 1,
+    maximumDiscount: 10,
+    minimumShares: new anchor.BN(1000),
+  };
+
+  it("Update Withdraw Asset - enforces authority check", async () => {
+    const initialState = {
+      vaultId: new anchor.BN(0),
+      allowWithdraws: true,
+      secondsToMaturity: 86400,
+      minimumSecondsToDeadline: 2 * 86400,
+      minimumDiscount: 1,
+      maximumDiscount: 10,
+      minimumShares: new anchor.BN(1000),
+    };
+    const ix = await queueProgram.methods
+      .updateWithdrawAssetData(initialState)
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      user,
+    ]);
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+  });
+
+  it("Request Withdraw - enforces constraints", async () => {
+    // Create withdraw request PDA for request ID 2
+    const [userWithdrawRequest2] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-queue-withdraw-request"),
+        user.publicKey.toBuffer(),
+        new anchor.BN(2).toArrayLike(Buffer, "le", 8),
+      ],
+      queueProgram.programId
+    );
+
+    // 1. Try when queue is paused
+    const pauseIx = await queueProgram.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try request when paused
+    let requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1_000_000),
+        discount: 500,
+        secondsToDeadline: 3600,
+      })
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Queue paused"
+    );
+
+    // Unpause for next tests
+    const unpauseIx = await queueProgram.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // 2. Try with invalid share mint (using JITOSOL instead of boringVaultShareMint)
+    requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1_000_000),
+        discount: 500,
+        secondsToDeadline: 3600,
+      })
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: JITOSOL, // Wrong mint!
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid share mint"
+    );
+
+    // 3. Try with invalid discount (too low)
+    requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1_000_000),
+        discount: 50, // 0.5% - below minimum
+        secondsToDeadline: 3600,
+      })
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid discount"
+    );
+
+    // 4. Try with insufficient share amount
+    requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(100), // Below minimum
+        discount: 5,
+        secondsToDeadline: 3600,
+      })
+      .accounts({
+        // Same accounts as above
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid share amount"
+    );
+
+    // 5. Try with invalid deadline
+    requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1_000_000),
+        discount: 5,
+        secondsToDeadline: 60, // Too short
+      })
+      .accounts({
+        // Same accounts as above
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid seconds to deadline"
+    );
+  });
+
+  it("Fulfill Withdraw - enforces constraints", async () => {
+    // Create new withdraw request (ID 2)
+    const [userWithdrawRequest2] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("boring-queue-withdraw-request"),
+        user.publicKey.toBuffer(),
+        new anchor.BN(2).toArrayLike(Buffer, "le", 8),
+      ],
+      queueProgram.programId
+    );
+
+    // Make the withdraw request
+    const requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1000000),
+        discount: 3,
+        secondsToDeadline: 3 * 86400,
+      })
+      .accounts({
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Set solve authority
+    const solveAuthority = anchor.web3.Keypair.generate();
+    const setSolveAuthorityIx = await queueProgram.methods
+      .setSolveAuthority(new anchor.BN(0), solveAuthority.publicKey)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      setSolveAuthorityIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // 1. Try to fulfill with non-solve authority
+    let fulfillIx = await queueProgram.methods
+      .fulfillWithdraw(new anchor.BN(2))
+      .accounts({
+        solver: user.publicKey,
+        user: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        userAta: userJitoSolAta,
+        queueAta: queueJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        queueShares: queueShareAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      fulfillIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+
+    // 2. Try to fulfill when queue is paused
+    const pauseIx = await queueProgram.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    fulfillIx = await queueProgram.methods
+      .fulfillWithdraw(new anchor.BN(2))
+      .accounts({
+        solver: solveAuthority.publicKey,
+        user: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        userAta: userJitoSolAta,
+        queueAta: queueJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        queueShares: queueShareAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      fulfillIx,
+      [solveAuthority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Queue paused"
+    );
+
+    // Unpause for next tests
+    const unpauseIx = await queueProgram.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // 3. Try to fulfill before maturity
+    fulfillIx = await queueProgram.methods
+      .fulfillWithdraw(new anchor.BN(2))
+      .accounts({
+        solver: solveAuthority.publicKey,
+        user: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        userAta: userJitoSolAta,
+        queueAta: queueJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        queueShares: queueShareAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      fulfillIx,
+      [solveAuthority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Request not mature"
+    );
+
+    ths.wait(client, context, 86_401);
+
+    // 4. Try to fulfill with wrong withdraw mint
+    fulfillIx = await queueProgram.methods
+      .fulfillWithdraw(new anchor.BN(2))
+      .accounts({
+        solver: solveAuthority.publicKey,
+        user: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: WSOL, // wrong withdraw mint
+        userAta: userJitoSolAta,
+        queueAta: queueJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        queueShares: queueShareAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      fulfillIx,
+      [solveAuthority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid withdraw mint"
+    );
+
+    // 5. Try to fulfill with wrong user ATA
+    fulfillIx = await queueProgram.methods
+      .fulfillWithdraw(new anchor.BN(2))
+      .accounts({
+        solver: solveAuthority.publicKey,
+        user: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        userAta: queueJitoSolAta, // wrong user ata
+        queueAta: queueJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        queueShares: queueShareAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      fulfillIx,
+      [solveAuthority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid token account"
+    );
+
+    // 6. Advance time past deadline and try to fulfill
+    await ths.wait(client, context, 4 * 86400); // Past the 3 day deadline
+
+    fulfillIx = await queueProgram.methods
+      .fulfillWithdraw(new anchor.BN(2))
+      .accounts({
+        solver: solveAuthority.publicKey,
+        user: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        userAta: userJitoSolAta,
+        queueAta: queueJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        queueShares: queueShareAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      fulfillIx,
+      [solveAuthority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Request deadline passed"
     );
   });
 });
