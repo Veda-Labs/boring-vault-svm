@@ -273,7 +273,6 @@ pub mod boring_onchain_queue {
     ///
     /// # Arguments
     /// * `ctx` - The context of accounts
-    /// * `vault_id` - The vault ID
     /// * `request_id` - The request ID to cancel
     ///
     /// # Errors
@@ -281,11 +280,7 @@ pub mod boring_onchain_queue {
     /// * `InvalidVaultId` - If vault ID doesn't match request
     /// * `QueuePaused` - If queue is paused
     /// * `InvalidShareMint` - If share mint doesn't match queue state
-    pub fn cancel_withdraw(
-        ctx: Context<CancelWithdraw>,
-        vault_id: u64,
-        _request_id: u64,
-    ) -> Result<()> {
+    pub fn cancel_withdraw(ctx: Context<CancelWithdraw>, _request_id: u64) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
         let current_time = ctx.accounts.clock.unix_timestamp as u64;
 
@@ -311,7 +306,7 @@ pub mod boring_onchain_queue {
                 },
                 &[&[
                     BASE_SEED_QUEUE,
-                    &vault_id.to_le_bytes()[..],
+                    &withdraw_request.vault_id.to_le_bytes()[..],
                     &[ctx.bumps.queue],
                 ]],
             ),
@@ -327,7 +322,6 @@ pub mod boring_onchain_queue {
     ///
     /// # Arguments
     /// * `ctx` - The context of accounts
-    /// * `vault_id` - The vault ID
     /// * `request_id` - The request ID to fulfill
     ///
     /// # Errors
@@ -339,14 +333,9 @@ pub mod boring_onchain_queue {
     /// * `InvalidTokenProgram` - If token program doesn't match mint
     pub fn fulfill_withdraw(
         ctx: Context<FulfillWithdraw>,
-        vault_id: u64,
         _request_id: u64, // Used in context
     ) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
-
-        if withdraw_request.vault_id != vault_id {
-            return Err(QueueErrorCode::InvalidVaultId.into());
-        }
 
         let current_time = ctx.accounts.clock.unix_timestamp as u64;
         let creation_time = withdraw_request.creation_time;
@@ -385,14 +374,14 @@ pub mod boring_onchain_queue {
 
         let seeds = &[
             BASE_SEED_QUEUE,
-            &vault_id.to_le_bytes()[..],
+            &withdraw_request.vault_id.to_le_bytes()[..],
             &[ctx.bumps.queue],
         ];
 
         let signer_seeds = &[&seeds[..]];
 
         let withdraw_args = boring_vault_svm::WithdrawArgs {
-            vault_id,
+            vault_id: withdraw_request.vault_id,
             share_amount: withdraw_request.share_amount,
             min_assets_amount: withdraw_request.asset_amount, // Min out should be assets needed for request.
         };
@@ -696,7 +685,7 @@ pub struct RequestWithdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(vault_id: u64, request_id: u64)]
+#[instruction(request_id: u64)]
 pub struct FulfillWithdraw<'info> {
     #[account(mut)]
     pub solver: Signer<'info>,
@@ -704,13 +693,21 @@ pub struct FulfillWithdraw<'info> {
     /// CHECK: Used in PDA derivation
     pub user: AccountInfo<'info>,
 
+    #[account(
+        mut,
+        seeds = [BASE_SEED_WITHDRAW_REQUEST, user.key().as_ref(), &request_id.to_le_bytes()[..]],
+        bump,
+        close = solver
+    )]
+    pub withdraw_request: Account<'info, WithdrawRequest>,
+
     // Share Token
     /// The vault's share mint
     #[account(mut)]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
-        seeds = [BASE_SEED_QUEUE_STATE, &vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_QUEUE_STATE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
         constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
         constraint = queue_state.solve_authority == Pubkey::default() || solver.key() == queue_state.solve_authority @ QueueErrorCode::NotAuthorized,
@@ -739,15 +736,7 @@ pub struct FulfillWithdraw<'info> {
 
     #[account(
         mut,
-        seeds = [BASE_SEED_WITHDRAW_REQUEST, user.key().as_ref(), &request_id.to_le_bytes()[..]],
-        bump,
-        close = solver
-    )]
-    pub withdraw_request: Account<'info, WithdrawRequest>,
-
-    #[account(
-        mut,
-        seeds = [BASE_SEED_QUEUE, &vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_QUEUE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
     )]
     /// CHECK: Account used to hold shares.
@@ -794,7 +783,7 @@ pub struct FulfillWithdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(vault_id: u64, request_id: u64)]
+#[instruction(request_id: u64)]
 pub struct CancelWithdraw<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -805,7 +794,16 @@ pub struct CancelWithdraw<'info> {
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
-        seeds = [BASE_SEED_QUEUE_STATE, &vault_id.to_le_bytes()[..]],
+        mut,
+        seeds = [BASE_SEED_WITHDRAW_REQUEST, signer.key().as_ref(), &request_id.to_le_bytes()[..]],
+        bump,
+        close = signer,
+    )]
+    /// CHECK: Signer key used in seeds, so request must belong to signer.
+    pub withdraw_request: Account<'info, WithdrawRequest>,
+
+    #[account(
+        seeds = [BASE_SEED_QUEUE_STATE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
         constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
         constraint = queue_state.share_mint == share_mint.key() @ QueueErrorCode::InvalidShareMint,
@@ -814,17 +812,7 @@ pub struct CancelWithdraw<'info> {
 
     #[account(
         mut,
-        seeds = [BASE_SEED_WITHDRAW_REQUEST, signer.key().as_ref(), &request_id.to_le_bytes()[..]],
-        bump,
-        close = signer,
-        constraint = vault_id == withdraw_request.vault_id @ QueueErrorCode::InvalidVaultId,
-    )]
-    /// CHECK: Signer key used in seeds, so request must belong to signer.
-    pub withdraw_request: Account<'info, WithdrawRequest>,
-
-    #[account(
-        mut,
-        seeds = [BASE_SEED_QUEUE, &vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_QUEUE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
     )]
     /// CHECK: Account used to hold shares.

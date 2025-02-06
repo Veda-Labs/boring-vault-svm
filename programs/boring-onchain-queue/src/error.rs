@@ -24,8 +24,6 @@ pub enum QueueErrorCode {
     InvalidWithdrawMint,
     #[msg("Invalid token program")]
     InvalidTokenProgram,
-    #[msg("Invalid vault id")]
-    InvalidVaultId,
     #[msg("Invalid share mint")]
     InvalidShareMint,
     #[msg("Invalid token account")]

@@ -2032,7 +2032,6 @@ describe("boring-vault-svm", () => {
 
     const solve_ix = await queueProgram.methods
       .fulfillWithdraw(
-        new anchor.BN(0), // vault id 0
         new anchor.BN(0) // request id 0
       )
       .accounts({
@@ -2161,7 +2160,7 @@ describe("boring-vault-svm", () => {
 
     // Try to cancel before deadline - should fail
     const cancel_ix = await queueProgram.methods
-      .cancelWithdraw(new anchor.BN(0), new anchor.BN(1))
+      .cancelWithdraw(new anchor.BN(1))
       .accounts({
         signer: user.publicKey,
         shareMint: boringVaultShareMint,
@@ -2887,42 +2886,1026 @@ describe("boring-vault-svm", () => {
       "Not authorized"
     );
 
-    // // Try with empty name
-    // const invalidNameArgs = {
-    //   ...deployArgs,
-    //   name: "",
-    // };
-    // // ... test case for empty name
+    // Try with invalid authority (default address)
+    const invalidAuthorityArgs = {
+      ...deployArgs,
+      authority: anchor.web3.PublicKey.default,
+    };
+    const invalidAuthorityIx = await program.methods
+      .deploy(invalidAuthorityArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: authority.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
 
-    // // Try with empty symbol
-    // const invalidSymbolArgs = {
-    //   ...deployArgs,
-    //   symbol: "",
-    // };
-    // // ... test case for empty symbol
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidAuthorityIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Authority"
+    );
 
-    // // Try with invalid exchange rate provider (zero address)
-    // const invalidExchangeRateProviderArgs = {
-    //   ...deployArgs,
-    //   exchangeRateProvider: anchor.web3.PublicKey.default,
-    // };
-    // // ... test case for invalid exchange rate provider
+    // Try with invalid exchange rate provider (zero address)
+    const invalidExchangeRateProviderArgs = {
+      ...deployArgs,
+      exchangeRateProvider: anchor.web3.PublicKey.default,
+    };
+    const invalidProviderIx = await program.methods
+      .deploy(invalidExchangeRateProviderArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: authority.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
 
-    // // Try with invalid exchange rate bounds (lower > upper)
-    // const invalidBoundsArgs = {
-    //   ...deployArgs,
-    //   allowedExchangeRateChangeLowerBound: 11000,
-    //   allowedExchangeRateChangeUpperBound: 9000,
-    // };
-    // // ... test case for invalid bounds
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidProviderIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Exchange Rate Provider"
+    );
 
-    // // Try with invalid minimum update delay (0)
-    // const invalidDelayArgs = {
-    //   ...deployArgs,
-    //   minimumUpdateDelayInSeconds: 0,
-    // };
-    // // ... test case for invalid delay
+    // Try with invalid payout address
+    const invalidPayoutArgs = {
+      ...deployArgs,
+      payoutAddress: anchor.web3.PublicKey.default,
+    };
+    const invalidPayoutIx = await program.methods
+      .deploy(invalidPayoutArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: authority.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
 
-    // // Continue with existing tests for fees, base asset, payout address...
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidPayoutIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Payout Address"
+    );
+
+    // Try with invalid exchange rate bounds (upper < BPS_SCALE)
+    const invalidUpperBoundArgs = {
+      ...deployArgs,
+      allowedExchangeRateChangeUpperBound: 9999, // Less than BPS_SCALE (10000)
+    };
+    const invalidUpperBoundIx = await program.methods
+      .deploy(invalidUpperBoundArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: authority.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidUpperBoundIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Allowed Exchange Rate Change Upper Bound"
+    );
+
+    // Try with invalid exchange rate bounds (lower > BPS_SCALE)
+    const invalidLowerBoundArgs = {
+      ...deployArgs,
+      allowedExchangeRateChangeLowerBound: 10_001, // Greater than BPS_SCALE (10000)
+    };
+    const invalidLowerBoundIx = await program.methods
+      .deploy(invalidLowerBoundArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: authority.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidLowerBoundIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Allowed Exchange Rate Change Lower Bound"
+    );
+
+    // Try with invalid platform fee
+    const invalidPlatformFeeArgs = {
+      ...deployArgs,
+      platformFeeBps: 2001, // Greater than MAXIMUM_PLATFORM_FEE_BPS (2000)
+    };
+    const invalidPlatformFeeIx = await program.methods
+      .deploy(invalidPlatformFeeArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: authority.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidPlatformFeeIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Platform Fee BPS"
+    );
+
+    // Try with invalid performance fee
+    const invalidPerformanceFeeArgs = {
+      ...deployArgs,
+      performanceFeeBps: 5001, // Greater than MAXIMUM_PERFORMANCE_FEE_BPS (5000)
+    };
+    const invalidPerformanceFeeIx = await program.methods
+      .deploy(invalidPerformanceFeeArgs)
+      .accounts({
+        // @ts-ignore
+        config: programConfigAccount,
+        boringVaultState: newVaultState,
+        shareMint: newVaultShareMint,
+        baseAsset: JITOSOL,
+        signer: authority.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidPerformanceFeeIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Performance Fee BPS"
+    );
   });
+
+  it("Pause/Unpause - authority validation", async () => {
+    // Try to pause with non-authority signer
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: user.publicKey, // Non-authority signer
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+
+    // Try to unpause with non-authority signer
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: user.publicKey, // Non-authority signer
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+  });
+
+  it("Authority transfer - failure cases", async () => {
+    // Try to transfer authority with non-authority signer
+    const transferIx = await program.methods
+      .transferAuthority(new anchor.BN(0), authority.publicKey)
+      .accounts({
+        signer: user.publicKey, // Non-authority signer
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      transferIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+
+    // First do a valid transfer to set up accept test
+    const validTransferIx = await program.methods
+      .transferAuthority(new anchor.BN(0), user.publicKey)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      validTransferIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try to accept authority with non-pending authority
+    const invalidAcceptIx = await program.methods
+      .acceptAuthority(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey, // Not the pending authority
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidAcceptIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+  });
+
+  it("Update asset data - failure cases", async () => {
+    const vaultId = new anchor.BN(0);
+
+    // Setup basic args
+    const updateArgs = {
+      vaultId: vaultId,
+      assetData: {
+        allowDeposits: true,
+        allowWithdrawals: true,
+        sharePremiumBps: 0,
+        isPeggedToBaseAsset: false,
+        priceFeed: new anchor.web3.PublicKey(
+          "Feed111111111111111111111111111111111111111"
+        ),
+        inversePriceFeed: false,
+      },
+    };
+
+    // Get PDA for asset data
+    const [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("asset-data"),
+        boringVaultStateAccount.toBuffer(),
+        JITOSOL.toBuffer(),
+      ],
+      program.programId
+    );
+
+    // Try with non-authority signer
+    const nonAuthUpdateIx = await program.methods
+      .updateAssetData(updateArgs)
+      .accounts({
+        signer: user.publicKey, // Non-authority signer
+        boringVaultState: boringVaultStateAccount,
+        asset: JITOSOL,
+        // @ts-ignore
+        assetData: assetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      nonAuthUpdateIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Not authorized"
+    );
+
+    // Try with invalid price feed (zero address) for non-pegged asset
+    const invalidPriceFeedArgs = {
+      vaultId: vaultId,
+      // @ts-ignore
+      assetData: {
+        ...updateArgs.assetData,
+        isPeggedToBaseAsset: false,
+        priceFeed: anchor.web3.PublicKey.default,
+      },
+    };
+    const invalidPriceFeedIx = await program.methods
+      .updateAssetData(invalidPriceFeedArgs)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: JITOSOL,
+        // @ts-ignore
+        assetData: assetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidPriceFeedIx,
+      [authority]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Price Feed"
+    );
+
+    // This should succeed - zero address price feed for pegged asset
+    const peggedAssetArgs = {
+      vaultId: vaultId,
+      // @ts-ignore
+      assetData: {
+        ...updateArgs.assetData,
+        isPeggedToBaseAsset: true,
+        priceFeed: anchor.web3.PublicKey.default,
+      },
+    };
+    const validPeggedIx = await program.methods
+      .updateAssetData(peggedAssetArgs)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: JITOSOL,
+        // @ts-ignore
+        assetData: assetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      validPeggedIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+  });
+
+  it("Deposit SOL - enforces constraints and updates state correctly", async () => {
+    const depositArgs = {
+      vaultId: new anchor.BN(0),
+      depositAmount: new anchor.BN(1_000_000_000), // 1 SOL
+      minMintAmount: new anchor.BN(900_000_000), // 0.9 shares minimum
+    };
+
+    // Try to deposit when vault is paused
+    // First pause the vault
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Now try to deposit
+    const pausedDepositIx = await program.methods
+      .depositSol(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: solAssetDataPda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: JITOSOL_SOL_ORACLE,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pausedDepositIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Vault paused"
+    );
+
+    // Unpause vault but disable deposits in asset data
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Update asset data to disable deposits
+    const updateAssetDataIx = await program.methods
+      .updateAssetData({
+        vaultId: new anchor.BN(0),
+        assetData: {
+          allowDeposits: false,
+          allowWithdrawals: true,
+          sharePremiumBps: 0,
+          isPeggedToBaseAsset: false,
+          priceFeed: JITOSOL_SOL_ORACLE,
+          inversePriceFeed: false,
+        },
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: anchor.web3.PublicKey.default,
+        assetData: solAssetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateAssetDataIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try to deposit when deposits are disabled
+    const disabledDepositIx = await program.methods
+      .depositSol(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: solAssetDataPda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: JITOSOL_SOL_ORACLE,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      disabledDepositIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Asset not allowed"
+    );
+
+    // Restore asset data to allow deposits
+    const restoreAssetDataIx = await program.methods
+      .updateAssetData({
+        vaultId: new anchor.BN(0),
+        assetData: {
+          allowDeposits: true,
+          allowWithdrawals: true,
+          sharePremiumBps: 0,
+          isPeggedToBaseAsset: false,
+          priceFeed: JITOSOL_SOL_ORACLE,
+          inversePriceFeed: false,
+        },
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: anchor.web3.PublicKey.default,
+        assetData: solAssetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      restoreAssetDataIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try deposit with too high minMintAmount
+    const highSlippageArgs = {
+      vaultId: new anchor.BN(0),
+      depositAmount: new anchor.BN(1_000_000_000), // 1 SOL
+      minMintAmount: new anchor.BN(2_000_000_000), // 2 shares minimum (impossible given 1 SOL deposit)
+    };
+
+    const highSlippageIx = await program.methods
+      .depositSol(highSlippageArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: solAssetDataPda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: JITOSOL_SOL_ORACLE,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      highSlippageIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Slippage tolerance exceeded"
+    );
+
+    // Get initial balances
+    const initialUserSol = await client.getBalance(user.publicKey);
+    const initialVaultSol = await client.getBalance(boringVaultAccount);
+    const initialUserShares = await ths.getTokenBalance(client, userShareAta);
+
+    // Try a successful deposit after restoring deposits
+    const successDepositIx = await program.methods
+      .depositSol(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        // @ts-ignore
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: solAssetDataPda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: JITOSOL_SOL_ORACLE,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      successDepositIx,
+      [user]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // TODO try to debug this
+    // const sharesOut = txResult.meta.returnData.data;
+
+    // Get final balances
+    const finalUserSol = await client.getBalance(user.publicKey);
+    const finalVaultSol = await client.getBalance(boringVaultAccount);
+    const finalUserShares = await ths.getTokenBalance(client, userShareAta);
+
+    // Verify state changes
+    expect(Number(finalUserSol)).to.equal(
+      Number(initialUserSol) - depositArgs.depositAmount.toNumber()
+    );
+    expect(Number(finalVaultSol)).to.equal(
+      Number(initialVaultSol) + depositArgs.depositAmount.toNumber()
+    );
+    expect(Number(finalUserShares)).to.be.greaterThan(
+      Number(initialUserShares)
+    );
+  });
+
+  it("Deposit - enforces constraints and updates state correctly", async () => {
+    const depositArgs = {
+      vaultId: new anchor.BN(0),
+      depositAmount: new anchor.BN(1_000_000_000),
+      minMintAmount: new anchor.BN(900_000_000),
+    };
+
+    // Try deposit with invalid user ATA (using vault's ATA instead)
+    const invalidUserAtaIx = await program.methods
+      .deposit(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: jitoSolAssetDataPda,
+        depositMint: JITOSOL,
+        userAta: vaultJitoSolAta, // Using vault's ATA instead of user's
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidUserAtaIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Token Account"
+    );
+
+    // Try deposit with invalid vault ATA (using user's ATA instead)
+    const invalidVaultAtaIx = await program.methods
+      .deposit(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: jitoSolAssetDataPda,
+        depositMint: JITOSOL,
+        userAta: userJitoSolAta,
+        vaultAta: userJitoSolAta, // Using user's ATA instead of vault's
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidVaultAtaIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Invalid Token Account"
+    );
+
+    // Try to deposit when vault is paused
+    // First pause the vault
+    const pauseIx = await program.methods
+      .pause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try deposit when paused
+    const pausedDepositIx = await program.methods
+      .deposit(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: jitoSolAssetDataPda,
+        depositMint: JITOSOL,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      pausedDepositIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Vault paused"
+    );
+
+    // Unpause vault but disable deposits in asset data
+    const unpauseIx = await program.methods
+      .unpause(new anchor.BN(0))
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      unpauseIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Update asset data to disable deposits
+    const updateAssetDataIx = await program.methods
+      .updateAssetData({
+        vaultId: new anchor.BN(0),
+        assetData: {
+          allowDeposits: false,
+          allowWithdrawals: true,
+          sharePremiumBps: 0,
+          isPeggedToBaseAsset: true,
+          priceFeed: anchor.web3.PublicKey.default,
+          inversePriceFeed: false,
+        },
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      updateAssetDataIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try deposit when deposits are disabled
+    const disabledDepositIx = await program.methods
+      .deposit(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: jitoSolAssetDataPda,
+        depositMint: JITOSOL,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      disabledDepositIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Asset not allowed"
+    );
+
+    // Re-enable deposits
+    const restoreAssetDataIx = await program.methods
+      .updateAssetData({
+        vaultId: new anchor.BN(0),
+        assetData: {
+          allowDeposits: true,
+          allowWithdrawals: true,
+          sharePremiumBps: 0,
+          isPeggedToBaseAsset: true,
+          priceFeed: anchor.web3.PublicKey.default,
+          inversePriceFeed: false,
+        },
+      })
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: JITOSOL,
+        assetData: jitoSolAssetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      restoreAssetDataIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Try deposit with too high minMintAmount (slippage)
+    const highSlippageArgs = {
+      vaultId: new anchor.BN(0),
+      depositAmount: new anchor.BN(1_000_000_000),
+      minMintAmount: new anchor.BN(100_000_000_000), // Unreasonably high min shares
+    };
+
+    const slippageDepositIx = await program.methods
+      .deposit(highSlippageArgs)
+      .accounts({
+        signer: user.publicKey,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: jitoSolAssetDataPda,
+        depositMint: JITOSOL,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      slippageDepositIx,
+      [user]
+    );
+    ths.expectTxToFail(
+      txResult.result,
+      txResult.meta.logMessages,
+      "Slippage tolerance exceeded"
+    );
+
+    // Get initial balances
+    const initialUserTokens = await ths.getTokenBalance(client, userJitoSolAta);
+    const initialVaultTokens = await ths.getTokenBalance(
+      client,
+      vaultJitoSolAta
+    );
+    const initialUserShares = await ths.getTokenBalance(client, userShareAta);
+
+    // Try a successful deposit
+    const successDepositIx = await program.methods
+      .deposit(depositArgs)
+      .accounts({
+        signer: user.publicKey,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        boringVaultState: boringVaultStateAccount,
+        boringVault: boringVaultAccount,
+        assetData: jitoSolAssetDataPda,
+        depositMint: JITOSOL,
+        userAta: userJitoSolAta,
+        vaultAta: vaultJitoSolAta,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      successDepositIx,
+      [user]
+    );
+    ths.expectTxToSucceed(txResult.result);
+
+    // Get final balances
+    const finalUserTokens = await ths.getTokenBalance(client, userJitoSolAta);
+    const finalVaultTokens = await ths.getTokenBalance(client, vaultJitoSolAta);
+    const finalUserShares = await ths.getTokenBalance(client, userShareAta);
+
+    // Verify state changes
+    expect(Number(finalUserTokens)).to.equal(
+      Number(initialUserTokens) - depositArgs.depositAmount.toNumber()
+    );
+    expect(Number(finalVaultTokens)).to.equal(
+      Number(initialVaultTokens) + depositArgs.depositAmount.toNumber()
+    );
+    expect(Number(finalUserShares)).to.be.greaterThan(
+      Number(initialUserShares)
+    );
+  });
+
+  // TODO withdraw test
 });

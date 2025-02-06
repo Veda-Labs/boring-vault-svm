@@ -80,7 +80,9 @@ pub mod boring_vault_svm {
     /// * `BoringErrorCode::InvalidPerformanceFeeBps` - If performance fee exceeds maximum
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
         // Make sure the authority is not the zero address.
-        require_keys_neq!(args.authority, Pubkey::default());
+        if args.authority == Pubkey::default() {
+            return Err(BoringErrorCode::InvalidAuthority.into());
+        }
 
         // Initialize vault.
         let vault = &mut ctx.accounts.boring_vault_state;
@@ -839,6 +841,7 @@ pub mod boring_vault_svm {
     /// # Errors
     /// * `BoringErrorCode::VaultPaused` - If vault is paused
     /// * `BoringErrorCode::AssetNotAllowed` - If deposits are not allowed
+    /// * `BoringErrorCode::SlippageExceeded` - If min share amount is not met
     pub fn deposit_sol(ctx: Context<DepositSol>, args: DepositArgs) -> Result<u64> {
         teller::before_deposit(
             ctx.accounts.boring_vault_state.config.paused,
@@ -1293,7 +1296,6 @@ pub struct DepositSol<'info> {
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 
@@ -1316,7 +1318,6 @@ pub struct DepositSol<'info> {
             NATIVE.as_ref(),
         ],
         bump,
-        constraint = asset_data.allow_deposits @ BoringErrorCode::AssetNotAllowed
     )]
     pub asset_data: Account<'info, AssetData>,
 
@@ -1359,7 +1360,6 @@ pub struct Deposit<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 
@@ -1385,7 +1385,6 @@ pub struct Deposit<'info> {
             deposit_mint.key().as_ref(),
         ],
         bump,
-        constraint = asset_data.allow_deposits @ BoringErrorCode::AssetNotAllowed
     )]
     pub asset_data: Account<'info, AssetData>,
 
