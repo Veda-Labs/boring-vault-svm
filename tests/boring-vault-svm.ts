@@ -368,7 +368,7 @@ describe("boring-vault-svm", () => {
     ]);
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const programConfig = await program.account.programConfig.fetch(
       programConfigAccount
@@ -411,7 +411,7 @@ describe("boring-vault-svm", () => {
     ]);
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const programConfig = await program.account.programConfig.fetch(
       programConfigAccount
@@ -447,7 +447,7 @@ describe("boring-vault-svm", () => {
       );
 
       // Expect the tx to succeed.
-      ths.expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -474,7 +474,7 @@ describe("boring-vault-svm", () => {
       );
 
       // Expect the tx to succeed.
-      ths.expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -506,7 +506,7 @@ describe("boring-vault-svm", () => {
       );
 
       // Expect the tx to succeed.
-      ths.expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -533,7 +533,7 @@ describe("boring-vault-svm", () => {
       );
 
       // Expect the tx to succeed.
-      ths.expectTxToSucceed(txResult.result);
+      ths.expectTxToSucceed(txResult);
 
       const boringVault = await program.account.boringVault.fetch(
         boringVaultStateAccount
@@ -577,7 +577,7 @@ describe("boring-vault-svm", () => {
     ]);
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const assetData = await program.account.assetData.fetch(
       jitoSolAssetDataPda
@@ -621,7 +621,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0);
 
     // Make sure changes took affect.
     const assetDataAfterUpdate = await program.account.assetData.fetch(
@@ -667,7 +667,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0);
 
     let depositAmount = new anchor.BN(1000000000);
     const ix_1 = await program.methods
@@ -703,7 +703,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1);
 
     let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
     let userSolEndBalance = await client.getBalance(user.publicKey);
@@ -762,7 +762,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1);
 
     // We expect this to be 1 share larger because of the previous deposit.
     let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
@@ -830,7 +830,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the tx to succeed.
-    ths.expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1);
 
     let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
     let userJitoSolEndBalance = await ths.getTokenBalance(
@@ -995,7 +995,7 @@ describe("boring-vault-svm", () => {
       unpause_ix,
       [authority]
     );
-    ths.expectTxToSucceed(txResult_unpause.result);
+    ths.expectTxToSucceed(txResult_unpause);
 
     boringVaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -1040,7 +1040,7 @@ describe("boring-vault-svm", () => {
       unpause_ix_1,
       [authority]
     );
-    ths.expectTxToSucceed(txResult_unpause_1.result);
+    ths.expectTxToSucceed(txResult_unpause_1);
 
     // 8th update - change exchange rate to a ridiculous low value
     await ths.updateExchangeRateAndWait(
@@ -1071,7 +1071,7 @@ describe("boring-vault-svm", () => {
       unpause_ix_2,
       [authority]
     );
-    ths.expectTxToSucceed(txResult_unpause_2.result);
+    ths.expectTxToSucceed(txResult_unpause_2);
   });
 
   it("Can claim fees", async () => {
@@ -1108,7 +1108,7 @@ describe("boring-vault-svm", () => {
       claim_fees_ix,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let payoutJitoSolEndBalance = await ths.getTokenBalance(
       client,
@@ -1174,7 +1174,7 @@ describe("boring-vault-svm", () => {
       [authority]
     );
 
-    ths.expectTxToSucceed(updateTxResult.result);
+    ths.expectTxToSucceed(updateTxResult);
 
     // 4. Close CPI Digest
     const closeIx = await program.methods
@@ -1198,7 +1198,7 @@ describe("boring-vault-svm", () => {
       [authority]
     );
 
-    ths.expectTxToSucceed(closeIxResult.result);
+    ths.expectTxToSucceed(closeIxResult);
   });
 
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
@@ -1217,7 +1217,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the transfer to succeed
-    ths.expectTxToSucceed(transferTxResult.result);
+    ths.expectTxToSucceed(transferTxResult);
 
     const remainingAccounts = CpiService.getJitoSolDepositAccounts({
       stakePool: JITO_SOL_STAKE_POOL,
@@ -1253,7 +1253,7 @@ describe("boring-vault-svm", () => {
       remainingAccounts
     );
 
-    ths.expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0);
   });
 
   it("Can transfer sol and wrap it", async () => {
@@ -1292,7 +1292,7 @@ describe("boring-vault-svm", () => {
       transferAccounts
     );
 
-    ths.expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0);
 
     // Now that our wSOL ata has SOL, we can wrap it.
     // Create the transfer instruction data
@@ -1327,7 +1327,7 @@ describe("boring-vault-svm", () => {
       wrapAccounts
     );
 
-    ths.expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1);
 
     let vaultWSolEndBalance = await ths.getTokenBalance(client, vaultWSolAta);
     expect((vaultWSolEndBalance - vaultWSolStartBalance).toString()).to.equal(
@@ -1406,7 +1406,7 @@ describe("boring-vault-svm", () => {
     tx.add(initUserMetadataIx);
     tx.sign(user);
     let result = await client.tryProcessTransaction(tx);
-    ths.expectTxToSucceed(result.result);
+    ths.expectTxToSucceed(result);
   });
 
   it("I Can lend JitoSOL on Real Kamino", async () => {
@@ -1482,7 +1482,7 @@ describe("boring-vault-svm", () => {
     tx.add(initUserMetadataIx);
     tx.sign(user);
     let result = await client.tryProcessTransaction(tx);
-    ths.expectTxToSucceed(result.result);
+    ths.expectTxToSucceed(result);
   });
 
   it("Can lend JitoSOL on Kamino", async () => {
@@ -1529,7 +1529,7 @@ describe("boring-vault-svm", () => {
       createLookupTableAccounts
     );
 
-    ths.expectTxToSucceed(txResult_0.result);
+    ths.expectTxToSucceed(txResult_0);
 
     // Step 1: Call Init User Metadata on Kamino Lend Program.
     const targetProgramId = mockKaminoLendProgram.programId;
@@ -1588,7 +1588,7 @@ describe("boring-vault-svm", () => {
       },
       initUserMetadataAccounts
     );
-    ths.expectTxToSucceed(txResult_1.result);
+    ths.expectTxToSucceed(txResult_1);
 
     // Step 2: Call Init Obligation on Kamino Lend Program.
     // const initObligationAccounts = [
@@ -1613,7 +1613,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
     ]);
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const queueConfig = await queueProgram.account.programConfig.fetch(
       queueProgramConfigAccount
@@ -1643,7 +1643,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
     ]);
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const queueState = await queueProgram.account.queueState.fetch(
       queueStateAccount
@@ -1674,7 +1674,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       authority,
     ]);
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Verify solve authority was changed
     const updatedState = await queueProgram.account.queueState.fetch(
@@ -1697,7 +1697,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
 
     // Verify reverted back
     const finalState = await queueProgram.account.queueState.fetch(
@@ -1728,7 +1728,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(pauseTxResult.result);
+    ths.expectTxToSucceed(pauseTxResult);
 
     // Verify queue is paused
     const pausedState = await queueProgram.account.queueState.fetch(
@@ -1751,7 +1751,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(unpauseTxResult.result);
+    ths.expectTxToSucceed(unpauseTxResult);
 
     // Verify queue is unpaused
     const unpausedState = await queueProgram.account.queueState.fetch(
@@ -1775,7 +1775,7 @@ describe("boring-vault-svm", () => {
         restoreIx,
         [authority]
       );
-      ths.expectTxToSucceed(restoreTxResult.result);
+      ths.expectTxToSucceed(restoreTxResult);
     }
 
     // Verify final state matches original
@@ -1799,11 +1799,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       user,
     ]);
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
   });
 
   it("Cannot pause/unpause queue without authority", async () => {
@@ -1822,11 +1818,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [user]
     );
-    ths.expectTxToFail(
-      pauseTxResult.result,
-      pauseTxResult.meta.logMessages,
-      "Not authorized"
-    ); // Should fail
+    ths.expectTxToFail(pauseTxResult, "Not authorized"); // Should fail
 
     // Try to unpause with wrong signer
     const unpauseIx = await queueProgram.methods
@@ -1843,11 +1835,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [user]
     );
-    ths.expectTxToFail(
-      unpauseTxResult.result,
-      unpauseTxResult.meta.logMessages,
-      "Not authorized"
-    ); // Should fail
+    ths.expectTxToFail(unpauseTxResult, "Not authorized"); // Should fail
   });
 
   it("Can update withdraw assets", async () => {
@@ -1875,7 +1863,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       authority,
     ]);
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Verify initial state
     let withdrawAssetData = await queueProgram.account.withdrawAssetData.fetch(
@@ -1910,7 +1898,7 @@ describe("boring-vault-svm", () => {
       disableIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Verify withdrawals are disabled
     withdrawAssetData = await queueProgram.account.withdrawAssetData.fetch(
@@ -1941,7 +1929,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Verify state is back to initial
     withdrawAssetData = await queueProgram.account.withdrawAssetData.fetch(
@@ -1968,7 +1956,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       user,
     ]);
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
   });
 
   it("Allows users to make withdraw requests", async () => {
@@ -2018,7 +2006,7 @@ describe("boring-vault-svm", () => {
       ix_withdraw_request,
       [user]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
   });
 
   it("Allows requests to be solved", async () => {
@@ -2073,7 +2061,7 @@ describe("boring-vault-svm", () => {
       solve_ix,
       [user]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let userJitoSolEndBalance = await ths.getTokenBalance(
       client,
@@ -2150,7 +2138,7 @@ describe("boring-vault-svm", () => {
       ix_withdraw_request,
       [user]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try to cancel with wrong share mint
     const wrongShareMintIx = await queueProgram.methods
@@ -2176,11 +2164,7 @@ describe("boring-vault-svm", () => {
       wrongShareMintIx,
       [user]
     );
-    ths.expectTxToFail(
-      wrongShareMintResult.result,
-      wrongShareMintResult.meta.logMessages,
-      "Invalid share mint"
-    ); // Should fail
+    ths.expectTxToFail(wrongShareMintResult, "Invalid share mint"); // Should fail
 
     // Try to cancel before deadline - should fail
     const cancel_ix = await queueProgram.methods
@@ -2206,11 +2190,7 @@ describe("boring-vault-svm", () => {
       cancel_ix,
       [user]
     );
-    ths.expectTxToFail(
-      earlyResult.result,
-      earlyResult.meta.logMessages,
-      "Request deadline not passed"
-    ); // Should fail
+    ths.expectTxToFail(earlyResult, "Request deadline not passed"); // Should fail
 
     // Wait until after deadline (3 days maturity + 3 days deadline = 6 days)
     await ths.wait(client, context, 6 * 86400);
@@ -2224,7 +2204,7 @@ describe("boring-vault-svm", () => {
       cancel_ix,
       [user]
     );
-    ths.expectTxToSucceed(cancelResult.result);
+    ths.expectTxToSucceed(cancelResult);
 
     let userShareEndBalance = await ths.getTokenBalance(client, userShareAta);
 
@@ -2262,7 +2242,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Check transaction succeeded
-    ths.expectTxToSucceed(pauseTxResult.result);
+    ths.expectTxToSucceed(pauseTxResult);
 
     // Verify vault is paused
     vaultState = await program.account.boringVault.fetch(
@@ -2288,11 +2268,7 @@ describe("boring-vault-svm", () => {
       updateRateIx,
       [strategist]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Vault paused"
-    ); // Transaction should fail
+    ths.expectTxToFail(txResult, "Vault paused"); // Transaction should fail
 
     // Unpause the vault
     const unpauseIx = await program.methods
@@ -2311,7 +2287,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Check transaction succeeded or was already processed
-    ths.expectTxToSucceed(unpauseTxResult.result);
+    ths.expectTxToSucceed(unpauseTxResult);
 
     // Verify vault is unpaused
     vaultState = await program.account.boringVault.fetch(
@@ -2337,7 +2313,7 @@ describe("boring-vault-svm", () => {
       updateRateIx2,
       [strategist]
     );
-    ths.expectTxToSucceed(updateTxResult.result);
+    ths.expectTxToSucceed(updateTxResult);
   });
 
   it("Can update exchange rate provider", async () => {
@@ -2366,7 +2342,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the tx to succeed
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Verify the provider was updated
     let vaultState = await program.account.boringVault.fetch(
@@ -2393,7 +2369,7 @@ describe("boring-vault-svm", () => {
     );
 
     // Expect the revert tx to succeed
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
 
     // Verify the provider was reverted
     vaultState = await program.account.boringVault.fetch(
@@ -2428,7 +2404,7 @@ describe("boring-vault-svm", () => {
       updateIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Verify the authority was updated
     let vaultState = await program.account.boringVault.fetch(
@@ -2453,7 +2429,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
 
     // Verify the authority was reverted
     vaultState = await program.account.boringVault.fetch(
@@ -2484,7 +2460,7 @@ describe("boring-vault-svm", () => {
       updateIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let vaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -2506,7 +2482,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
   });
 
   it("Can update withdraw sub account", async () => {
@@ -2529,7 +2505,7 @@ describe("boring-vault-svm", () => {
       updateIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let vaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -2551,7 +2527,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
   });
 
   it("Can update payout address", async () => {
@@ -2574,7 +2550,7 @@ describe("boring-vault-svm", () => {
       updateIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let vaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -2598,7 +2574,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
   });
 
   it("Can configure exchange rate update bounds", async () => {
@@ -2625,7 +2601,7 @@ describe("boring-vault-svm", () => {
       updateIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let vaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -2659,7 +2635,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
   });
 
   it("Can update fees", async () => {
@@ -2683,7 +2659,7 @@ describe("boring-vault-svm", () => {
       updateIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let vaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -2710,7 +2686,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
   });
 
   it("Can update strategist", async () => {
@@ -2733,7 +2709,7 @@ describe("boring-vault-svm", () => {
       updateIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let vaultState = await program.account.boringVault.fetch(
       boringVaultStateAccount
@@ -2757,7 +2733,7 @@ describe("boring-vault-svm", () => {
       revertIx,
       [authority]
     );
-    ths.expectTxToSucceed(revertTxResult.result);
+    ths.expectTxToSucceed(revertTxResult);
   });
 
   it("Set fees - failure cases", async () => {
@@ -2776,11 +2752,7 @@ describe("boring-vault-svm", () => {
       nonAuthUpdateIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "NotAuthorized"
-    );
+    ths.expectTxToFail(txResult, "NotAuthorized");
 
     // Try with invalid platform fee (>10000 bps)
     const invalidPlatformFeeIx = await program.methods
@@ -2797,11 +2769,7 @@ describe("boring-vault-svm", () => {
       invalidPlatformFeeIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Platform Fee BPS"
-    );
+    ths.expectTxToFail(txResult, "Invalid Platform Fee BPS");
 
     // Try with invalid performance fee (>10000 bps)
     const invalidPerformanceFeeIx = await program.methods
@@ -2818,11 +2786,7 @@ describe("boring-vault-svm", () => {
       invalidPerformanceFeeIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Performance Fee BPS"
-    );
+    ths.expectTxToFail(txResult, "Invalid Performance Fee BPS");
   });
 
   it("Initialize - failure cases", async () => {
@@ -2904,11 +2868,7 @@ describe("boring-vault-svm", () => {
       nonAuthDeployIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
 
     // Try with invalid authority (default address)
     const invalidAuthorityArgs = {
@@ -2935,11 +2895,7 @@ describe("boring-vault-svm", () => {
       invalidAuthorityIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Authority"
-    );
+    ths.expectTxToFail(txResult, "Invalid Authority");
 
     // Try with invalid exchange rate provider (zero address)
     const invalidExchangeRateProviderArgs = {
@@ -2966,11 +2922,7 @@ describe("boring-vault-svm", () => {
       invalidProviderIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Exchange Rate Provider"
-    );
+    ths.expectTxToFail(txResult, "Invalid Exchange Rate Provider");
 
     // Try with invalid payout address
     const invalidPayoutArgs = {
@@ -2997,11 +2949,7 @@ describe("boring-vault-svm", () => {
       invalidPayoutIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Payout Address"
-    );
+    ths.expectTxToFail(txResult, "Invalid Payout Address");
 
     // Try with invalid exchange rate bounds (upper < BPS_SCALE)
     const invalidUpperBoundArgs = {
@@ -3029,8 +2977,7 @@ describe("boring-vault-svm", () => {
       [authority]
     );
     ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
+      txResult,
       "Invalid Allowed Exchange Rate Change Upper Bound"
     );
 
@@ -3060,8 +3007,7 @@ describe("boring-vault-svm", () => {
       [authority]
     );
     ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
+      txResult,
       "Invalid Allowed Exchange Rate Change Lower Bound"
     );
 
@@ -3090,11 +3036,7 @@ describe("boring-vault-svm", () => {
       invalidPlatformFeeIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Platform Fee BPS"
-    );
+    ths.expectTxToFail(txResult, "Invalid Platform Fee BPS");
 
     // Try with invalid performance fee
     const invalidPerformanceFeeArgs = {
@@ -3121,11 +3063,7 @@ describe("boring-vault-svm", () => {
       invalidPerformanceFeeIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Performance Fee BPS"
-    );
+    ths.expectTxToFail(txResult, "Invalid Performance Fee BPS");
   });
 
   it("Pause/Unpause - authority validation", async () => {
@@ -3144,11 +3082,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
 
     // Try to unpause with non-authority signer
     const unpauseIx = await program.methods
@@ -3165,11 +3099,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
   });
 
   it("Authority transfer - failure cases", async () => {
@@ -3188,11 +3118,7 @@ describe("boring-vault-svm", () => {
       transferIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
 
     // First do a valid transfer to set up accept test
     const validTransferIx = await program.methods
@@ -3209,7 +3135,7 @@ describe("boring-vault-svm", () => {
       validTransferIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try to accept authority with non-pending authority
     const invalidAcceptIx = await program.methods
@@ -3226,11 +3152,7 @@ describe("boring-vault-svm", () => {
       invalidAcceptIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
   });
 
   it("Update asset data - failure cases", async () => {
@@ -3280,11 +3202,7 @@ describe("boring-vault-svm", () => {
       nonAuthUpdateIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
 
     // Try with invalid price feed (zero address) for non-pegged asset
     const invalidPriceFeedArgs = {
@@ -3314,11 +3232,7 @@ describe("boring-vault-svm", () => {
       invalidPriceFeedIx,
       [authority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Price Feed"
-    );
+    ths.expectTxToFail(txResult, "Invalid Price Feed");
 
     // This should succeed - zero address price feed for pegged asset
     const peggedAssetArgs = {
@@ -3348,7 +3262,7 @@ describe("boring-vault-svm", () => {
       validPeggedIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
   });
 
   it("Deposit SOL - enforces constraints and updates state correctly", async () => {
@@ -3374,7 +3288,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Now try to deposit
     const pausedDepositIx = await program.methods
@@ -3401,11 +3315,7 @@ describe("boring-vault-svm", () => {
       pausedDepositIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Vault paused"
-    );
+    ths.expectTxToFail(txResult, "Vault paused");
 
     // Unpause vault but disable deposits in asset data
     const unpauseIx = await program.methods
@@ -3422,7 +3332,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Update asset data to disable deposits
     const updateAssetDataIx = await program.methods
@@ -3453,7 +3363,7 @@ describe("boring-vault-svm", () => {
       updateAssetDataIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try to deposit when deposits are disabled
     const disabledDepositIx = await program.methods
@@ -3480,11 +3390,7 @@ describe("boring-vault-svm", () => {
       disabledDepositIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Asset not allowed"
-    );
+    ths.expectTxToFail(txResult, "Asset not allowed");
 
     // Restore asset data to allow deposits
     const restoreAssetDataIx = await program.methods
@@ -3515,7 +3421,7 @@ describe("boring-vault-svm", () => {
       restoreAssetDataIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try deposit with too high minMintAmount
     const highSlippageArgs = {
@@ -3548,11 +3454,7 @@ describe("boring-vault-svm", () => {
       highSlippageIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Slippage tolerance exceeded"
-    );
+    ths.expectTxToFail(txResult, "Slippage tolerance exceeded");
 
     // Get initial balances
     const initialUserSol = await client.getBalance(user.publicKey);
@@ -3584,7 +3486,7 @@ describe("boring-vault-svm", () => {
       successDepositIx,
       [user]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let expectedShares = ths.getU64ReturnFromLogs(txResult);
 
@@ -3640,11 +3542,7 @@ describe("boring-vault-svm", () => {
       invalidUserAtaIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Token Account"
-    );
+    ths.expectTxToFail(txResult, "Invalid Token Account");
 
     // Try deposit with invalid vault ATA (using user's ATA instead)
     const invalidVaultAtaIx = await program.methods
@@ -3674,11 +3572,7 @@ describe("boring-vault-svm", () => {
       invalidVaultAtaIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Token Account"
-    );
+    ths.expectTxToFail(txResult, "Invalid Token Account");
 
     // Try to deposit when vault is paused
     // First pause the vault
@@ -3696,7 +3590,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try deposit when paused
     const pausedDepositIx = await program.methods
@@ -3726,11 +3620,7 @@ describe("boring-vault-svm", () => {
       pausedDepositIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Vault paused"
-    );
+    ths.expectTxToFail(txResult, "Vault paused");
 
     // Unpause vault but disable deposits in asset data
     const unpauseIx = await program.methods
@@ -3747,7 +3637,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Update asset data to disable deposits
     const updateAssetDataIx = await program.methods
@@ -3778,7 +3668,7 @@ describe("boring-vault-svm", () => {
       updateAssetDataIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try deposit when deposits are disabled
     const disabledDepositIx = await program.methods
@@ -3808,11 +3698,7 @@ describe("boring-vault-svm", () => {
       disabledDepositIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Asset not allowed"
-    );
+    ths.expectTxToFail(txResult, "Asset not allowed");
 
     // Re-enable deposits
     const restoreAssetDataIx = await program.methods
@@ -3831,6 +3717,7 @@ describe("boring-vault-svm", () => {
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
         asset: JITOSOL,
+        // @ts-ignore
         assetData: jitoSolAssetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -3842,7 +3729,7 @@ describe("boring-vault-svm", () => {
       restoreAssetDataIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try deposit with too high minMintAmount (slippage)
     const highSlippageArgs = {
@@ -3878,11 +3765,7 @@ describe("boring-vault-svm", () => {
       slippageDepositIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Slippage tolerance exceeded"
-    );
+    ths.expectTxToFail(txResult, "Slippage tolerance exceeded");
 
     // Get initial balances
     const initialUserTokens = await ths.getTokenBalance(client, userJitoSolAta);
@@ -3920,7 +3803,7 @@ describe("boring-vault-svm", () => {
       successDepositIx,
       [user]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let expectedShares = ths.getU64ReturnFromLogs(txResult);
 
@@ -3976,11 +3859,7 @@ describe("boring-vault-svm", () => {
       invalidUserAtaIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Token Account"
-    );
+    ths.expectTxToFail(txResult, "Invalid Token Account");
 
     // Try withdraw with invalid vault ATA (using user's ATA instead)
     const invalidVaultAtaIx = await program.methods
@@ -4010,11 +3889,7 @@ describe("boring-vault-svm", () => {
       invalidVaultAtaIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid Token Account"
-    );
+    ths.expectTxToFail(txResult, "Invalid Token Account");
 
     // Try to withdraw when vault is paused
     // First pause the vault
@@ -4032,7 +3907,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try withdraw when paused
     const pausedWithdrawIx = await program.methods
@@ -4062,11 +3937,7 @@ describe("boring-vault-svm", () => {
       pausedWithdrawIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Vault paused"
-    );
+    ths.expectTxToFail(txResult, "Vault paused");
 
     // Unpause vault but disable withdrawals in asset data
     const unpauseIx = await program.methods
@@ -4083,7 +3954,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Update asset data to disable withdrawals
     const updateAssetDataIx = await program.methods
@@ -4114,7 +3985,7 @@ describe("boring-vault-svm", () => {
       updateAssetDataIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try withdraw when withdrawals are disabled
     const disabledWithdrawIx = await program.methods
@@ -4144,11 +4015,7 @@ describe("boring-vault-svm", () => {
       disabledWithdrawIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Asset not allowed"
-    );
+    ths.expectTxToFail(txResult, "Asset not allowed");
 
     // Re-enable withdrawals
     const restoreAssetDataIx = await program.methods
@@ -4179,7 +4046,7 @@ describe("boring-vault-svm", () => {
       restoreAssetDataIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Get initial balances
     const initialUserTokens = await ths.getTokenBalance(client, userJitoSolAta);
@@ -4217,7 +4084,7 @@ describe("boring-vault-svm", () => {
       successWithdrawIx,
       [user]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     let expectedAssets = ths.getU64ReturnFromLogs(txResult);
 
@@ -4251,7 +4118,7 @@ describe("boring-vault-svm", () => {
       setWithdrawAuthorityIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try withdraw with non-authority user
     const unauthorizedWithdrawIx = await program.methods
@@ -4281,11 +4148,7 @@ describe("boring-vault-svm", () => {
       unauthorizedWithdrawIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
   });
 
   it("Update Exchange Rate - failure cases", async () => {
@@ -4307,11 +4170,7 @@ describe("boring-vault-svm", () => {
       unauthorizedUpdateIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
 
     // Pause the vault
     const pauseIx = await program.methods
@@ -4328,7 +4187,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try to update exchange rate when paused
     const pausedUpdateIx = await program.methods
@@ -4348,11 +4207,7 @@ describe("boring-vault-svm", () => {
       pausedUpdateIx,
       [strategist]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Vault paused"
-    );
+    ths.expectTxToFail(txResult, "Vault paused");
 
     // Unpause the vault for future tests
     const unpauseIx = await program.methods
@@ -4369,7 +4224,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
   });
 
   it("Manage - enforces constraints and executes CPIs correctly", async () => {
@@ -4462,7 +4317,7 @@ describe("boring-vault-svm", () => {
       updateDigestIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const pauseIx = await program.methods
       .pause(new anchor.BN(0))
@@ -4478,7 +4333,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Attempt manage while paused
     const pausedManageIx = await program.methods
@@ -4508,11 +4363,7 @@ describe("boring-vault-svm", () => {
       pausedManageIx,
       [strategist]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Vault paused"
-    );
+    ths.expectTxToFail(txResult, "Vault paused");
 
     // Unpause vault
     const unpauseIx = await program.methods
@@ -4529,7 +4380,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try to manage with non-strategist
     const nonStrategist = anchor.web3.Keypair.generate();
@@ -4560,11 +4411,7 @@ describe("boring-vault-svm", () => {
       unauthorizedManageIx,
       [nonStrategist]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
 
     // Setup second CPI digest (1->0)
     const digest1to0 = await program.methods
@@ -4613,7 +4460,7 @@ describe("boring-vault-svm", () => {
       updateDigest1to0Ix,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try to execute transfer 0->1 with wrong digest (using 1->0 digest)
     const wrongDigestManageIx = await program.methods
@@ -4643,11 +4490,7 @@ describe("boring-vault-svm", () => {
       wrongDigestManageIx,
       [strategist]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid CPI Digest"
-    );
+    ths.expectTxToFail(txResult, "Invalid CPI Digest");
 
     // Execute successful transfer 0->1
     const initialBalance0 = await client.getBalance(boringVaultAccount);
@@ -4680,7 +4523,7 @@ describe("boring-vault-svm", () => {
       manage0to1Ix,
       [strategist]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const finalBalance0 = await client.getBalance(boringVaultAccount);
     const finalBalance1 = await client.getBalance(boringVaultSubAccount1);
@@ -4727,7 +4570,7 @@ describe("boring-vault-svm", () => {
       manage1to0Ix,
       [strategist]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     const finalBalance0ForReturn = await client.getBalance(boringVaultAccount);
     const finalBalance1ForReturn = await client.getBalance(
@@ -4805,11 +4648,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
     ]);
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid share mint"
-    );
+    ths.expectTxToFail(txResult, "Invalid share mint");
   });
 
   // Initial update
@@ -4846,11 +4685,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       user,
     ]);
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
   });
 
   it("Request Withdraw - enforces constraints", async () => {
@@ -4879,7 +4714,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Try request when paused
     let requestIx = await queueProgram.methods
@@ -4894,6 +4729,7 @@ describe("boring-vault-svm", () => {
         queueState: queueStateAccount,
         withdrawMint: JITOSOL,
         withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
         userWithdrawState: userWithdrawState,
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
@@ -4916,11 +4752,7 @@ describe("boring-vault-svm", () => {
       requestIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Queue paused"
-    );
+    ths.expectTxToFail(txResult, "Queue paused");
 
     // Unpause for next tests
     const unpauseIx = await queueProgram.methods
@@ -4937,7 +4769,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // 2. Try with invalid share mint (using JITOSOL instead of boringVaultShareMint)
     requestIx = await queueProgram.methods
@@ -4952,6 +4784,7 @@ describe("boring-vault-svm", () => {
         queueState: queueStateAccount,
         withdrawMint: JITOSOL,
         withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
         userWithdrawState: userWithdrawState,
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
@@ -4974,11 +4807,7 @@ describe("boring-vault-svm", () => {
       requestIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid share mint"
-    );
+    ths.expectTxToFail(txResult, "Invalid share mint");
 
     // 3. Try with invalid discount (too low)
     requestIx = await queueProgram.methods
@@ -4993,6 +4822,7 @@ describe("boring-vault-svm", () => {
         queueState: queueStateAccount,
         withdrawMint: JITOSOL,
         withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
         userWithdrawState: userWithdrawState,
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
@@ -5014,11 +4844,7 @@ describe("boring-vault-svm", () => {
       requestIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid discount"
-    );
+    ths.expectTxToFail(txResult, "Invalid discount");
 
     // 4. Try with insufficient share amount
     requestIx = await queueProgram.methods
@@ -5034,6 +4860,7 @@ describe("boring-vault-svm", () => {
         queueState: queueStateAccount,
         withdrawMint: JITOSOL,
         withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
         userWithdrawState: userWithdrawState,
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
@@ -5055,11 +4882,7 @@ describe("boring-vault-svm", () => {
       requestIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid share amount"
-    );
+    ths.expectTxToFail(txResult, "Invalid share amount");
 
     // 5. Try with invalid deadline
     requestIx = await queueProgram.methods
@@ -5075,6 +4898,7 @@ describe("boring-vault-svm", () => {
         queueState: queueStateAccount,
         withdrawMint: JITOSOL,
         withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
         userWithdrawState: userWithdrawState,
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
@@ -5096,11 +4920,7 @@ describe("boring-vault-svm", () => {
       requestIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid seconds to deadline"
-    );
+    ths.expectTxToFail(txResult, "Invalid seconds to deadline");
   });
 
   it("Fulfill Withdraw - enforces constraints", async () => {
@@ -5127,6 +4947,7 @@ describe("boring-vault-svm", () => {
         queueState: queueStateAccount,
         withdrawMint: JITOSOL,
         withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
         userWithdrawState: userWithdrawState,
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
@@ -5149,7 +4970,7 @@ describe("boring-vault-svm", () => {
       requestIx,
       [user]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // Set solve authority
     const solveAuthority = anchor.web3.Keypair.generate();
@@ -5167,7 +4988,7 @@ describe("boring-vault-svm", () => {
       setSolveAuthorityIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // 1. Try to fulfill with non-solve authority
     let fulfillIx = await queueProgram.methods
@@ -5183,6 +5004,7 @@ describe("boring-vault-svm", () => {
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
         shareMint: boringVaultShareMint,
+        // @ts-ignore
         queueShares: queueShareAta,
         tokenProgram: TOKEN_PROGRAM_ID,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
@@ -5203,11 +5025,7 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [user]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Not authorized"
-    );
+    ths.expectTxToFail(txResult, "Not authorized");
 
     // 2. Try to fulfill when queue is paused
     const pauseIx = await queueProgram.methods
@@ -5224,7 +5042,7 @@ describe("boring-vault-svm", () => {
       pauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     fulfillIx = await queueProgram.methods
       .fulfillWithdraw(new anchor.BN(2))
@@ -5239,6 +5057,7 @@ describe("boring-vault-svm", () => {
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
         shareMint: boringVaultShareMint,
+        // @ts-ignore
         queueShares: queueShareAta,
         tokenProgram: TOKEN_PROGRAM_ID,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
@@ -5259,11 +5078,7 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [solveAuthority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Queue paused"
-    );
+    ths.expectTxToFail(txResult, "Queue paused");
 
     // Unpause for next tests
     const unpauseIx = await queueProgram.methods
@@ -5280,7 +5095,7 @@ describe("boring-vault-svm", () => {
       unpauseIx,
       [authority]
     );
-    ths.expectTxToSucceed(txResult.result);
+    ths.expectTxToSucceed(txResult);
 
     // 3. Try to fulfill before maturity
     fulfillIx = await queueProgram.methods
@@ -5296,6 +5111,7 @@ describe("boring-vault-svm", () => {
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
         shareMint: boringVaultShareMint,
+        // @ts-ignore
         queueShares: queueShareAta,
         tokenProgram: TOKEN_PROGRAM_ID,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
@@ -5316,11 +5132,7 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [solveAuthority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Request not mature"
-    );
+    ths.expectTxToFail(txResult, "Request not mature");
 
     ths.wait(client, context, 86_401);
 
@@ -5338,6 +5150,7 @@ describe("boring-vault-svm", () => {
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
         shareMint: boringVaultShareMint,
+        // @ts-ignore
         queueShares: queueShareAta,
         tokenProgram: TOKEN_PROGRAM_ID,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
@@ -5358,11 +5171,7 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [solveAuthority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid withdraw mint"
-    );
+    ths.expectTxToFail(txResult, "Invalid withdraw mint");
 
     // 5. Try to fulfill with wrong user ATA
     fulfillIx = await queueProgram.methods
@@ -5378,6 +5187,7 @@ describe("boring-vault-svm", () => {
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
         shareMint: boringVaultShareMint,
+        // @ts-ignore
         queueShares: queueShareAta,
         tokenProgram: TOKEN_PROGRAM_ID,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
@@ -5398,11 +5208,7 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [solveAuthority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Invalid token account"
-    );
+    ths.expectTxToFail(txResult, "Invalid token account");
 
     // 6. Advance time past deadline and try to fulfill
     await ths.wait(client, context, 4 * 86400); // Past the 3 day deadline
@@ -5420,6 +5226,7 @@ describe("boring-vault-svm", () => {
         withdrawRequest: userWithdrawRequest2,
         queue: queueAccount,
         shareMint: boringVaultShareMint,
+        // @ts-ignore
         queueShares: queueShareAta,
         tokenProgram: TOKEN_PROGRAM_ID,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
@@ -5440,10 +5247,6 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [solveAuthority]
     );
-    ths.expectTxToFail(
-      txResult.result,
-      txResult.meta.logMessages,
-      "Request deadline passed"
-    );
+    ths.expectTxToFail(txResult, "Request deadline passed");
   });
 });

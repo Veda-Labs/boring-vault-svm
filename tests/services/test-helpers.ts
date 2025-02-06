@@ -118,25 +118,42 @@ export class TestHelperService {
     return AccountLayout.decode(account.data).amount;
   }
 
-  static expectTxToSucceed(result: string) {
-    if (result != null) {
-      console.log("Result: ", result);
+  static expectTxToSucceed(txResult: BanksTransactionResultWithMeta) {
+    if (txResult.result != null) {
+      console.log("\n🛑 Transaction failed!");
+      console.log("Result:", txResult.result);
+      console.log("\n📝 Transaction Logs:");
+      txResult.meta.logMessages.forEach((log, i) => {
+        console.log(`  ${i.toString().padStart(2, "0")}: ${log}`);
+      });
+      console.log(); // Extra newline for spacing
     }
-    expect(result).to.be.null;
+    expect(txResult.result).to.be.null;
   }
 
-  static expectTxToFail(result: string, logs: string[], errorMessage: string) {
-    expect(result).to.not.be.null;
+  static expectTxToFail(
+    txResult: BanksTransactionResultWithMeta,
+    errorMessage: string
+  ) {
+    expect(txResult.result).to.not.be.null;
     // Look through logs for our error
-    const foundError = logs.some((log) =>
+    const foundError = txResult.meta.logMessages.some((log) =>
       log.toLowerCase().includes(errorMessage.toLowerCase())
     );
 
+    if (!foundError) {
+      console.log("\n❌ Expected Error Not Found!");
+      console.log(`Expected to find: "${errorMessage}"`);
+      console.log("\n📝 Actual Transaction Logs:");
+      txResult.meta.logMessages.forEach((log, i) => {
+        console.log(`  ${i.toString().padStart(2, "0")}: ${log}`);
+      });
+      console.log(); // Extra newline for spacing
+    }
+
     expect(
       foundError,
-      `AssertionError: Expected to find error "${errorMessage}" in logs:\n${logs
-        .map((log) => `        ${log}`)
-        .join("\n")}`
+      `AssertionError: Expected to find error "${errorMessage}" in logs`
     ).to.be.true;
   }
 
@@ -195,7 +212,7 @@ export class TestHelperService {
       [exchangeRateProvider]
     );
 
-    this.expectTxToSucceed(txResult.result);
+    this.expectTxToSucceed(txResult);
     await this.wait(client, context, waitTimeInSeconds);
 
     const logs = txResult.meta?.logMessages || [];
