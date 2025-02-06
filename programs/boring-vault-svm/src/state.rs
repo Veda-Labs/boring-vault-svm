@@ -116,31 +116,31 @@ pub struct WithdrawArgs {
 pub struct UpdateCpiDigestArgs {
     pub vault_id: u64,
     pub cpi_digest: [u8; 32],
-    pub is_valid: bool,
+    pub operators: Operators,
+    pub expected_size: u16,
 }
 
-// TODO could I refactor this so that the pdas use just an action id instead of the hash for seeds?
-// Then maybe I can do something that points a strategist to a bucket of ids they can do.
-// Could even be
-// Strategist is assigned a set id
-// Then for CpiDigests the new seed should be BASE SEED + set id + action id
-// Set id 0 is null, then we require a caller of manage must have their set id set.
-// So then the CpiDigest should store the hash, and I probs dont need to include the
-// operators in the hash
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct ManageArgs {
     pub vault_id: u64,
     pub sub_account: u8,
     pub ix_program_id: Pubkey,
     pub ix_data: Vec<u8>,
-    pub operators: Operators, // Could be stored in CpiDigest
-    pub expected_size: u16,   // Could be stored in CpiDigest
 }
 
 #[account]
 #[derive(Debug)]
 pub struct CpiDigest {
-    pub is_valid: bool,
+    pub operators: Operators,
+    pub expected_size: u16,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct ViewCpiDigestArgs {
+    pub ix_program_id: Pubkey,
+    pub ix_data: Vec<u8>,
+    pub operators: Operators,
+    pub expected_size: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]

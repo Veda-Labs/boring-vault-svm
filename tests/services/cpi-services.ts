@@ -108,7 +108,6 @@ export class CpiService {
       .viewCpiDigest(
         // @ts-ignore
         {
-          vaultId: params.vaultId,
           ixProgramId: params.ixProgramId,
           ixData: params.ixData,
           operators: params.operators,
@@ -123,7 +122,7 @@ export class CpiService {
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("cpi-digest"),
-        params.accounts.boringVaultState.toBuffer(),
+        Buffer.from(new Array(8).fill(0)),
         Buffer.from(digest),
       ],
       params.program.programId
@@ -131,11 +130,15 @@ export class CpiService {
 
     // 3. Update CPI Digest
     const updateIx = await params.program.methods
-      .updateCpiDigest({
-        vaultId: params.vaultId,
-        cpiDigest: digest,
-        isValid: true,
-      })
+      .updateCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: params.vaultId,
+          cpiDigest: digest,
+          operators: params.operators,
+          expectedSize: params.expectedSize,
+        }
+      )
       .accounts({
         signer: params.authority.publicKey,
         boringVaultState: params.accounts.boringVaultState,
@@ -165,8 +168,6 @@ export class CpiService {
           subAccount: 0,
           ixProgramId: params.ixProgramId,
           ixData: params.ixData,
-          operators: params.operators,
-          expectedSize: params.expectedSize,
         }
       )
       .accounts({

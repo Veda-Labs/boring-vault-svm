@@ -258,6 +258,9 @@ pub mod boring_vault_svm {
 
     /// Updates the CPI digest for managing vault assets
     ///
+    /// Note: This function does not check that the provided digest
+    /// actually corresponds to the given operators and expected size
+    /// but in the case that it doesn't this digest is just unusable.
     /// # Arguments
     /// * `ctx` - The context of accounts
     /// * `args` - The CPI digest update arguments
@@ -266,7 +269,8 @@ pub mod boring_vault_svm {
         args: UpdateCpiDigestArgs,
     ) -> Result<()> {
         let cpi_digest = &mut ctx.accounts.cpi_digest;
-        cpi_digest.is_valid = args.is_valid;
+        cpi_digest.operators = args.operators;
+        cpi_digest.expected_size = args.expected_size;
         Ok(())
     }
 
@@ -274,7 +278,11 @@ pub mod boring_vault_svm {
     ///
     /// # Arguments
     /// * `ctx` - The context of accounts
-    pub fn close_cpi_digest(_ctx: Context<CloseCpiDigest>) -> Result<()> {
+    /// * `_args` - Used to derive account
+    pub fn close_cpi_digest(
+        _ctx: Context<CloseCpiDigest>,
+        _args: UpdateCpiDigestArgs,
+    ) -> Result<()> {
         Ok(())
     }
 
@@ -758,23 +766,21 @@ pub mod boring_vault_svm {
     /// * `BoringErrorCode::InvalidCpiDigest` - If CPI digest is invalid
     pub fn manage(ctx: Context<Manage>, args: ManageArgs) -> Result<()> {
         let cpi_digest = &ctx.accounts.cpi_digest;
-        require!(cpi_digest.is_valid, BoringErrorCode::InvalidCpiDigest);
 
         let ix_accounts = ctx.remaining_accounts;
 
         // Hash the CPI call down to a digest and confirm it matches the digest in the args.
-        let digest = args.operators.apply_operators(
+        let digest = cpi_digest.operators.apply_operators(
             &args.ix_program_id,
             &ix_accounts,
             &args.ix_data,
-            args.expected_size,
+            cpi_digest.expected_size,
         )?;
 
         // Derive the expected PDA for this digest
-        let boring_vault_state_key = ctx.accounts.boring_vault_state.key();
         let seeds = &[
             BASE_SEED_CPI_DIGEST,
-            boring_vault_state_key.as_ref(),
+            &args.vault_id.to_le_bytes()[..],
             digest.as_ref(),
         ];
         let (expected_pda, _) = Pubkey::find_program_address(seeds, &crate::ID);
@@ -1051,7 +1057,10 @@ pub mod boring_vault_svm {
     ///
     /// # Returns
     /// * `[u8; 32]` - The CPI digest
-    pub fn view_cpi_digest(ctx: Context<ViewCpiDigest>, args: ManageArgs) -> Result<[u8; 32]> {
+    pub fn view_cpi_digest(
+        ctx: Context<ViewCpiDigest>,
+        args: ViewCpiDigestArgs,
+    ) -> Result<[u8; 32]> {
         // Hash the CPI call down to a digest
         let digest = args.operators.apply_operators(
             &args.ix_program_id,
@@ -1537,7 +1546,7 @@ pub struct UpdateCpiDigest<'info> {
         space = 8 + std::mem::size_of::<CpiDigest>(),
         seeds = [
             BASE_SEED_CPI_DIGEST,
-            boring_vault_state.key().as_ref(),
+            &args.vault_id.to_le_bytes()[..],
             args.cpi_digest.as_ref(),
         ],
         bump,
@@ -1563,7 +1572,7 @@ pub struct CloseCpiDigest<'info> {
         mut,
         seeds = [
             BASE_SEED_CPI_DIGEST,
-            boring_vault_state.key().as_ref(),
+            &args.vault_id.to_le_bytes()[..],
             args.cpi_digest.as_ref(),
         ],
         bump,

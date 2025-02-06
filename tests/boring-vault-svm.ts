@@ -548,7 +548,6 @@ describe("boring-vault-svm", () => {
     }
   });
 
-  // TODO
   it("Can update asset data", async () => {
     const ix = await program.methods
       .updateAssetData({
@@ -1131,7 +1130,6 @@ describe("boring-vault-svm", () => {
       .viewCpiDigest(
         // @ts-ignore
         {
-          vaultId: new anchor.BN(0),
           ixProgramId: KAMINO_LEND_PROGRAM_ID,
           ixData: Buffer.from([]),
           operators: [],
@@ -1145,7 +1143,7 @@ describe("boring-vault-svm", () => {
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("cpi-digest"),
-        boringVaultStateAccount.toBuffer(),
+        Buffer.from(new Array(8).fill(0)),
         Buffer.from(digest),
       ],
       program.programId
@@ -1153,11 +1151,15 @@ describe("boring-vault-svm", () => {
 
     // 3. Update CPI Digest
     const updateIx = await program.methods
-      .updateCpiDigest({
-        vaultId: new anchor.BN(0),
-        cpiDigest: digest,
-        isValid: true,
-      })
+      .updateCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          cpiDigest: digest,
+          operators: [],
+          expectedSize: 32,
+        }
+      )
       .accounts({
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
@@ -1178,11 +1180,15 @@ describe("boring-vault-svm", () => {
 
     // 4. Close CPI Digest
     const closeIx = await program.methods
-      .updateCpiDigest({
-        vaultId: new anchor.BN(0),
-        cpiDigest: digest,
-        isValid: true,
-      })
+      .updateCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          cpiDigest: digest,
+          operators: [],
+          expectedSize: 32,
+        }
+      )
       .accounts({
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
@@ -4274,8 +4280,6 @@ describe("boring-vault-svm", () => {
       .viewCpiDigest(
         // @ts-ignore
         {
-          vaultId: new anchor.BN(0),
-          subAccount: 0,
           ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
           operators: CpiService.getWSolTransferOperators(),
@@ -4289,7 +4293,7 @@ describe("boring-vault-svm", () => {
     const [cpiDigest0to1Account] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("cpi-digest"),
-        boringVaultStateAccount.toBuffer(),
+        Buffer.from(new Array(8).fill(0)),
         Buffer.from(digest0to1),
       ],
       program.programId
@@ -4297,11 +4301,15 @@ describe("boring-vault-svm", () => {
 
     // Update CPI digest
     const updateDigestIx = await program.methods
-      .updateCpiDigest({
-        vaultId: new anchor.BN(0),
-        cpiDigest: digest0to1,
-        isValid: true,
-      })
+      .updateCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          cpiDigest: digest0to1,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
       .accounts({
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
@@ -4344,8 +4352,6 @@ describe("boring-vault-svm", () => {
           subAccount: 0,
           ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
-          operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
@@ -4392,8 +4398,6 @@ describe("boring-vault-svm", () => {
           subAccount: 0,
           ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
-          operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
@@ -4418,7 +4422,6 @@ describe("boring-vault-svm", () => {
       .viewCpiDigest(
         // @ts-ignore
         {
-          vaultId: new anchor.BN(0),
           ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer1to0IxData,
           operators: CpiService.getWSolTransferOperators(),
@@ -4432,7 +4435,7 @@ describe("boring-vault-svm", () => {
     const [cpiDigest1to0Account] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("cpi-digest"),
-        boringVaultStateAccount.toBuffer(),
+        Buffer.from(new Array(8).fill(0)),
         Buffer.from(digest1to0),
       ],
       program.programId
@@ -4440,11 +4443,15 @@ describe("boring-vault-svm", () => {
 
     // Update second CPI digest
     const updateDigest1to0Ix = await program.methods
-      .updateCpiDigest({
-        vaultId: new anchor.BN(0),
-        cpiDigest: digest1to0,
-        isValid: true,
-      })
+      .updateCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: new anchor.BN(0),
+          cpiDigest: digest1to0,
+          operators: CpiService.getWSolTransferOperators(),
+          expectedSize: 104,
+        }
+      )
       .accounts({
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
@@ -4471,8 +4478,6 @@ describe("boring-vault-svm", () => {
           subAccount: 0,
           ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
-          operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
@@ -4504,8 +4509,6 @@ describe("boring-vault-svm", () => {
           subAccount: 0,
           ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
-          operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
@@ -4551,8 +4554,6 @@ describe("boring-vault-svm", () => {
           subAccount: 1, // Using sub-account 1
           ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer1to0IxData,
-          operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
