@@ -59,6 +59,7 @@ describe("boring-vault-svm", () => {
   let userWithdrawRequest: anchor.web3.PublicKey;
   let queueShareAta: anchor.web3.PublicKey;
   let cpiDigestAccount: anchor.web3.PublicKey;
+  let vault0SolendJitoSol: anchor.web3.PublicKey;
 
   const PROJECT_DIRECTORY = "";
   const STAKE_POOL_PROGRAM_ID = new anchor.web3.PublicKey(
@@ -106,6 +107,40 @@ describe("boring-vault-svm", () => {
     "So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo"
   );
 
+  const SOLEND_MAIN_POOL_LENDING_MARKET = new anchor.web3.PublicKey(
+    "4UpD2fh7xH3VP9QQaXtsS1YY3bxzWhtfpks7FatyKvdY"
+  );
+
+  const SOLEND_MAIN_POOL_JITOSOL = new anchor.web3.PublicKey(
+    "6mFgUsvXQTEYrYgowc9pVzYi49XEJA5uHA9gVDURc2pM"
+  );
+
+  const SOLEND_SOURCE_LIQUIDITY_TOKEN_ACCOUNT = new anchor.web3.PublicKey(
+    "BF79wh4Zqgq74kF1DE97VuciseZnyrbC9TbQ9xmDViR1"
+  );
+
+  const SOLEND_RESERVE_ACCOUNT = new anchor.web3.PublicKey(
+    "BRsz1xVQMuVLbc4YjLP1FXhEx1LxSYig2nLqRgJEzR9r"
+  );
+
+  const SOLEND_RESERVE_LIQUIDITYY_SUPPLY_SPL_TOKEN_ACCOUNT =
+    new anchor.web3.PublicKey("2Khz77qDAL4yY1wG6mTLhLnKiN7sDjQCtrFDEEUFPpiB");
+
+  const SOLEND_MAIN_POOL_LENDING_AUTHORITY = new anchor.web3.PublicKey(
+    "DdZR6zRFiUt4S5mg7AV1uKB2z1f1WzcNYCaTEEWPAuby"
+  );
+
+  const SOLEND_DESINTATION_DEPOSIT_RESERVE_COLLATERAL_SUPPLY_SPL_TOKEN_ACCOUNT =
+    new anchor.web3.PublicKey("3GynM9cRtZsZ2s1SyoAuSgTDjx8ANcVZJXZayuWZbMpd");
+
+  const SOLEND_PYTH_PRICE_ORACLE_SOL = new anchor.web3.PublicKey(
+    "7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE"
+  );
+
+  const NULL = new anchor.web3.PublicKey(
+    "nu11111111111111111111111111111111111111111"
+  );
+
   const ACCOUNTS_TO_CLONE = [
     JITO_SOL_STAKE_POOL.toString(),
     JITO_SOL_STAKE_POOL_WITHDRAW_AUTH.toString(),
@@ -116,6 +151,14 @@ describe("boring-vault-svm", () => {
     WSOL.toString(),
     KAMINO_LEND_JITO_SOL_OBLIGATION.toString(),
     KAMINO_LEND_JITO_SOL_MARKET.toString(),
+    SOLEND_MAIN_POOL_LENDING_MARKET.toString(),
+    SOLEND_MAIN_POOL_JITOSOL.toString(),
+    SOLEND_SOURCE_LIQUIDITY_TOKEN_ACCOUNT.toString(),
+    SOLEND_RESERVE_ACCOUNT.toString(),
+    SOLEND_RESERVE_LIQUIDITYY_SUPPLY_SPL_TOKEN_ACCOUNT.toString(),
+    SOLEND_MAIN_POOL_LENDING_AUTHORITY.toString(),
+    SOLEND_DESINTATION_DEPOSIT_RESERVE_COLLATERAL_SUPPLY_SPL_TOKEN_ACCOUNT.toString(),
+    SOLEND_PYTH_PRICE_ORACLE_SOL.toString(),
   ];
 
   before(async () => {
@@ -306,6 +349,15 @@ describe("boring-vault-svm", () => {
       TOKEN_PROGRAM_ID,
       JITOSOL,
       payout.publicKey,
+      0,
+      false
+    );
+
+    vault0SolendJitoSol = await ths.setupATA(
+      context,
+      TOKEN_PROGRAM_ID,
+      SOLEND_MAIN_POOL_JITOSOL,
+      boringVaultAccount,
       0,
       false
     );
@@ -5248,30 +5300,31 @@ describe("boring-vault-svm", () => {
     ths.expectTxToFail(txResult, "Request deadline passed");
   });
 
+  // TODO stuck on the final step of lending on Save. Getting a "Math operation overflow" error.
+  // But this atleast shows we are able to call the function.
   it("Can lend JitoSol on Save", async () => {
-    const amount = 1_000_000_000; // 1 JitoSol
-    let amountBuffer = Buffer.alloc(8);
-    amountBuffer.writeBigUInt64LE(BigInt(amount));
-    // Step zero call create account w/seed
-    let ixData = Buffer.concat([
-      Buffer.from("03000000", "hex"), // Discriminator for Create Account With Seed
-      boringVaultAccount.toBuffer(),
-      Buffer.from("20000000", "hex"), // Length prefix (32)
-      Buffer.from(
-        "00000003455704432666837784833565039515161587473533159593362787a576874660000",
-        "hex"
-      ), // Seed with padding
-      amountBuffer, // amount
-      SOLEND_PROGRAM_ID.toBuffer(), // Owner
-    ]);
-
+    // 1. Create account with seed.
     const newAccount = await anchor.web3.PublicKey.createWithSeed(
       boringVaultAccount, // base
       "4UpD2fh7xH3VP9QQaXtsS1YY3bxzWhtf", // seed
       SOLEND_PROGRAM_ID // owner (Solend program)
     );
+    // Create the instruction using the helper method
+    const createAccountWithSeedIx =
+      anchor.web3.SystemProgram.createAccountWithSeed({
+        fromPubkey: boringVaultAccount,
+        newAccountPubkey: newAccount,
+        basePubkey: boringVaultAccount,
+        seed: "4UpD2fh7xH3VP9QQaXtsS1YY3bxzWhtf",
+        lamports: 9938880,
+        space: 1300,
+        programId: SOLEND_PROGRAM_ID,
+      });
 
-    let ixAccounts = [
+    // Convert the instruction to buffer format if needed for your CPI
+    const createAccountWithSeedIxData = createAccountWithSeedIx.data;
+
+    let createAccountWithSeedIxAccounts = [
       { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
       { pubkey: newAccount, isWritable: true, isSigner: false },
       {
@@ -5279,15 +5332,7 @@ describe("boring-vault-svm", () => {
         isWritable: false,
         isSigner: false,
       },
-      {
-        pubkey: SOLEND_PROGRAM_ID,
-        isWritable: false,
-        isSigner: false,
-      },
     ];
-
-    // Maybe just call the ViewCpiDiget funciton first and get this working then optimize to a function
-
     let txResult = await CpiService.executeCpi(
       {
         program: program,
@@ -5297,18 +5342,173 @@ describe("boring-vault-svm", () => {
         strategist: strategist,
         vaultId: new anchor.BN(0),
         ixProgramId: anchor.web3.SystemProgram.programId,
-        ixData: ixData,
+        ixData: createAccountWithSeedIxData,
         // @ts-ignore
         operators: CpiService.getCreateAccountWithSeedOperators(),
-        expectedSize: 81,
+        expectedSize: 116,
         accounts: {
           boringVaultState: boringVaultStateAccount,
           boringVault: boringVaultAccount,
         },
       },
-      ixAccounts
+      createAccountWithSeedIxAccounts
     );
+    ths.expectTxToSucceed(txResult);
 
-    // ths.expectTxToSucceed(txResult);
+    // 2. Call initObligation
+    const initObligationIxData = Buffer.from("06", "hex");
+
+    const initObligationIxAccounts = [
+      { pubkey: newAccount, isWritable: true, isSigner: false },
+      {
+        pubkey: SOLEND_MAIN_POOL_LENDING_MARKET,
+        isWritable: true,
+        isSigner: false,
+      },
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+      {
+        pubkey: anchor.web3.SYSVAR_RENT_PUBKEY,
+        isWritable: false,
+        isSigner: false,
+      },
+      {
+        pubkey: TOKEN_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false,
+      },
+      // Add this since we have to call to it.
+      {
+        pubkey: SOLEND_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false,
+      },
+    ];
+
+    txResult = await CpiService.executeCpi(
+      {
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
+        strategist: strategist,
+        vaultId: new anchor.BN(0),
+        ixProgramId: SOLEND_PROGRAM_ID,
+        ixData: initObligationIxData,
+        // @ts-ignore
+        operators: CpiService.getInitObligationOperators(),
+        expectedSize: 75,
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      initObligationIxAccounts
+    );
+    ths.expectTxToSucceed(txResult);
+
+    // 3. Call depositReserveLiquidityAndObligationCollateral
+    const amount = 1_000_000; // 0.001 JitoSol
+    const depositIxData = Buffer.alloc(9);
+    depositIxData.write("0e", "hex"); // 1 bytes discriminator for depositReserveLiquidityAndObligationCollateral
+    depositIxData.writeBigUInt64LE(BigInt(amount), 1); // Write amount adter 1-bytes discriminator
+    // console.log("depositIxData (hex):", depositIxData.toString("hex"));
+
+    const depositIxAccounts = [
+      {
+        pubkey: SOLEND_SOURCE_LIQUIDITY_TOKEN_ACCOUNT,
+        isWritable: true,
+        isSigner: false,
+      },
+      {
+        pubkey: vault0SolendJitoSol,
+        isWritable: true,
+        isSigner: false,
+      },
+      { pubkey: SOLEND_RESERVE_ACCOUNT, isWritable: true, isSigner: false },
+      {
+        pubkey: SOLEND_RESERVE_LIQUIDITYY_SUPPLY_SPL_TOKEN_ACCOUNT,
+        isWritable: false,
+        isSigner: false,
+      },
+      {
+        pubkey: SOLEND_MAIN_POOL_JITOSOL,
+        isWritable: true,
+        isSigner: false,
+      },
+      {
+        pubkey: SOLEND_MAIN_POOL_LENDING_MARKET,
+        isWritable: true,
+        isSigner: false,
+      },
+      {
+        pubkey: SOLEND_MAIN_POOL_LENDING_AUTHORITY,
+        isWritable: false,
+        isSigner: false,
+      },
+      {
+        pubkey:
+          SOLEND_DESINTATION_DEPOSIT_RESERVE_COLLATERAL_SUPPLY_SPL_TOKEN_ACCOUNT,
+        isWritable: true,
+        isSigner: false,
+      },
+      {
+        pubkey: newAccount,
+        isWritable: true,
+        isSigner: false,
+      },
+      {
+        pubkey: boringVaultAccount,
+        isWritable: true,
+        isSigner: false,
+      },
+      {
+        pubkey: SOLEND_PYTH_PRICE_ORACLE_SOL,
+        isWritable: false,
+        isSigner: false,
+      },
+      {
+        pubkey: NULL,
+        isWritable: false,
+        isSigner: false,
+      },
+      {
+        pubkey: boringVaultAccount,
+        isWritable: true,
+        isSigner: false,
+      },
+      {
+        pubkey: TOKEN_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false,
+      },
+      // Add this since we have to call to it.
+      {
+        pubkey: SOLEND_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false,
+      },
+    ];
+
+    txResult = await CpiService.executeCpi(
+      {
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
+        strategist: strategist,
+        vaultId: new anchor.BN(0),
+        ixProgramId: SOLEND_PROGRAM_ID,
+        ixData: depositIxData,
+        // @ts-ignore
+        operators: CpiService.getDepositOperators(),
+        expectedSize: 464,
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      depositIxAccounts
+    );
+    ths.expectTxToFail(txResult, "Math operation overflow");
   });
 });

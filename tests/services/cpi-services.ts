@@ -56,8 +56,33 @@ export class CpiService {
     return {
       operators: [
         { ingestInstruction: { 0: 0, 1: 4 } },
-        { ingestInstruction: { 0: 120, 1: 32 } },
+        { ingestInstruction: { 0: 92, 1: 32 } },
         { ingestAccount: 0 },
+      ],
+    };
+  }
+
+  static getInitObligationOperators() {
+    return {
+      operators: [{ ingestInstruction: { 0: 0, 1: 1 } }, { ingestAccount: 2 }],
+    };
+  }
+
+  static getDepositOperators() {
+    return {
+      operators: [
+        { ingestAccount: 0 },
+        { ingestAccount: 1 },
+        { ingestAccount: 2 },
+        { ingestAccount: 3 },
+        { ingestAccount: 4 },
+        { ingestAccount: 5 },
+        { ingestAccount: 6 },
+        { ingestAccount: 7 },
+        { ingestAccount: 9 },
+        { ingestAccount: 10 },
+        { ingestAccount: 11 },
+        { ingestAccount: 12 },
       ],
     };
   }
@@ -113,7 +138,6 @@ export class CpiService {
     },
     remainingAccounts: AccountMeta[]
   ): Promise<BanksTransactionResultWithMeta> {
-    console.log("Here");
     // 1. View CPI Digest
     const digest = await params.program.methods
       .viewCpiDigest(
@@ -128,8 +152,6 @@ export class CpiService {
       .signers([params.deployer])
       .remainingAccounts(remainingAccounts)
       .view();
-
-    console.log("But not here");
 
     // 2. Find CPI Digest Account
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
