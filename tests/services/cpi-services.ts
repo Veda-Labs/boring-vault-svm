@@ -52,6 +52,16 @@ export class CpiService {
     };
   }
 
+  static getCreateAccountWithSeedOperators() {
+    return {
+      operators: [
+        { ingestInstruction: { 0: 0, 1: 4 } },
+        { ingestInstruction: { 0: 120, 1: 32 } },
+        { ingestAccount: 0 },
+      ],
+    };
+  }
+
   static getWSolTransferOperators() {
     return {
       operators: [{ ingestAccount: 0 }, { ingestAccount: 1 }],
@@ -103,6 +113,7 @@ export class CpiService {
     },
     remainingAccounts: AccountMeta[]
   ): Promise<BanksTransactionResultWithMeta> {
+    console.log("Here");
     // 1. View CPI Digest
     const digest = await params.program.methods
       .viewCpiDigest(
@@ -117,6 +128,8 @@ export class CpiService {
       .signers([params.deployer])
       .remainingAccounts(remainingAccounts)
       .view();
+
+    console.log("But not here");
 
     // 2. Find CPI Digest Account
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(

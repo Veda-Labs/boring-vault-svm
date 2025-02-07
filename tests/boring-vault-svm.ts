@@ -102,6 +102,10 @@ describe("boring-vault-svm", () => {
     "So11111111111111111111111111111111111111112"
   );
 
+  const SOLEND_PROGRAM_ID = new anchor.web3.PublicKey(
+    "So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo"
+  );
+
   const ACCOUNTS_TO_CLONE = [
     JITO_SOL_STAKE_POOL.toString(),
     JITO_SOL_STAKE_POOL_WITHDRAW_AUTH.toString(),
@@ -193,6 +197,10 @@ describe("boring-vault-svm", () => {
         {
           name: "kamino_lend",
           programId: KAMINO_LEND_PROGRAM_ID,
+        },
+        {
+          name: "solend",
+          programId: SOLEND_PROGRAM_ID,
         },
       ],
       allAccounts
@@ -5238,5 +5246,69 @@ describe("boring-vault-svm", () => {
       [solveAuthority]
     );
     ths.expectTxToFail(txResult, "Request deadline passed");
+  });
+
+  it("Can lend JitoSol on Save", async () => {
+    const amount = 1_000_000_000; // 1 JitoSol
+    let amountBuffer = Buffer.alloc(8);
+    amountBuffer.writeBigUInt64LE(BigInt(amount));
+    // Step zero call create account w/seed
+    let ixData = Buffer.concat([
+      Buffer.from("03000000", "hex"), // Discriminator for Create Account With Seed
+      boringVaultAccount.toBuffer(),
+      Buffer.from("20000000", "hex"), // Length prefix (32)
+      Buffer.from(
+        "00000003455704432666837784833565039515161587473533159593362787a576874660000",
+        "hex"
+      ), // Seed with padding
+      amountBuffer, // amount
+      SOLEND_PROGRAM_ID.toBuffer(), // Owner
+    ]);
+
+    const newAccount = await anchor.web3.PublicKey.createWithSeed(
+      boringVaultAccount, // base
+      "4UpD2fh7xH3VP9QQaXtsS1YY3bxzWhtf", // seed
+      SOLEND_PROGRAM_ID // owner (Solend program)
+    );
+
+    let ixAccounts = [
+      { pubkey: boringVaultAccount, isWritable: true, isSigner: false },
+      { pubkey: newAccount, isWritable: true, isSigner: false },
+      {
+        pubkey: anchor.web3.SystemProgram.programId,
+        isWritable: false,
+        isSigner: false,
+      },
+      {
+        pubkey: SOLEND_PROGRAM_ID,
+        isWritable: false,
+        isSigner: false,
+      },
+    ];
+
+    // Maybe just call the ViewCpiDiget funciton first and get this working then optimize to a function
+
+    let txResult = await CpiService.executeCpi(
+      {
+        program: program,
+        client: client,
+        deployer: deployer,
+        authority: authority,
+        strategist: strategist,
+        vaultId: new anchor.BN(0),
+        ixProgramId: anchor.web3.SystemProgram.programId,
+        ixData: ixData,
+        // @ts-ignore
+        operators: CpiService.getCreateAccountWithSeedOperators(),
+        expectedSize: 81,
+        accounts: {
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+        },
+      },
+      ixAccounts
+    );
+
+    // ths.expectTxToSucceed(txResult);
   });
 });
