@@ -510,14 +510,6 @@ pub struct Deploy<'info> {
     )]
     pub queue_state: Account<'info, QueueState>,
 
-    #[account(
-        mut,
-        seeds = [BASE_SEED_QUEUE, &args.vault_id.to_le_bytes()[..]],
-        bump,
-    )]
-    /// CHECK: Account used to hold shares.
-    pub queue: SystemAccount<'info>,
-
     pub system_program: Program<'info, System>,
 }
 
@@ -847,5 +839,4 @@ pub struct CancelWithdraw<'info> {
     pub queue_shares: InterfaceAccount<'info, TokenAccount>,
 
     pub token_program_2022: Program<'info, Token2022>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
 }
