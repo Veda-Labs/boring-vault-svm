@@ -143,7 +143,11 @@ pub mod boring_vault_svm {
         vault.teller.withdraw_authority = args.withdraw_authority;
 
         // Initialize manager state.
-        require_keys_neq!(args.strategist, Pubkey::default());
+        require_keys_neq!(
+            args.strategist,
+            Pubkey::default(),
+            BoringErrorCode::InvalidStrategist
+        );
         vault.manager.strategist = args.strategist;
 
         // Update program config.
@@ -531,7 +535,11 @@ pub mod boring_vault_svm {
         vault_id: u64,
         new_strategist: Pubkey,
     ) -> Result<()> {
-        require_keys_neq!(new_strategist, Pubkey::default());
+        require_keys_neq!(
+            new_strategist,
+            Pubkey::default(),
+            BoringErrorCode::InvalidStrategist
+        );
         ctx.accounts.boring_vault_state.manager.strategist = new_strategist;
         msg!(
             "Vault {} - Strategist Updated: {}",
@@ -1177,7 +1185,6 @@ pub struct Initialize<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args: DeployArgs)]
 pub struct Deploy<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -1248,7 +1255,7 @@ pub struct Unpause<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(vault_id: u64, pending_authority: Pubkey)]
+#[instruction(vault_id: u64)]
 pub struct TransferAuthority<'info> {
     pub signer: Signer<'info>,
 
@@ -1797,7 +1804,6 @@ pub struct Manage<'info> {
     /// CHECK: Account used to hold assets.
     pub boring_vault: AccountInfo<'info>,
 
-    #[account()]
     /// CHECK: Checked in instruction
     pub cpi_digest: Account<'info, CpiDigest>,
 }

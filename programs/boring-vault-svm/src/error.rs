@@ -48,4 +48,6 @@ pub enum BoringErrorCode {
     DecimalConversionFailed,
     #[msg("Maximum share premium exceeded")]
     MaximumSharePremiumExceeded,
+    #[msg("Invalid Strategist")]
+    InvalidStrategist,
 }
