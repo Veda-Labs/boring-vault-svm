@@ -4699,7 +4699,8 @@ describe("boring-vault-svm", () => {
     minimumShares: new anchor.BN(1000),
   };
 
-  it("Update Withdraw Asset - enforces authority check", async () => {
+  it("Update Withdraw Asset - enforces constraints", async () => {
+    // 1. Test not authorized
     const initialState = {
       vaultId: new anchor.BN(0),
       allowWithdraws: true,
@@ -4709,7 +4710,7 @@ describe("boring-vault-svm", () => {
       maximumDiscount: 10,
       minimumShares: new anchor.BN(1000),
     };
-    const ix = await queueProgram.methods
+    let ix = await queueProgram.methods
       .updateWithdrawAssetData(initialState)
       .accounts({
         signer: user.publicKey,
@@ -4723,6 +4724,46 @@ describe("boring-vault-svm", () => {
       user,
     ]);
     ths.expectTxToFail(txResult, "Not authorized");
+
+    // 2. Test maximum maturity exceeded
+    const tooLongMaturity = {
+      ...initialState,
+      secondsToMaturity: 91 * 86400, // 91 days
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(tooLongMaturity)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Maximum maturity exceeded");
+
+    // 3. Test maximum deadline exceeded
+    const tooLongDeadline = {
+      ...initialState,
+      minimumSecondsToDeadline: 91 * 86400, // 91 days
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(tooLongDeadline)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Maximum deadline exceeded");
   });
 
   it("Request Withdraw - enforces constraints", async () => {
@@ -4958,6 +4999,44 @@ describe("boring-vault-svm", () => {
       [user]
     );
     ths.expectTxToFail(txResult, "Invalid seconds to deadline");
+
+    // 6. Try with invalid deadline that is too large
+    requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1_000_000),
+        discount: 5,
+        secondsToDeadline: 91 * 86400, // Too long
+      })
+      .accounts({
+        // Same accounts as above
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToFail(txResult, "Maximum deadline exceeded");
   });
 
   it("Fulfill Withdraw - enforces constraints", async () => {

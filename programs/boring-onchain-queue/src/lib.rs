@@ -141,10 +141,24 @@ pub mod boring_onchain_queue {
     /// # Arguments
     /// * `ctx` - The context of accounts
     /// * `args` - The configuration parameters to update
+    ///
+    /// # Errors
+    /// * `MaximumDeadlineExceeded` - If minimum_seconds_to_deadline exceeds MAXIMUM_DEADLINE (90 days)
+    /// * `MaximumMaturityExceeded` - If seconds_to_maturity exceeds MAXIMUM_MATURITY (90 days)
     pub fn update_withdraw_asset_data(
         ctx: Context<UpdateWithdrawAsset>,
         args: UpdateWithdrawAssetArgs,
     ) -> Result<()> {
+        // Validate deadline and maturity constraints
+        require!(
+            args.minimum_seconds_to_deadline <= MAXIMUM_DEADLINE,
+            QueueErrorCode::MaximumDeadlineExceeded
+        );
+        require!(
+            args.seconds_to_maturity <= MAXIMUM_MATURITY,
+            QueueErrorCode::MaximumMaturityExceeded
+        );
+
         let withdraw_asset = &mut ctx.accounts.withdraw_asset_data;
         withdraw_asset.allow_withdrawals = args.allow_withdraws;
         withdraw_asset.seconds_to_maturity = args.seconds_to_maturity;
@@ -221,6 +235,11 @@ pub mod boring_onchain_queue {
         // Make sure user provided deadline is greater than minimum
         if args.seconds_to_deadline < withdraw_asset_data.minimum_seconds_to_deadline {
             return Err(QueueErrorCode::InvalidSecondsToDeadline.into());
+        }
+
+        // Make sure user provided deadline is less than maximum
+        if args.seconds_to_deadline > MAXIMUM_DEADLINE {
+            return Err(QueueErrorCode::MaximumDeadlineExceeded.into());
         }
 
         let clock = &Clock::get()?;
