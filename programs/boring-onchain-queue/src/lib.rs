@@ -586,7 +586,7 @@ pub struct UpdateWithdrawAsset<'info> {
         init_if_needed,
         payer = signer,
         space = 8 + std::mem::size_of::<WithdrawAssetData>(),
-        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, withdraw_mint.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, &args.vault_id.to_le_bytes()[..], withdraw_mint.key().as_ref()],
         bump,
     )]
     pub withdraw_asset_data: Account<'info, WithdrawAssetData>,
@@ -629,7 +629,7 @@ pub struct RequestWithdraw<'info> {
     pub withdraw_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
-        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, withdraw_mint.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, &args.vault_id.to_le_bytes()[..], withdraw_mint.key().as_ref()],
         bump,
         constraint = withdraw_asset_data.allow_withdrawals == true @ QueueErrorCode::WithdrawsNotAllowedForAsset
     )]

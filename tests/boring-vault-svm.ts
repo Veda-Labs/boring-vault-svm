@@ -382,8 +382,8 @@ describe("boring-vault-svm", () => {
       anchor.web3.PublicKey.findProgramAddressSync(
         [
           Buffer.from("boring-queue-withdraw-asset-data"),
-          JITOSOL.toBuffer(),
           Buffer.from(new Array(8).fill(0)),
+          JITOSOL.toBuffer(),
         ],
         queueProgram.programId
       );
