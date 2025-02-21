@@ -94,10 +94,10 @@ pub mod boring_vault_svm {
 
         // Initialize teller state.
         vault.teller.base_asset = ctx.accounts.base_asset.key();
+        vault.teller.decimals = ctx.accounts.base_asset.decimals;
         if args.exchange_rate_provider == Pubkey::default() {
             return Err(BoringErrorCode::InvalidExchangeRateProvider.into());
         }
-        vault.teller.decimals = ctx.accounts.base_asset.decimals;
         vault.teller.exchange_rate_provider = args.exchange_rate_provider;
         vault.teller.exchange_rate = args.exchange_rate;
         vault.teller.exchange_rate_high_water_mark = args.exchange_rate;
@@ -302,6 +302,9 @@ pub mod boring_vault_svm {
         vault_id: u64,
         new_provider: Pubkey,
     ) -> Result<()> {
+        if new_provider == Pubkey::default() {
+            return Err(BoringErrorCode::InvalidExchangeRateProvider.into());
+        }
         ctx.accounts
             .boring_vault_state
             .teller
