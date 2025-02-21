@@ -305,6 +305,16 @@ pub fn get_rate_in_quote(
 ) -> Result<u64> {
     if boring_vault_state.teller.base_asset == quote.key() {
         get_rate(boring_vault_state)
+    } else if asset_data.is_pegged_to_base_asset {
+        // Need to convert the exchange rate from share decimals to quote decimals.
+        let exchange_rate = to_decimal(
+            boring_vault_state.teller.exchange_rate,
+            boring_vault_state.teller.decimals,
+        )?;
+
+        let rate = from_decimal(exchange_rate, quote.decimals)?;
+
+        Ok(rate)
     } else {
         // Query price feed.
         let feed_account = price_feed.data.borrow();
