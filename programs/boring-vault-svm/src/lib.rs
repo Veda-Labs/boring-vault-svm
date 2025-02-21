@@ -138,6 +138,7 @@ pub mod boring_vault_svm {
         vault.teller.withdraw_authority = args.withdraw_authority;
 
         // Initialize manager state.
+        require_keys_neq!(args.strategist, Pubkey::default());
         vault.manager.strategist = args.strategist;
 
         // Update program config.
