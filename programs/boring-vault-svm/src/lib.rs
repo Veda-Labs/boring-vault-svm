@@ -243,7 +243,9 @@ pub mod boring_vault_svm {
     ) -> Result<()> {
         if args.asset_data.price_feed == Pubkey::default() {
             require!(
-                args.asset_data.is_pegged_to_base_asset,
+                args.asset_data.is_pegged_to_base_asset
+                    || ctx.accounts.asset.key()
+                        == ctx.accounts.boring_vault_state.teller.base_asset,
                 BoringErrorCode::InvalidPriceFeed
             );
         }

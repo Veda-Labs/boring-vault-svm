@@ -3197,11 +3197,11 @@ describe("boring-vault-svm", () => {
     };
 
     // Get PDA for asset data
-    const [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    let [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("asset-data"),
         boringVaultStateAccount.toBuffer(),
-        JITOSOL.toBuffer(),
+        WSOL.toBuffer(),
       ],
       program.programId
     );
@@ -3212,7 +3212,7 @@ describe("boring-vault-svm", () => {
       .accounts({
         signer: user.publicKey, // Non-authority signer
         boringVaultState: boringVaultStateAccount,
-        asset: JITOSOL,
+        asset: WSOL,
         // @ts-ignore
         assetData: assetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3242,7 +3242,7 @@ describe("boring-vault-svm", () => {
       .accounts({
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
-        asset: JITOSOL,
+        asset: WSOL,
         // @ts-ignore
         assetData: assetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3257,13 +3257,22 @@ describe("boring-vault-svm", () => {
     );
     ths.expectTxToFail(txResult, "Invalid Price Feed");
 
-    // This should succeed - zero address price feed for pegged asset
+    // This should succeed - zero address price feed for base asset
+    [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("asset-data"),
+        boringVaultStateAccount.toBuffer(),
+        JITOSOL.toBuffer(),
+      ],
+      program.programId
+    );
+
     const peggedAssetArgs = {
       vaultId: vaultId,
       // @ts-ignore
       assetData: {
         ...updateArgs.assetData,
-        isPeggedToBaseAsset: true,
+        isPeggedToBaseAsset: false,
         priceFeed: anchor.web3.PublicKey.default,
       },
     };
