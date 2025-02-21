@@ -1207,7 +1207,6 @@ pub struct Deploy<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct Pause<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     // State
@@ -1223,7 +1222,6 @@ pub struct Pause<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct Unpause<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     // State
@@ -1239,7 +1237,6 @@ pub struct Unpause<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64, pending_authority: Pubkey)]
 pub struct TransferAuthority<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     // State
@@ -1255,7 +1252,6 @@ pub struct TransferAuthority<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct AcceptAuthority<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     // State
@@ -1273,6 +1269,7 @@ pub struct AcceptAuthority<'info> {
 pub struct UpdateAssetData<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+
     // State
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
@@ -1374,14 +1371,12 @@ pub struct Deposit<'info> {
 
     // State
     #[account(
-        mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 
     #[account(
-        mut,
         seeds = [
             BASE_SEED_BORING_VAULT,
             &args.vault_id.to_le_bytes()[..],
@@ -1457,7 +1452,6 @@ pub struct Withdraw<'info> {
 
     // State
     #[account(
-        mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
         constraint = boring_vault_state.teller.withdraw_authority == Pubkey::default() || signer.key() == boring_vault_state.teller.withdraw_authority @ BoringErrorCode::NotAuthorized,
@@ -1465,7 +1459,6 @@ pub struct Withdraw<'info> {
     pub boring_vault_state: Account<'info, BoringVault>,
 
     #[account(
-        mut,
         seeds = [
             BASE_SEED_BORING_VAULT,
             &args.vault_id.to_le_bytes()[..],
@@ -1591,7 +1584,6 @@ pub struct CloseCpiDigest<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct UpdateExchangeRateProvider<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1606,7 +1598,6 @@ pub struct UpdateExchangeRateProvider<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetWithdrawAuthority<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1621,7 +1612,6 @@ pub struct SetWithdrawAuthority<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetDepositSubAccount<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1636,7 +1626,6 @@ pub struct SetDepositSubAccount<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetWithdrawSubAccount<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1651,7 +1640,6 @@ pub struct SetWithdrawSubAccount<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetPayout<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1666,7 +1654,6 @@ pub struct SetPayout<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct ConfigureExchangeRateUpdateBounds<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1681,7 +1668,6 @@ pub struct ConfigureExchangeRateUpdateBounds<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetFees<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1696,7 +1682,6 @@ pub struct SetFees<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetStrategist<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1711,7 +1696,6 @@ pub struct SetStrategist<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64, sub_account: u8)]
 pub struct ClaimFeesInBase<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     // base asset account
@@ -1728,7 +1712,6 @@ pub struct ClaimFeesInBase<'info> {
     pub boring_vault_state: Account<'info, BoringVault>,
 
     #[account(
-        mut,
         seeds = [
             BASE_SEED_BORING_VAULT,
             &vault_id.to_le_bytes()[..],
@@ -1759,7 +1742,6 @@ pub struct ClaimFeesInBase<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64, new_exchange_rate: u64)]
 pub struct UpdateExchangeRate<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -1782,7 +1764,6 @@ pub struct UpdateExchangeRate<'info> {
 #[derive(Accounts)]
 #[instruction(args: ManageArgs)]
 pub struct Manage<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(

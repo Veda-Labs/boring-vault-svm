@@ -524,7 +524,6 @@ pub struct Deploy<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetSolveAuthority<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -539,7 +538,6 @@ pub struct SetSolveAuthority<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct Pause<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -554,7 +552,6 @@ pub struct Pause<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct Unpause<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -652,7 +649,6 @@ pub struct RequestWithdraw<'info> {
     pub withdraw_request: Account<'info, WithdrawRequest>,
 
     #[account(
-        mut,
         seeds = [BASE_SEED_QUEUE, &args.vault_id.to_le_bytes()[..]],
         bump,
     )]
@@ -660,7 +656,6 @@ pub struct RequestWithdraw<'info> {
     pub queue: SystemAccount<'info>,
 
     /// The vault's share mint
-    #[account(mut)]
     /// CHECK: Validated in instruction explicitly, even though
     /// it is implicitly validated by the cpi
     pub share_mint: InterfaceAccount<'info, Mint>,
@@ -785,11 +780,9 @@ pub struct FulfillWithdraw<'info> {
     pub boring_vault_program: Program<'info, BoringVaultSvm>,
 
     /// The vault state account
-    #[account(mut)]
     /// CHECK: Validated in CPI call
     pub boring_vault_state: Account<'info, BoringVault>,
 
-    #[account(mut)]
     /// CHECK: Checked in boring vault program instruction
     pub boring_vault: SystemAccount<'info>,
 
@@ -810,7 +803,6 @@ pub struct CancelWithdraw<'info> {
 
     // Share Token
     /// The vault's share mint
-    #[account(mut)]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
@@ -830,7 +822,6 @@ pub struct CancelWithdraw<'info> {
     pub queue_state: Account<'info, QueueState>,
 
     #[account(
-        mut,
         seeds = [BASE_SEED_QUEUE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
     )]
