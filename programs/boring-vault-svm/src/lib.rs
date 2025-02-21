@@ -78,10 +78,10 @@ pub mod boring_vault_svm {
     /// * `BoringErrorCode::InvalidPlatformFeeBps` - If platform fee exceeds maximum
     /// * `BoringErrorCode::InvalidPerformanceFeeBps` - If performance fee exceeds maximum
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
-        // Make sure the authority is not the zero address.
-        if args.authority == Pubkey::default() {
-            return Err(BoringErrorCode::InvalidAuthority.into());
-        }
+        require!(
+            args.authority != Pubkey::default(),
+            BoringErrorCode::InvalidAuthority
+        );
 
         // Initialize vault.
         let vault = &mut ctx.accounts.boring_vault_state;
@@ -95,9 +95,10 @@ pub mod boring_vault_svm {
         // Initialize teller state.
         vault.teller.base_asset = ctx.accounts.base_asset.key();
         vault.teller.decimals = ctx.accounts.base_asset.decimals;
-        if args.exchange_rate_provider == Pubkey::default() {
-            return Err(BoringErrorCode::InvalidExchangeRateProvider.into());
-        }
+        require!(
+            args.exchange_rate_provider != Pubkey::default(),
+            BoringErrorCode::InvalidExchangeRateProvider
+        );
         vault.teller.exchange_rate_provider = args.exchange_rate_provider;
         vault.teller.exchange_rate = args.exchange_rate;
         vault.teller.exchange_rate_high_water_mark = args.exchange_rate;
@@ -105,34 +106,37 @@ pub mod boring_vault_svm {
         vault.teller.total_shares_last_update = ctx.accounts.share_mint.supply;
         let clock = &Clock::get()?;
         vault.teller.last_update_timestamp = clock.unix_timestamp as u64;
-        if args.payout_address == Pubkey::default() {
-            return Err(BoringErrorCode::InvalidPayoutAddress.into());
-        }
+        require!(
+            args.payout_address != Pubkey::default(),
+            BoringErrorCode::InvalidPayoutAddress
+        );
         vault.teller.payout_address = args.payout_address;
-        if args.allowed_exchange_rate_change_upper_bound
-            > MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
-            || args.allowed_exchange_rate_change_upper_bound < BPS_SCALE
-        {
-            return Err(BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound.into());
-        }
+        require!(
+            args.allowed_exchange_rate_change_upper_bound
+                <= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
+                && args.allowed_exchange_rate_change_upper_bound >= BPS_SCALE,
+            BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound
+        );
         vault.teller.allowed_exchange_rate_change_upper_bound =
             args.allowed_exchange_rate_change_upper_bound;
-        if args.allowed_exchange_rate_change_lower_bound
-            < MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
-            || args.allowed_exchange_rate_change_lower_bound > BPS_SCALE
-        {
-            return Err(BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound.into());
-        }
+        require!(
+            args.allowed_exchange_rate_change_lower_bound
+                >= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
+                && args.allowed_exchange_rate_change_lower_bound <= BPS_SCALE,
+            BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound
+        );
         vault.teller.allowed_exchange_rate_change_lower_bound =
             args.allowed_exchange_rate_change_lower_bound;
         vault.teller.minimum_update_delay_in_seconds = args.minimum_update_delay_in_seconds;
-        if args.platform_fee_bps > MAXIMUM_PLATFORM_FEE_BPS {
-            return Err(BoringErrorCode::InvalidPlatformFeeBps.into());
-        }
+        require!(
+            args.platform_fee_bps <= MAXIMUM_PLATFORM_FEE_BPS,
+            BoringErrorCode::InvalidPlatformFeeBps
+        );
         vault.teller.platform_fee_bps = args.platform_fee_bps;
-        if args.performance_fee_bps > MAXIMUM_PERFORMANCE_FEE_BPS {
-            return Err(BoringErrorCode::InvalidPerformanceFeeBps.into());
-        }
+        require!(
+            args.performance_fee_bps <= MAXIMUM_PERFORMANCE_FEE_BPS,
+            BoringErrorCode::InvalidPerformanceFeeBps
+        );
         vault.teller.performance_fee_bps = args.performance_fee_bps;
 
         // Set withdraw_authority, if default, then withdraws are permissionless
@@ -311,9 +315,10 @@ pub mod boring_vault_svm {
         vault_id: u64,
         new_provider: Pubkey,
     ) -> Result<()> {
-        if new_provider == Pubkey::default() {
-            return Err(BoringErrorCode::InvalidExchangeRateProvider.into());
-        }
+        require!(
+            new_provider != Pubkey::default(),
+            BoringErrorCode::InvalidExchangeRateProvider
+        );
         ctx.accounts
             .boring_vault_state
             .teller
@@ -488,14 +493,16 @@ pub mod boring_vault_svm {
         performance_fee_bps: u16,
     ) -> Result<()> {
         // Validate platform fee
-        if platform_fee_bps > MAXIMUM_PLATFORM_FEE_BPS {
-            return Err(BoringErrorCode::InvalidPlatformFeeBps.into());
-        }
+        require!(
+            platform_fee_bps <= MAXIMUM_PLATFORM_FEE_BPS,
+            BoringErrorCode::InvalidPlatformFeeBps
+        );
 
         // Validate performance fee
-        if performance_fee_bps > MAXIMUM_PERFORMANCE_FEE_BPS {
-            return Err(BoringErrorCode::InvalidPerformanceFeeBps.into());
-        }
+        require!(
+            performance_fee_bps <= MAXIMUM_PERFORMANCE_FEE_BPS,
+            BoringErrorCode::InvalidPerformanceFeeBps
+        );
 
         let vault = &mut ctx.accounts.boring_vault_state;
         vault.teller.platform_fee_bps = platform_fee_bps;

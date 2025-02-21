@@ -233,26 +233,26 @@ pub mod boring_onchain_queue {
         withdraw_request.share_amount = args.share_amount;
 
         // Make sure that user provided discount is within the range
-        if args.discount < withdraw_asset_data.minimum_discount
-            || args.discount > withdraw_asset_data.maximum_discount
-        {
-            return Err(QueueErrorCode::InvalidDiscount.into());
-        }
+        require!(
+            args.discount >= withdraw_asset_data.minimum_discount
+                && args.discount <= withdraw_asset_data.maximum_discount,
+            QueueErrorCode::InvalidDiscount
+        );
 
-        // Make sure user is withdrawing enough shares
-        if args.share_amount < withdraw_asset_data.minimum_shares {
-            return Err(QueueErrorCode::InvalidShareAmount.into());
-        }
+        require!(
+            args.share_amount >= withdraw_asset_data.minimum_shares,
+            QueueErrorCode::InvalidShareAmount
+        );
 
-        // Make sure user provided deadline is greater than minimum
-        if args.seconds_to_deadline < withdraw_asset_data.minimum_seconds_to_deadline {
-            return Err(QueueErrorCode::InvalidSecondsToDeadline.into());
-        }
+        require!(
+            args.seconds_to_deadline >= withdraw_asset_data.minimum_seconds_to_deadline,
+            QueueErrorCode::InvalidSecondsToDeadline
+        );
 
-        // Make sure user provided deadline is less than maximum
-        if args.seconds_to_deadline > MAXIMUM_DEADLINE {
-            return Err(QueueErrorCode::MaximumDeadlineExceeded.into());
-        }
+        require!(
+            args.seconds_to_deadline <= MAXIMUM_DEADLINE,
+            QueueErrorCode::MaximumDeadlineExceeded
+        );
 
         let clock = &Clock::get()?;
         withdraw_request.creation_time = clock.unix_timestamp as u64;
@@ -367,17 +367,17 @@ pub mod boring_onchain_queue {
         let maturity = creation_time + withdraw_request.seconds_to_maturity as u64;
         let deadline = maturity + withdraw_request.seconds_to_deadline as u64;
 
-        if current_time < maturity {
-            return Err(QueueErrorCode::RequestNotMature.into());
-        }
+        require!(current_time >= maturity, QueueErrorCode::RequestNotMature);
 
-        if current_time > deadline {
-            return Err(QueueErrorCode::RequestDeadlinePassed.into());
-        }
+        require!(
+            current_time <= deadline,
+            QueueErrorCode::RequestDeadlinePassed
+        );
 
-        if ctx.accounts.withdraw_mint.key() != withdraw_request.asset_out {
-            return Err(QueueErrorCode::InvalidWithdrawMint.into());
-        }
+        require!(
+            ctx.accounts.withdraw_mint.key() == withdraw_request.asset_out,
+            QueueErrorCode::InvalidWithdrawMint
+        );
 
         // Validate user's ata. Cpi Withdraw validates vault and queue atas
         let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
