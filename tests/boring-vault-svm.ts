@@ -1185,13 +1185,13 @@ describe("boring-vault-svm", () => {
     ).to.equal(expectedFees.toString()); // Fee should be transferred to payout
   });
 
-  it("Can update and close cpi digests", async () => {
-    // 1. View CPI Digest
+  it("Can close cpi digests", async () => {
+    // This digest already exists
     const digest = await program.methods
       .viewCpiDigest(
         // @ts-ignore
         {
-          ixProgramId: KAMINO_LEND_PROGRAM_ID,
+          ixProgramId: NULL,
           ixData: Buffer.from([]),
           operators: [],
           expectedSize: 32,
@@ -1200,7 +1200,6 @@ describe("boring-vault-svm", () => {
       .signers([deployer])
       .view();
 
-    // 2. Find CPI Digest Account
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("cpi-digest"),
@@ -1210,36 +1209,6 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
-    // 3. Update CPI Digest
-    const updateIx = await program.methods
-      .updateCpiDigest(
-        // @ts-ignore
-        {
-          vaultId: new anchor.BN(0),
-          cpiDigest: digest,
-          operators: [],
-          expectedSize: 32,
-        }
-      )
-      .accounts({
-        signer: authority.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        systemProgram: anchor.web3.SystemProgram.programId,
-        cpiDigest: cpiDigestAccount,
-      })
-      .instruction();
-
-    const updateTxResult = await ths.createAndProcessTransaction(
-      client,
-      deployer,
-      updateIx,
-      [authority]
-    );
-
-    ths.expectTxToSucceed(updateTxResult);
-
-    // 4. Close CPI Digest
     const closeIx = await program.methods
       .updateCpiDigest(
         // @ts-ignore

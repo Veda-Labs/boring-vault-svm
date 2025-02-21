@@ -28,8 +28,7 @@ pub use error::*;
 pub use state::*;
 
 // Internal module usage
-use utils::teller;
-
+use utils::{operators, teller};
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
 
 #[program]
@@ -1541,9 +1540,9 @@ pub struct UpdateCpiDigest<'info> {
     pub boring_vault_state: Account<'info, BoringVault>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
-        space = 8 + std::mem::size_of::<CpiDigest>(),
+        space = 8 + std::mem::size_of::<CpiDigest>() + (std::mem::size_of::<operators::Operator>() * args.operators.operators.len()),
         seeds = [
             BASE_SEED_CPI_DIGEST,
             &args.vault_id.to_le_bytes()[..],

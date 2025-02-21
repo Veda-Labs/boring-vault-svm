@@ -214,11 +214,42 @@ export class CpiService {
       .remainingAccounts(remainingAccounts)
       .instruction();
 
-    return await ths.createAndProcessTransaction(
+    const manageTxResult = await ths.createAndProcessTransaction(
       params.client,
       params.deployer,
       manageIx,
       [params.strategist]
     );
+
+    // 5. Close CPI Digest
+    const closeIx = await params.program.methods
+      .closeCpiDigest(
+        // @ts-ignore
+        {
+          vaultId: params.vaultId,
+          cpiDigest: digest,
+          operators: params.operators,
+          expectedSize: params.expectedSize,
+        }
+      )
+      .accounts({
+        signer: params.authority.publicKey,
+        boringVaultState: params.accounts.boringVaultState,
+        cpiDigest: cpiDigestAccount,
+      })
+      .instruction();
+
+    const closeTxResult = await ths.createAndProcessTransaction(
+      params.client,
+      params.deployer,
+      closeIx,
+      [params.authority]
+    );
+
+    if (closeTxResult.result !== null) {
+      throw new Error("Failed to close CPI digest");
+    }
+
+    return manageTxResult;
   }
 }
