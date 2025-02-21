@@ -154,8 +154,11 @@ pub mod boring_vault_svm {
         ctx.accounts.config.vault_count += 1;
 
         msg!(
-            "Boring Vault deployed successfully with share token {}",
-            ctx.accounts.share_mint.key()
+            "Boring Vault {} deployed successfully with share token {} (name: {}, symbol: {})",
+            ctx.accounts.config.vault_count,
+            ctx.accounts.share_mint.key(),
+            args.name,
+            args.symbol
         );
         Ok(())
     }
