@@ -36,4 +36,6 @@ pub enum QueueErrorCode {
     MaximumMaturityExceeded,
     #[msg("Maximum deadline exceeded")]
     MaximumDeadlineExceeded,
+    #[msg("Maximum discount exceeded")]
+    MaximumDiscountExceeded,
 }

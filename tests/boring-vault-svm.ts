@@ -4755,6 +4755,48 @@ describe("boring-vault-svm", () => {
       authority,
     ]);
     ths.expectTxToFail(txResult, "Maximum deadline exceeded");
+
+    // 4. Test maximum discount less than minimum discount
+    const invalidDiscountOrder = {
+      ...initialState,
+      minimumDiscount: 20,
+      maximumDiscount: 10, // Less than minimum
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(invalidDiscountOrder)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Invalid discount");
+
+    // 5. Test maximum discount exceeds allowed maximum (10%)
+    const tooLargeDiscount = {
+      ...initialState,
+      minimumDiscount: 0,
+      maximumDiscount: 1100, // Greater than MAXIMUM_DISCOUNT (1000)
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(tooLargeDiscount)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Maximum discount exceeded");
   });
 
   it("Request Withdraw - enforces constraints", async () => {

@@ -145,6 +145,8 @@ pub mod boring_onchain_queue {
     /// # Errors
     /// * `MaximumDeadlineExceeded` - If minimum_seconds_to_deadline exceeds MAXIMUM_DEADLINE (90 days)
     /// * `MaximumMaturityExceeded` - If seconds_to_maturity exceeds MAXIMUM_MATURITY (90 days)
+    /// * `InvalidDiscount` - If maximum_discount is less than minimum_discount
+    /// * `MaximumDiscountExceeded` - If maximum_discount exceeds MAXIMUM_DISCOUNT (10%)
     pub fn update_withdraw_asset_data(
         ctx: Context<UpdateWithdrawAsset>,
         args: UpdateWithdrawAssetArgs,
@@ -157,6 +159,16 @@ pub mod boring_onchain_queue {
         require!(
             args.seconds_to_maturity <= MAXIMUM_MATURITY,
             QueueErrorCode::MaximumMaturityExceeded
+        );
+
+        // Validate discount constraints
+        require!(
+            args.maximum_discount > args.minimum_discount,
+            QueueErrorCode::InvalidDiscount
+        );
+        require!(
+            args.maximum_discount <= MAXIMUM_DISCOUNT,
+            QueueErrorCode::MaximumDiscountExceeded
         );
 
         let withdraw_asset = &mut ctx.accounts.withdraw_asset_data;
