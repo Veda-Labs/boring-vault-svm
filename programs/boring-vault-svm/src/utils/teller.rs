@@ -187,7 +187,8 @@ pub fn calculate_shares_and_mint<'a>(
         calculate_shares_to_mint_using_base_asset(
             deposit_amount,
             exchange_rate,
-            asset_decimals,
+            // Use share_decimals since we converted deposit_amount to be in terms of share_decimals.
+            share_decimals,
             share_decimals,
             asset_data.share_premium_bps,
         )?
