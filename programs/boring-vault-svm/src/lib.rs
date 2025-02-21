@@ -103,7 +103,8 @@ pub mod boring_vault_svm {
         vault.teller.exchange_rate_high_water_mark = args.exchange_rate;
         vault.teller.fees_owed_in_base_asset = 0;
         vault.teller.total_shares_last_update = ctx.accounts.share_mint.supply;
-        vault.teller.last_update_timestamp = ctx.accounts.clock.unix_timestamp as u64;
+        let clock = &Clock::get()?;
+        vault.teller.last_update_timestamp = clock.unix_timestamp as u64;
         if args.payout_address == Pubkey::default() {
             return Err(BoringErrorCode::InvalidPayoutAddress.into());
         }
@@ -608,7 +609,8 @@ pub mod boring_vault_svm {
         vault_id: u64,
         new_exchange_rate: u64,
     ) -> Result<()> {
-        let current_time = ctx.accounts.clock.unix_timestamp as u64;
+        let clock = &Clock::get()?;
+        let current_time = clock.unix_timestamp as u64;
         let vault_decimals = ctx.accounts.share_mint.decimals;
         let new_exchange_rate_d = teller::to_decimal(new_exchange_rate, vault_decimals)?;
         let current_exchange_rate = ctx.accounts.boring_vault_state.teller.exchange_rate;
@@ -1198,7 +1200,6 @@ pub struct Deploy<'info> {
 
     pub system_program: Program<'info, System>,
     pub token_program: Interface<'info, TokenInterface>,
-    pub clock: Sysvar<'info, Clock>,
 }
 
 #[derive(Accounts)]
@@ -1774,8 +1775,6 @@ pub struct UpdateExchangeRate<'info> {
         constraint = share_mint.key() == boring_vault_state.config.share_mint @ BoringErrorCode::InvalidShareMint
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
-
-    pub clock: Sysvar<'info, Clock>,
 }
 
 #[derive(Accounts)]

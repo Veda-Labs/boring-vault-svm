@@ -294,7 +294,8 @@ pub mod boring_onchain_queue {
     /// * `InvalidShareMint` - If share mint doesn't match queue state
     pub fn cancel_withdraw(ctx: Context<CancelWithdraw>, _request_id: u64) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
-        let current_time = ctx.accounts.clock.unix_timestamp as u64;
+        let clock = &Clock::get()?;
+        let current_time = clock.unix_timestamp as u64;
 
         // Calculate deadline
         let creation_time = withdraw_request.creation_time;
@@ -348,7 +349,8 @@ pub mod boring_onchain_queue {
     ) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
 
-        let current_time = ctx.accounts.clock.unix_timestamp as u64;
+        let clock = &Clock::get()?;
+        let current_time = clock.unix_timestamp as u64;
         let creation_time = withdraw_request.creation_time;
         let maturity = creation_time + withdraw_request.seconds_to_maturity as u64;
         let deadline = maturity + withdraw_request.seconds_to_deadline as u64;
@@ -764,8 +766,6 @@ pub struct FulfillWithdraw<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 
-    pub clock: Sysvar<'info, Clock>,
-
     #[account(
         constraint = boring_vault_program.key() == queue_state.boring_vault_program @ QueueErrorCode::InvalidBoringVaultProgram
     )]
@@ -845,5 +845,4 @@ pub struct CancelWithdraw<'info> {
 
     pub token_program_2022: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-    pub clock: Sysvar<'info, Clock>,
 }

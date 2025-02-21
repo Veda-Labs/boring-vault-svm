@@ -2020,7 +2020,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -2061,7 +2060,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -2152,7 +2150,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -2182,7 +2179,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -2208,7 +2204,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -2286,7 +2281,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -2331,7 +2325,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -4202,7 +4195,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -4239,7 +4231,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -4816,7 +4807,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4871,7 +4861,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4909,7 +4898,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4947,7 +4935,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4985,7 +4972,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -5023,7 +5009,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -5072,7 +5057,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -5126,7 +5110,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5179,7 +5162,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5233,7 +5215,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5272,7 +5253,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5309,7 +5289,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5348,7 +5327,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
