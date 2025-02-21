@@ -249,6 +249,12 @@ pub mod boring_vault_svm {
                 BoringErrorCode::InvalidPriceFeed
             );
         }
+
+        require!(
+            args.asset_data.share_premium_bps <= MAXIMUM_SHARE_PREMIUM_BPS,
+            BoringErrorCode::MaximumSharePremiumExceeded
+        );
+
         let asset_data = &mut ctx.accounts.asset_data;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;

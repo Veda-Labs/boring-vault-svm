@@ -46,4 +46,6 @@ pub enum BoringErrorCode {
     InvalidBaseAsset,
     #[msg("Decimal conversion failed")]
     DecimalConversionFailed,
+    #[msg("Maximum share premium exceeded")]
+    MaximumSharePremiumExceeded,
 }

@@ -663,6 +663,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3256,6 +3258,35 @@ describe("boring-vault-svm", () => {
       [authority]
     );
     ths.expectTxToFail(txResult, "Invalid Price Feed");
+
+    // Try with share premium > 10%
+    const invalidSharePremiumArgs = {
+      vaultId: vaultId,
+      // @ts-ignore
+      assetData: {
+        ...updateArgs.assetData,
+        sharePremiumBps: 1100, // 11%, exceeds maximum 10% (1000 basis points)
+      },
+    };
+    const invalidSharePremiumIx = await program.methods
+      .updateAssetData(invalidSharePremiumArgs)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: WSOL,
+        // @ts-ignore
+        assetData: assetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidSharePremiumIx,
+      [authority]
+    );
+    ths.expectTxToFail(txResult, "Maximum share premium exceeded");
 
     // This should succeed - zero address price feed for base asset
     [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
