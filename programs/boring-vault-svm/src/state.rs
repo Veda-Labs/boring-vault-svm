@@ -99,6 +99,8 @@ pub struct AssetData {
     pub is_pegged_to_base_asset: bool,
     pub price_feed: Pubkey,
     pub inverse_price_feed: bool,
+    pub max_staleness: u64,
+    pub min_samples: u32,
 }
 
 // =============================== Withdraw =============================

@@ -194,13 +194,7 @@ pub fn calculate_shares_and_mint<'a>(
         )?
     } else {
         // Query price feed.
-        let feed_account = price_feed.data.borrow();
-        let feed = PullFeedAccountData::parse(feed_account).unwrap();
-
-        let price = match feed.value() {
-            Some(value) => value,
-            None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
-        };
+        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
 
         calculate_shares_to_mint_using_deposit_asset(
             args.deposit_amount,
@@ -262,13 +256,7 @@ pub fn calculate_assets_out<'a>(
         assets_out
     } else {
         // Query price feed.
-        let feed_account = price_feed.data.borrow();
-        let feed = PullFeedAccountData::parse(feed_account).unwrap();
-
-        let price = match feed.value() {
-            Some(value) => value,
-            None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
-        };
+        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
 
         calculate_assets_out_using_withdraw_asset(
             args.share_amount,
@@ -317,13 +305,7 @@ pub fn get_rate_in_quote(
         Ok(rate)
     } else {
         // Query price feed.
-        let feed_account = price_feed.data.borrow();
-        let feed = PullFeedAccountData::parse(feed_account).unwrap();
-
-        let price = match feed.value() {
-            Some(value) => value,
-            None => return Err(BoringErrorCode::InvalidPriceFeed.into()),
-        };
+        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
 
         let price = if asset_data.inverse_price_feed {
             Decimal::from(1).checked_div(price).unwrap() // 1 / price
@@ -349,6 +331,19 @@ pub fn get_rate_in_quote(
 }
 
 // ================================ Internal Helper Functions ================================
+
+/// Reads the oralce and checks for staleness, and accuracy
+fn read_oracle(price_feed: AccountInfo, max_staleness: u64, min_samples: u32) -> Result<Decimal> {
+    // Query price feed.
+    let feed_account = price_feed.data.borrow();
+    let feed = PullFeedAccountData::parse(feed_account).unwrap();
+
+    let price = feed
+        .get_value(&Clock::get()?, max_staleness, min_samples, true)
+        .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+
+    Ok(price)
+}
 
 /// Calculates shares to mint using base asset
 fn calculate_shares_to_mint_using_base_asset(

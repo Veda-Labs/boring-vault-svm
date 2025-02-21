@@ -620,6 +620,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -707,6 +709,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: false,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: true,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3194,6 +3198,8 @@ describe("boring-vault-svm", () => {
           "Feed111111111111111111111111111111111111111"
         ),
         inversePriceFeed: false,
+        maxStaleness: new anchor.BN(1),
+        minSamples: 1,
       },
     };
 
@@ -3369,6 +3375,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: false,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3427,6 +3435,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: false,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3674,6 +3684,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3735,6 +3747,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3991,6 +4005,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -4052,6 +4068,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({

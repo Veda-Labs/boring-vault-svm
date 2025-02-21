@@ -200,7 +200,6 @@ pub mod boring_onchain_queue {
             ctx.accounts.share_mint.decimals,
         )?;
 
-        let user_withdraw_state = &mut ctx.accounts.user_withdraw_state;
         let withdraw_request = &mut ctx.accounts.withdraw_request;
         let withdraw_asset_data = &ctx.accounts.withdraw_asset_data;
         withdraw_request.vault_id = args.vault_id;
@@ -224,7 +223,8 @@ pub mod boring_onchain_queue {
             return Err(QueueErrorCode::InvalidSecondsToDeadline.into());
         }
 
-        withdraw_request.creation_time = ctx.accounts.clock.unix_timestamp as u64;
+        let clock = &Clock::get()?;
+        withdraw_request.creation_time = clock.unix_timestamp as u64;
         withdraw_request.seconds_to_maturity = withdraw_asset_data.seconds_to_maturity;
         withdraw_request.seconds_to_deadline = args.seconds_to_deadline;
 
@@ -259,7 +259,7 @@ pub mod boring_onchain_queue {
         let asset_amount = from_decimal(asset_amount, ctx.accounts.withdraw_mint.decimals)?;
 
         withdraw_request.asset_amount = asset_amount;
-        user_withdraw_state.last_nonce += 1;
+        ctx.accounts.user_withdraw_state.last_nonce += 1;
 
         Ok(())
     }
@@ -653,8 +653,6 @@ pub struct RequestWithdraw<'info> {
     pub token_program_2022: Program<'info, Token2022>,
 
     pub system_program: Program<'info, System>,
-
-    pub clock: Sysvar<'info, Clock>,
 
     #[account(
         constraint = boring_vault_program.key() == queue_state.boring_vault_program @ QueueErrorCode::InvalidBoringVaultProgram
