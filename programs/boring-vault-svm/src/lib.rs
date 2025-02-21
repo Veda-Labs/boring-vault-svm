@@ -1510,8 +1510,7 @@ pub struct Withdraw<'info> {
 
     /// The user's share token 2022 account
     #[account(
-        init_if_needed,
-        payer = signer,
+        mut,
         associated_token::mint = share_mint,
         associated_token::authority = signer,
         associated_token::token_program = token_program_2022,
