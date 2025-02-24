@@ -452,19 +452,17 @@ pub mod boring_vault_svm {
         vault_id: u64,
         args: ConfigureExchangeRateUpdateBoundsArgs,
     ) -> Result<()> {
-        // Validate upper bound
-        if args.upper_bound > MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
-            || args.upper_bound < BPS_SCALE
-        {
-            return Err(BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound.into());
-        }
+        require!(
+            args.upper_bound <= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
+                && args.upper_bound >= BPS_SCALE,
+            BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound
+        );
 
-        // Validate lower bound
-        if args.lower_bound < MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
-            || args.lower_bound > BPS_SCALE
-        {
-            return Err(BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound.into());
-        }
+        require!(
+            args.lower_bound >= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
+                && args.lower_bound <= BPS_SCALE,
+            BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound
+        );
 
         let vault = &mut ctx.accounts.boring_vault_state;
         vault.teller.allowed_exchange_rate_change_upper_bound = args.upper_bound;
