@@ -2057,15 +2057,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mock-kamino-lend"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "bytemuck",
- "derivative",
-]
-
-[[package]]
 name = "num"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
