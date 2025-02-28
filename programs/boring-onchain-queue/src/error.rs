@@ -32,4 +32,10 @@ pub enum QueueErrorCode {
     DecimalConversionFailed,
     #[msg("Request deadline not passed")]
     RequestDeadlineNotPassed,
+    #[msg("Maximum maturity exceeded")]
+    MaximumMaturityExceeded,
+    #[msg("Maximum deadline exceeded")]
+    MaximumDeadlineExceeded,
+    #[msg("Maximum discount exceeded")]
+    MaximumDiscountExceeded,
 }

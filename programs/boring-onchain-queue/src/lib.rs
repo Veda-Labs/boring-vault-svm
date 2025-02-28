@@ -141,10 +141,36 @@ pub mod boring_onchain_queue {
     /// # Arguments
     /// * `ctx` - The context of accounts
     /// * `args` - The configuration parameters to update
+    ///
+    /// # Errors
+    /// * `MaximumDeadlineExceeded` - If minimum_seconds_to_deadline exceeds MAXIMUM_DEADLINE (90 days)
+    /// * `MaximumMaturityExceeded` - If seconds_to_maturity exceeds MAXIMUM_MATURITY (90 days)
+    /// * `InvalidDiscount` - If maximum_discount is less than minimum_discount
+    /// * `MaximumDiscountExceeded` - If maximum_discount exceeds MAXIMUM_DISCOUNT (10%)
     pub fn update_withdraw_asset_data(
         ctx: Context<UpdateWithdrawAsset>,
         args: UpdateWithdrawAssetArgs,
     ) -> Result<()> {
+        // Validate deadline and maturity constraints
+        require!(
+            args.minimum_seconds_to_deadline <= MAXIMUM_DEADLINE,
+            QueueErrorCode::MaximumDeadlineExceeded
+        );
+        require!(
+            args.seconds_to_maturity <= MAXIMUM_MATURITY,
+            QueueErrorCode::MaximumMaturityExceeded
+        );
+
+        // Validate discount constraints
+        require!(
+            args.maximum_discount > args.minimum_discount,
+            QueueErrorCode::InvalidDiscount
+        );
+        require!(
+            args.maximum_discount <= MAXIMUM_DISCOUNT,
+            QueueErrorCode::MaximumDiscountExceeded
+        );
+
         let withdraw_asset = &mut ctx.accounts.withdraw_asset_data;
         withdraw_asset.allow_withdrawals = args.allow_withdraws;
         withdraw_asset.seconds_to_maturity = args.seconds_to_maturity;
@@ -200,7 +226,6 @@ pub mod boring_onchain_queue {
             ctx.accounts.share_mint.decimals,
         )?;
 
-        let user_withdraw_state = &mut ctx.accounts.user_withdraw_state;
         let withdraw_request = &mut ctx.accounts.withdraw_request;
         let withdraw_asset_data = &ctx.accounts.withdraw_asset_data;
         withdraw_request.vault_id = args.vault_id;
@@ -208,23 +233,29 @@ pub mod boring_onchain_queue {
         withdraw_request.share_amount = args.share_amount;
 
         // Make sure that user provided discount is within the range
-        if args.discount < withdraw_asset_data.minimum_discount
-            || args.discount > withdraw_asset_data.maximum_discount
-        {
-            return Err(QueueErrorCode::InvalidDiscount.into());
-        }
+        require!(
+            args.discount >= withdraw_asset_data.minimum_discount
+                && args.discount <= withdraw_asset_data.maximum_discount,
+            QueueErrorCode::InvalidDiscount
+        );
 
-        // Make sure user is withdrawing enough shares
-        if args.share_amount < withdraw_asset_data.minimum_shares {
-            return Err(QueueErrorCode::InvalidShareAmount.into());
-        }
+        require!(
+            args.share_amount >= withdraw_asset_data.minimum_shares,
+            QueueErrorCode::InvalidShareAmount
+        );
 
-        // Make sure user provided deadline is greater than minimum
-        if args.seconds_to_deadline < withdraw_asset_data.minimum_seconds_to_deadline {
-            return Err(QueueErrorCode::InvalidSecondsToDeadline.into());
-        }
+        require!(
+            args.seconds_to_deadline >= withdraw_asset_data.minimum_seconds_to_deadline,
+            QueueErrorCode::InvalidSecondsToDeadline
+        );
 
-        withdraw_request.creation_time = ctx.accounts.clock.unix_timestamp as u64;
+        require!(
+            args.seconds_to_deadline <= MAXIMUM_DEADLINE,
+            QueueErrorCode::MaximumDeadlineExceeded
+        );
+
+        let clock = &Clock::get()?;
+        withdraw_request.creation_time = clock.unix_timestamp as u64;
         withdraw_request.seconds_to_maturity = withdraw_asset_data.seconds_to_maturity;
         withdraw_request.seconds_to_deadline = args.seconds_to_deadline;
 
@@ -259,7 +290,7 @@ pub mod boring_onchain_queue {
         let asset_amount = from_decimal(asset_amount, ctx.accounts.withdraw_mint.decimals)?;
 
         withdraw_request.asset_amount = asset_amount;
-        user_withdraw_state.last_nonce += 1;
+        ctx.accounts.user_withdraw_state.last_nonce += 1;
 
         Ok(())
     }
@@ -275,7 +306,8 @@ pub mod boring_onchain_queue {
     /// * `InvalidShareMint` - If share mint doesn't match queue state
     pub fn cancel_withdraw(ctx: Context<CancelWithdraw>, _request_id: u64) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
-        let current_time = ctx.accounts.clock.unix_timestamp as u64;
+        let clock = &Clock::get()?;
+        let current_time = clock.unix_timestamp as u64;
 
         // Calculate deadline
         let creation_time = withdraw_request.creation_time;
@@ -329,22 +361,23 @@ pub mod boring_onchain_queue {
     ) -> Result<()> {
         let withdraw_request = &ctx.accounts.withdraw_request;
 
-        let current_time = ctx.accounts.clock.unix_timestamp as u64;
+        let clock = &Clock::get()?;
+        let current_time = clock.unix_timestamp as u64;
         let creation_time = withdraw_request.creation_time;
         let maturity = creation_time + withdraw_request.seconds_to_maturity as u64;
         let deadline = maturity + withdraw_request.seconds_to_deadline as u64;
 
-        if current_time < maturity {
-            return Err(QueueErrorCode::RequestNotMature.into());
-        }
+        require!(current_time >= maturity, QueueErrorCode::RequestNotMature);
 
-        if current_time > deadline {
-            return Err(QueueErrorCode::RequestDeadlinePassed.into());
-        }
+        require!(
+            current_time <= deadline,
+            QueueErrorCode::RequestDeadlinePassed
+        );
 
-        if ctx.accounts.withdraw_mint.key() != withdraw_request.asset_out {
-            return Err(QueueErrorCode::InvalidWithdrawMint.into());
-        }
+        require!(
+            ctx.accounts.withdraw_mint.key() == withdraw_request.asset_out,
+            QueueErrorCode::InvalidWithdrawMint
+        );
 
         // Validate user's ata. Cpi Withdraw validates vault and queue atas
         let token_program_id = ctx.accounts.withdraw_mint.to_account_info().owner;
@@ -477,21 +510,12 @@ pub struct Deploy<'info> {
     )]
     pub queue_state: Account<'info, QueueState>,
 
-    #[account(
-        mut,
-        seeds = [BASE_SEED_QUEUE, &args.vault_id.to_le_bytes()[..]],
-        bump,
-    )]
-    /// CHECK: Account used to hold shares.
-    pub queue: SystemAccount<'info>,
-
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct SetSolveAuthority<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -506,7 +530,6 @@ pub struct SetSolveAuthority<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct Pause<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -521,7 +544,6 @@ pub struct Pause<'info> {
 #[derive(Accounts)]
 #[instruction(vault_id: u64)]
 pub struct Unpause<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
@@ -553,7 +575,7 @@ pub struct UpdateWithdrawAsset<'info> {
         init_if_needed,
         payer = signer,
         space = 8 + std::mem::size_of::<WithdrawAssetData>(),
-        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, withdraw_mint.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, &args.vault_id.to_le_bytes()[..], withdraw_mint.key().as_ref()],
         bump,
     )]
     pub withdraw_asset_data: Account<'info, WithdrawAssetData>,
@@ -596,7 +618,7 @@ pub struct RequestWithdraw<'info> {
     pub withdraw_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
-        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, withdraw_mint.key().as_ref(), &args.vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, &args.vault_id.to_le_bytes()[..], withdraw_mint.key().as_ref()],
         bump,
         constraint = withdraw_asset_data.allow_withdrawals == true @ QueueErrorCode::WithdrawsNotAllowedForAsset
     )]
@@ -619,7 +641,6 @@ pub struct RequestWithdraw<'info> {
     pub withdraw_request: Account<'info, WithdrawRequest>,
 
     #[account(
-        mut,
         seeds = [BASE_SEED_QUEUE, &args.vault_id.to_le_bytes()[..]],
         bump,
     )]
@@ -627,7 +648,6 @@ pub struct RequestWithdraw<'info> {
     pub queue: SystemAccount<'info>,
 
     /// The vault's share mint
-    #[account(mut)]
     /// CHECK: Validated in instruction explicitly, even though
     /// it is implicitly validated by the cpi
     pub share_mint: InterfaceAccount<'info, Mint>,
@@ -653,8 +673,6 @@ pub struct RequestWithdraw<'info> {
     pub token_program_2022: Program<'info, Token2022>,
 
     pub system_program: Program<'info, System>,
-
-    pub clock: Sysvar<'info, Clock>,
 
     #[account(
         constraint = boring_vault_program.key() == queue_state.boring_vault_program @ QueueErrorCode::InvalidBoringVaultProgram
@@ -747,8 +765,6 @@ pub struct FulfillWithdraw<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 
-    pub clock: Sysvar<'info, Clock>,
-
     #[account(
         constraint = boring_vault_program.key() == queue_state.boring_vault_program @ QueueErrorCode::InvalidBoringVaultProgram
     )]
@@ -756,11 +772,9 @@ pub struct FulfillWithdraw<'info> {
     pub boring_vault_program: Program<'info, BoringVaultSvm>,
 
     /// The vault state account
-    #[account(mut)]
     /// CHECK: Validated in CPI call
     pub boring_vault_state: Account<'info, BoringVault>,
 
-    #[account(mut)]
     /// CHECK: Checked in boring vault program instruction
     pub boring_vault: SystemAccount<'info>,
 
@@ -781,7 +795,6 @@ pub struct CancelWithdraw<'info> {
 
     // Share Token
     /// The vault's share mint
-    #[account(mut)]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
@@ -801,7 +814,6 @@ pub struct CancelWithdraw<'info> {
     pub queue_state: Account<'info, QueueState>,
 
     #[account(
-        mut,
         seeds = [BASE_SEED_QUEUE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
     )]
@@ -827,6 +839,4 @@ pub struct CancelWithdraw<'info> {
     pub queue_shares: InterfaceAccount<'info, TokenAccount>,
 
     pub token_program_2022: Program<'info, Token2022>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub clock: Sysvar<'info, Clock>,
 }

@@ -382,8 +382,8 @@ describe("boring-vault-svm", () => {
       anchor.web3.PublicKey.findProgramAddressSync(
         [
           Buffer.from("boring-queue-withdraw-asset-data"),
-          JITOSOL.toBuffer(),
           Buffer.from(new Array(8).fill(0)),
+          JITOSOL.toBuffer(),
         ],
         queueProgram.programId
       );
@@ -620,6 +620,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -661,6 +663,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -707,6 +711,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: false,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: true,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -1185,13 +1191,13 @@ describe("boring-vault-svm", () => {
     ).to.equal(expectedFees.toString()); // Fee should be transferred to payout
   });
 
-  it("Can update and close cpi digests", async () => {
-    // 1. View CPI Digest
+  it("Can close cpi digests", async () => {
+    // This digest already exists
     const digest = await program.methods
       .viewCpiDigest(
         // @ts-ignore
         {
-          ixProgramId: KAMINO_LEND_PROGRAM_ID,
+          ixProgramId: NULL,
           ixData: Buffer.from([]),
           operators: [],
           expectedSize: 32,
@@ -1200,7 +1206,6 @@ describe("boring-vault-svm", () => {
       .signers([deployer])
       .view();
 
-    // 2. Find CPI Digest Account
     const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("cpi-digest"),
@@ -1210,36 +1215,6 @@ describe("boring-vault-svm", () => {
       program.programId
     );
 
-    // 3. Update CPI Digest
-    const updateIx = await program.methods
-      .updateCpiDigest(
-        // @ts-ignore
-        {
-          vaultId: new anchor.BN(0),
-          cpiDigest: digest,
-          operators: [],
-          expectedSize: 32,
-        }
-      )
-      .accounts({
-        signer: authority.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        systemProgram: anchor.web3.SystemProgram.programId,
-        cpiDigest: cpiDigestAccount,
-      })
-      .instruction();
-
-    const updateTxResult = await ths.createAndProcessTransaction(
-      client,
-      deployer,
-      updateIx,
-      [authority]
-    );
-
-    ths.expectTxToSucceed(updateTxResult);
-
-    // 4. Close CPI Digest
     const closeIx = await program.methods
       .updateCpiDigest(
         // @ts-ignore
@@ -2047,7 +2022,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -2088,7 +2062,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -2179,7 +2152,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -2209,7 +2181,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -2235,7 +2206,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -2313,7 +2283,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -2358,7 +2327,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -3225,15 +3193,17 @@ describe("boring-vault-svm", () => {
           "Feed111111111111111111111111111111111111111"
         ),
         inversePriceFeed: false,
+        maxStaleness: new anchor.BN(1),
+        minSamples: 1,
       },
     };
 
     // Get PDA for asset data
-    const [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    let [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         Buffer.from("asset-data"),
         boringVaultStateAccount.toBuffer(),
-        JITOSOL.toBuffer(),
+        WSOL.toBuffer(),
       ],
       program.programId
     );
@@ -3244,7 +3214,7 @@ describe("boring-vault-svm", () => {
       .accounts({
         signer: user.publicKey, // Non-authority signer
         boringVaultState: boringVaultStateAccount,
-        asset: JITOSOL,
+        asset: WSOL,
         // @ts-ignore
         assetData: assetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3274,7 +3244,7 @@ describe("boring-vault-svm", () => {
       .accounts({
         signer: authority.publicKey,
         boringVaultState: boringVaultStateAccount,
-        asset: JITOSOL,
+        asset: WSOL,
         // @ts-ignore
         assetData: assetDataPda,
         systemProgram: anchor.web3.SystemProgram.programId,
@@ -3289,13 +3259,51 @@ describe("boring-vault-svm", () => {
     );
     ths.expectTxToFail(txResult, "Invalid Price Feed");
 
-    // This should succeed - zero address price feed for pegged asset
+    // Try with share premium > 10%
+    const invalidSharePremiumArgs = {
+      vaultId: vaultId,
+      // @ts-ignore
+      assetData: {
+        ...updateArgs.assetData,
+        sharePremiumBps: 1100, // 11%, exceeds maximum 10% (1000 basis points)
+      },
+    };
+    const invalidSharePremiumIx = await program.methods
+      .updateAssetData(invalidSharePremiumArgs)
+      .accounts({
+        signer: authority.publicKey,
+        boringVaultState: boringVaultStateAccount,
+        asset: WSOL,
+        // @ts-ignore
+        assetData: assetDataPda,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidSharePremiumIx,
+      [authority]
+    );
+    ths.expectTxToFail(txResult, "Maximum share premium exceeded");
+
+    // This should succeed - zero address price feed for base asset
+    [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("asset-data"),
+        boringVaultStateAccount.toBuffer(),
+        JITOSOL.toBuffer(),
+      ],
+      program.programId
+    );
+
     const peggedAssetArgs = {
       vaultId: vaultId,
       // @ts-ignore
       assetData: {
         ...updateArgs.assetData,
-        isPeggedToBaseAsset: true,
+        isPeggedToBaseAsset: false,
         priceFeed: anchor.web3.PublicKey.default,
       },
     };
@@ -3400,6 +3408,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: false,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3458,6 +3468,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: false,
           priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3705,6 +3717,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -3766,6 +3780,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -4022,6 +4038,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -4083,6 +4101,8 @@ describe("boring-vault-svm", () => {
           isPeggedToBaseAsset: true,
           priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
+          maxStaleness: new anchor.BN(1),
+          minSamples: 1,
         },
       })
       .accounts({
@@ -4215,7 +4235,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -4252,7 +4271,6 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         // @ts-ignore
         shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
@@ -4712,7 +4730,8 @@ describe("boring-vault-svm", () => {
     minimumShares: new anchor.BN(1000),
   };
 
-  it("Update Withdraw Asset - enforces authority check", async () => {
+  it("Update Withdraw Asset - enforces constraints", async () => {
+    // 1. Test not authorized
     const initialState = {
       vaultId: new anchor.BN(0),
       allowWithdraws: true,
@@ -4722,7 +4741,7 @@ describe("boring-vault-svm", () => {
       maximumDiscount: 10,
       minimumShares: new anchor.BN(1000),
     };
-    const ix = await queueProgram.methods
+    let ix = await queueProgram.methods
       .updateWithdrawAssetData(initialState)
       .accounts({
         signer: user.publicKey,
@@ -4736,6 +4755,88 @@ describe("boring-vault-svm", () => {
       user,
     ]);
     ths.expectTxToFail(txResult, "Not authorized");
+
+    // 2. Test maximum maturity exceeded
+    const tooLongMaturity = {
+      ...initialState,
+      secondsToMaturity: 91 * 86400, // 91 days
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(tooLongMaturity)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Maximum maturity exceeded");
+
+    // 3. Test maximum deadline exceeded
+    const tooLongDeadline = {
+      ...initialState,
+      minimumSecondsToDeadline: 91 * 86400, // 91 days
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(tooLongDeadline)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Maximum deadline exceeded");
+
+    // 4. Test maximum discount less than minimum discount
+    const invalidDiscountOrder = {
+      ...initialState,
+      minimumDiscount: 20,
+      maximumDiscount: 10, // Less than minimum
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(invalidDiscountOrder)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Invalid discount");
+
+    // 5. Test maximum discount exceeds allowed maximum (10%)
+    const tooLargeDiscount = {
+      ...initialState,
+      minimumDiscount: 0,
+      maximumDiscount: 1100, // Greater than MAXIMUM_DISCOUNT (1000)
+    };
+    ix = await queueProgram.methods
+      .updateWithdrawAssetData(tooLargeDiscount)
+      .accounts({
+        signer: authority.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+      })
+      .instruction();
+
+    txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
+      authority,
+    ]);
+    ths.expectTxToFail(txResult, "Maximum discount exceeded");
   });
 
   it("Request Withdraw - enforces constraints", async () => {
@@ -4788,7 +4889,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4843,7 +4943,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4881,7 +4980,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4919,7 +5017,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4957,7 +5054,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -4971,6 +5067,43 @@ describe("boring-vault-svm", () => {
       [user]
     );
     ths.expectTxToFail(txResult, "Invalid seconds to deadline");
+
+    // 6. Try with invalid deadline that is too large
+    requestIx = await queueProgram.methods
+      .requestWithdraw({
+        vaultId: new anchor.BN(0),
+        shareAmount: new anchor.BN(1_000_000),
+        discount: 5,
+        secondsToDeadline: 91 * 86400, // Too long
+      })
+      .accounts({
+        // Same accounts as above
+        signer: user.publicKey,
+        queueState: queueStateAccount,
+        withdrawMint: JITOSOL,
+        withdrawAssetData: jitoSolWithdrawAssetData,
+        // @ts-ignore
+        userWithdrawState: userWithdrawState,
+        withdrawRequest: userWithdrawRequest2,
+        queue: queueAccount,
+        shareMint: boringVaultShareMint,
+        userShares: userShareAta,
+        queueShares: queueShareAta,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        boringVaultProgram: program.programId,
+        boringVaultState: boringVaultStateAccount,
+        vaultAssetData: jitoSolAssetDataPda,
+        priceFeed: anchor.web3.PublicKey.default,
+      })
+      .instruction();
+    txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      requestIx,
+      [user]
+    );
+    ths.expectTxToFail(txResult, "Maximum deadline exceeded");
   });
 
   it("Fulfill Withdraw - enforces constraints", async () => {
@@ -5006,7 +5139,6 @@ describe("boring-vault-svm", () => {
         queueShares: queueShareAta,
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         vaultAssetData: jitoSolAssetDataPda,
@@ -5060,7 +5192,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5113,7 +5244,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5167,7 +5297,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5206,7 +5335,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5243,7 +5371,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
@@ -5282,7 +5409,6 @@ describe("boring-vault-svm", () => {
         tokenProgram2022: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
         boringVaultProgram: program.programId,
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,

@@ -8,6 +8,7 @@ pub const MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND: u16 = 12000; // 20%
 pub const MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND: u16 = 8000; // -20%
 pub const MAXIMUM_PLATFORM_FEE_BPS: u16 = 2000; // 20%
 pub const MAXIMUM_PERFORMANCE_FEE_BPS: u16 = 5000; // 50%
+pub const MAXIMUM_SHARE_PREMIUM_BPS: u16 = 1000; // 10%
 
 /// Base seeds for the boring vault
 pub const BASE_SEED_CONFIG: &[u8] = b"config";
