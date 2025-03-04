@@ -14,12 +14,8 @@ use anchor_spl::{
     token_2022::Token2022,
     token_interface::{self, Mint, TokenAccount, TokenInterface},
 };
-use mpl_token_metadata::{
-    instruction::{create_metadata_accounts_v3, CreateMetadataAccountsV3Instruction},
-    state::DataV2,
-    ID as METADATA_PROGRAM_ID,
-};
 use rust_decimal::Decimal;
+use solana_program::instruction::{AccountMeta, Instruction};
 
 // Internal modules
 mod constants;
@@ -35,6 +31,10 @@ pub use state::*;
 // Internal module usage
 use utils::{operators, teller};
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
+
+// Define the Metadata program ID constant
+pub const METADATA_PROGRAM_ID: Pubkey =
+    solana_program::pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
 #[program]
 pub mod boring_vault_svm {
@@ -167,34 +167,64 @@ pub mod boring_vault_svm {
         ];
         let signer_seeds = &[&seeds[..]];
 
-        let data = DataV2 {
-            name: "Treehouse SOL".to_string(),
-            symbol: "tSOL".to_string(),
-            uri: "".to_string(),
-            seller_fee_basis_points: 0,
-            creators: None,
-            collection: None,
-            uses: None,
-        };
+        // Create metadata instruction manually
+        // Instruction data format for create_metadata_accounts_v3:
+        // 0. Instruction discriminator (u8 = 33)
+        // 1-x. Serialized CreateMetadataAccountsV3Args
+        let name = "Treehouse SOL".to_string();
+        let symbol = "tSOL".to_string();
+        let uri = "".to_string();
 
-        let create_metadata_ix = create_metadata_accounts_v3(
-            METADATA_PROGRAM_ID,
-            ctx.accounts.metadata.key(),
-            ctx.accounts.share_mint.key(),
-            ctx.accounts.boring_vault_state.key(),
-            ctx.accounts.signer.key(),
-            ctx.accounts.signer.key(),
-            data.name,
-            data.symbol,
-            data.uri,
-            data.creators,
-            data.seller_fee_basis_points,
-            true,
-            true,
-            data.collection,
-            data.uses,
-            None,
-        );
+        // Create instruction data manually
+        let mut instruction_data = vec![33]; // Instruction discriminator for create_metadata_accounts_v3
+
+        // Add name (string)
+        instruction_data.push(name.len() as u8);
+        instruction_data.extend_from_slice(name.as_bytes());
+
+        // Add symbol (string)
+        instruction_data.push(symbol.len() as u8);
+        instruction_data.extend_from_slice(symbol.as_bytes());
+
+        // Add uri (string)
+        instruction_data.push(uri.len() as u8);
+        instruction_data.extend_from_slice(uri.as_bytes());
+
+        // Add seller_fee_basis_points (u16)
+        instruction_data.extend_from_slice(&0u16.to_le_bytes());
+
+        // Add creators (Option<Vec<Creator>>)
+        instruction_data.push(0); // None
+
+        // Add collection (Option<Collection>)
+        instruction_data.push(0); // None
+
+        // Add uses (Option<Uses>)
+        instruction_data.push(0); // None
+
+        // Add is_mutable (bool)
+        instruction_data.push(1); // true
+
+        // Add update_authority_is_signer (bool)
+        instruction_data.push(1); // true
+
+        // Add collection_details (Option<CollectionDetails>)
+        instruction_data.push(0); // None
+
+        // Create the instruction
+        let create_metadata_ix = Instruction {
+            program_id: METADATA_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(ctx.accounts.metadata.key(), false),
+                AccountMeta::new(ctx.accounts.share_mint.key(), false),
+                AccountMeta::new_readonly(ctx.accounts.boring_vault_state.key(), true),
+                AccountMeta::new(ctx.accounts.signer.key(), true),
+                AccountMeta::new_readonly(ctx.accounts.signer.key(), true),
+                AccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
+                AccountMeta::new_readonly(ctx.accounts.rent.key(), false),
+            ],
+            data: instruction_data,
+        };
 
         invoke_signed(&create_metadata_ix, &metadata_infos, signer_seeds)?;
 
