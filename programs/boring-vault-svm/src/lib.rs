@@ -15,6 +15,7 @@ use anchor_spl::{
     token_interface::{self, Mint, TokenAccount, TokenInterface},
 };
 use rust_decimal::Decimal;
+use solana_program::instruction::{AccountMeta, Instruction};
 
 // Internal modules
 mod constants;
@@ -30,6 +31,10 @@ pub use state::*;
 // Internal module usage
 use utils::{operators, teller};
 declare_id!("26YRHAHxMa569rQ73ifQDV9haF7Njcm3v7epVPvcpJsX");
+
+// Define the Metadata program ID constant
+pub const METADATA_PROGRAM_ID: Pubkey =
+    solana_program::pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
 #[program]
 pub mod boring_vault_svm {
@@ -103,9 +108,8 @@ pub mod boring_vault_svm {
         vault.teller.exchange_rate = args.exchange_rate;
         vault.teller.exchange_rate_high_water_mark = args.exchange_rate;
         vault.teller.fees_owed_in_base_asset = 0;
-        vault.teller.total_shares_last_update = ctx.accounts.share_mint.supply;
-        let clock = &Clock::get()?;
-        vault.teller.last_update_timestamp = clock.unix_timestamp as u64;
+        vault.teller.total_shares_last_update = 0;
+        vault.teller.last_update_timestamp = Clock::get()?.unix_timestamp as u64;
         require!(
             args.payout_address != Pubkey::default(),
             BoringErrorCode::InvalidPayoutAddress
@@ -113,16 +117,14 @@ pub mod boring_vault_svm {
         vault.teller.payout_address = args.payout_address;
         require!(
             args.allowed_exchange_rate_change_upper_bound
-                <= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
-                && args.allowed_exchange_rate_change_upper_bound >= BPS_SCALE,
+                <= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND,
             BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound
         );
         vault.teller.allowed_exchange_rate_change_upper_bound =
             args.allowed_exchange_rate_change_upper_bound;
         require!(
             args.allowed_exchange_rate_change_lower_bound
-                >= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
-                && args.allowed_exchange_rate_change_lower_bound <= BPS_SCALE,
+                <= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND,
             BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound
         );
         vault.teller.allowed_exchange_rate_change_lower_bound =
@@ -138,28 +140,94 @@ pub mod boring_vault_svm {
             BoringErrorCode::InvalidPerformanceFeeBps
         );
         vault.teller.performance_fee_bps = args.performance_fee_bps;
-
-        // Set withdraw_authority, if default, then withdraws are permissionless
         vault.teller.withdraw_authority = args.withdraw_authority;
 
         // Initialize manager state.
-        require_keys_neq!(
-            args.strategist,
-            Pubkey::default(),
-            BoringErrorCode::InvalidStrategist
-        );
         vault.manager.strategist = args.strategist;
 
-        // Update program config.
+        // Increment vault count.
         ctx.accounts.config.vault_count += 1;
 
-        msg!(
-            "Boring Vault {} deployed successfully with share token {} (name: {}, symbol: {})",
-            ctx.accounts.config.vault_count,
-            ctx.accounts.share_mint.key(),
-            args.name,
-            args.symbol
-        );
+        // Create metadata for the share token
+        let metadata_infos = vec![
+            ctx.accounts.metadata.to_account_info(),
+            ctx.accounts.share_mint.to_account_info(),
+            ctx.accounts.boring_vault_state.to_account_info(),
+            ctx.accounts.signer.to_account_info(),
+            ctx.accounts.signer.to_account_info(), // update authority
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.rent.to_account_info(),
+        ];
+
+        // Seeds for signing with the boring_vault_state PDA
+        let seeds = &[
+            BASE_SEED_BORING_VAULT_STATE,
+            &(ctx.accounts.config.vault_count - 1).to_le_bytes()[..],
+            &[ctx.bumps.boring_vault_state],
+        ];
+        let signer_seeds = &[&seeds[..]];
+
+        // Create metadata instruction manually
+        // Instruction data format for create_metadata_accounts_v3:
+        // 0. Instruction discriminator (u8 = 33)
+        // 1-x. Serialized CreateMetadataAccountsV3Args
+        let name = "Treehouse SOL".to_string();
+        let symbol = "tSOL".to_string();
+        let uri = "".to_string();
+
+        // Create instruction data manually
+        let mut instruction_data = vec![33]; // Instruction discriminator for create_metadata_accounts_v3
+
+        // Add name (string)
+        instruction_data.push(name.len() as u8);
+        instruction_data.extend_from_slice(name.as_bytes());
+
+        // Add symbol (string)
+        instruction_data.push(symbol.len() as u8);
+        instruction_data.extend_from_slice(symbol.as_bytes());
+
+        // Add uri (string)
+        instruction_data.push(uri.len() as u8);
+        instruction_data.extend_from_slice(uri.as_bytes());
+
+        // Add seller_fee_basis_points (u16)
+        instruction_data.extend_from_slice(&0u16.to_le_bytes());
+
+        // Add creators (Option<Vec<Creator>>)
+        instruction_data.push(0); // None
+
+        // Add collection (Option<Collection>)
+        instruction_data.push(0); // None
+
+        // Add uses (Option<Uses>)
+        instruction_data.push(0); // None
+
+        // Add is_mutable (bool)
+        instruction_data.push(1); // true
+
+        // Add update_authority_is_signer (bool)
+        instruction_data.push(1); // true
+
+        // Add collection_details (Option<CollectionDetails>)
+        instruction_data.push(0); // None
+
+        // Create the instruction
+        let create_metadata_ix = Instruction {
+            program_id: METADATA_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(ctx.accounts.metadata.key(), false),
+                AccountMeta::new(ctx.accounts.share_mint.key(), false),
+                AccountMeta::new_readonly(ctx.accounts.boring_vault_state.key(), true),
+                AccountMeta::new(ctx.accounts.signer.key(), true),
+                AccountMeta::new_readonly(ctx.accounts.signer.key(), true),
+                AccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
+                AccountMeta::new_readonly(ctx.accounts.rent.key(), false),
+            ],
+            data: instruction_data,
+        };
+
+        invoke_signed(&create_metadata_ix, &metadata_infos, signer_seeds)?;
+
         Ok(())
     }
 
@@ -1186,6 +1254,7 @@ pub struct Initialize<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(args: DeployArgs)]
 pub struct Deploy<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -1223,6 +1292,17 @@ pub struct Deploy<'info> {
 
     pub system_program: Program<'info, System>,
     pub token_program: Interface<'info, TokenInterface>,
+    pub rent: Sysvar<'info, Rent>,
+
+    /// The metadata program
+    /// CHECK: This is the metadata program
+    #[account(address = METADATA_PROGRAM_ID)]
+    pub metadata_program: UncheckedAccount<'info>,
+
+    /// The metadata account for the share token
+    /// CHECK: Created by the metadata program
+    #[account(mut)]
+    pub metadata: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
