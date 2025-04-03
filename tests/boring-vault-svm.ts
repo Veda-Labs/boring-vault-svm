@@ -485,17 +485,17 @@ describe("boring-vault-svm", () => {
 
     const mintInfo = await client.getAccount(boringVaultShareMint);
     expect(mintInfo).to.not.be.null;
-    const mintAccountInfo = { // <<< ADD this block
+    const mintAccountInfo = {
       ...mintInfo,
       data: Buffer.from(mintInfo.data),
     };
 
     const mintData = unpackMint(
       boringVaultShareMint,
-      mintAccountInfo, // Use the converted account info
-      TOKEN_2022_PROGRAM_ID // Use T22 because metadata CPI used it
+      mintAccountInfo,
+      TOKEN_2022_PROGRAM_ID
     );
-    const tokenMetadata = await getTokenMetadata(provider.connection, mintData.address); // <<< ADD provider.connection here
+    const tokenMetadata = await getTokenMetadata(provider.connection, mintData.address);
     expect(tokenMetadata).to.not.be.null;
     expect(tokenMetadata.name).to.equal(name);
     expect(tokenMetadata.symbol).to.equal(symbol);

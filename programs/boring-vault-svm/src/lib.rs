@@ -93,7 +93,6 @@ pub mod boring_vault_svm {
 
         let vault_id;
         {
-            // --- Start Scope for Mutable Borrow ---
             let vault = &mut ctx.accounts.boring_vault_state;
 
             // Initialize vault state.
@@ -161,17 +160,8 @@ pub mod boring_vault_svm {
                 BoringErrorCode::InvalidStrategist
             );
             vault.manager.strategist = args.strategist;
-        } // --- End Scope for Mutable Borrow ---
+        }
 
-        // Initialize Token-2022 Metadata
-        let seeds = &[
-            BASE_SEED_BORING_VAULT_STATE,
-            &vault_id.to_le_bytes()[..],
-            &[ctx.bumps.boring_vault_state],
-        ];
-        let signer_seeds = &[&seeds[..]];
-
-        // Define token metadata
         let token_metadata = TokenMetadata {
             name: args.name.clone(),
             symbol: args.symbol.clone(),
@@ -186,7 +176,6 @@ pub mod boring_vault_svm {
         let lamports =
             data_len as u64 * DEFAULT_LAMPORTS_PER_BYTE_YEAR * DEFAULT_EXEMPTION_THRESHOLD as u64;
 
-        // Transfer additional lamports to mint account
         system_program::transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
@@ -198,21 +187,28 @@ pub mod boring_vault_svm {
             lamports,
         )?;
 
+        let seeds = &[
+            BASE_SEED_BORING_VAULT_STATE,
+            &vault_id.to_le_bytes()[..],
+            &[ctx.bumps.boring_vault_state],
+        ];
+        let signer_seeds = &[&seeds[..]];
+
         token_metadata_initialize(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(), // Use Token-2022 program
+                ctx.accounts.token_program.to_account_info(),
                 TokenMetadataInitialize {
                     token_program_id: ctx.accounts.token_program.to_account_info(),
                     mint: ctx.accounts.share_mint.to_account_info(),
-                    metadata: ctx.accounts.share_mint.to_account_info(), // Metadata stored in mint account
-                    mint_authority: ctx.accounts.boring_vault_state.to_account_info(), // Vault PDA is mint authority
-                    update_authority: ctx.accounts.boring_vault_state.to_account_info(), // Vault PDA is update authority
+                    metadata: ctx.accounts.share_mint.to_account_info(),
+                    mint_authority: ctx.accounts.boring_vault_state.to_account_info(),
+                    update_authority: ctx.accounts.boring_vault_state.to_account_info(),
                 },
                 signer_seeds,
             ),
             args.name.clone(),
             args.symbol.clone(),
-            "".to_string(), // TODO: Add URI if needed
+            "".to_string(),
         )?;
 
         // Update program config.
@@ -1280,9 +1276,8 @@ pub struct Deploy<'info> {
         mint::authority = boring_vault_state.key(),
         seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
         bump,
-        // Keep original mint definition (likely std SPL Token as Anchor default)
-        extensions::metadata_pointer::authority = boring_vault_state, // TODO: Add if needed
-        extensions::metadata_pointer::metadata_address = share_mint, // TODO: Add if needed
+        extensions::metadata_pointer::authority = boring_vault_state,
+        extensions::metadata_pointer::metadata_address = share_mint,
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
