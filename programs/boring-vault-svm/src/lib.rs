@@ -712,11 +712,11 @@ pub mod boring_vault_svm {
                 };
                 let platform_fee_in_base_asset =
                     minimum_assets.checked_mul(platform_fee_d).unwrap();
-                let time_passed_in_years = Decimal::from(time_passed)
-                    .checked_div(Decimal::from(365 * 86400))
-                    .unwrap();
+                let time_passed = Decimal::from(time_passed);
                 let platform_fee_in_base_asset = platform_fee_in_base_asset
-                    .checked_mul(time_passed_in_years)
+                    .checked_mul(time_passed)
+                    .unwrap()
+                    .checked_div(Decimal::from(365 * 86400))
                     .unwrap();
                 platform_fees_owed_in_base_asset =
                     teller::from_decimal(platform_fee_in_base_asset, vault_decimals)?;

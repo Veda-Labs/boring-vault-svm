@@ -304,24 +304,23 @@ pub fn get_rate_in_quote(
 
         Ok(rate)
     } else {
-        // Query price feed.
-        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
-
-        let price = if asset_data.inverse_price_feed {
-            Decimal::from(1).checked_div(price).unwrap() // 1 / price
-        } else {
-            price
-        };
-
         let exchange_rate = to_decimal(
             boring_vault_state.teller.exchange_rate,
             boring_vault_state.teller.decimals,
         )?;
 
+        // Query price feed.
+        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
+
         // price[base/asset]
         // exchange_rate[base/share]
         // want asset/share =  exchange_rate[base/share] / price[base/asset]
-        let rate = exchange_rate.checked_div(price).unwrap();
+        let rate = if asset_data.inverse_price_feed {
+            // Multiply instead since we need to inverse price feed.
+            exchange_rate.checked_mul(price).unwrap()
+        } else {
+            exchange_rate.checked_div(price).unwrap()
+        };
 
         // Scale rate to quote decimals.
         let rate = from_decimal(rate, quote.decimals)?;
@@ -440,18 +439,21 @@ fn calculate_assets_out_using_withdraw_asset(
     let share_amount = to_decimal(share_amount, share_decimals)?;
     let exchange_rate = to_decimal(exchange_rate, share_decimals)?;
 
-    let asset_price = if inverse_price_feed {
-        Decimal::from(1).checked_div(asset_price).unwrap() // 1 / price
-    } else {
-        asset_price
-    };
-
     // Calculate assets_out = share_amount[share] * exchange_rate[base/share] / asset_price[base/asset]
-    let assets_out = share_amount
-        .checked_mul(exchange_rate)
-        .unwrap()
-        .checked_div(asset_price)
-        .unwrap();
+    let assets_out = if inverse_price_feed {
+        // Price feed is inversed, so multiply it instead.
+        share_amount
+            .checked_mul(exchange_rate)
+            .unwrap()
+            .checked_mul(asset_price)
+            .unwrap()
+    } else {
+        share_amount
+            .checked_mul(exchange_rate)
+            .unwrap()
+            .checked_div(asset_price)
+            .unwrap()
+    };
 
     // Scale up assets out by withdraw asset decimals.
     let assets_out = from_decimal(assets_out, withdraw_asset_decimals)?;
