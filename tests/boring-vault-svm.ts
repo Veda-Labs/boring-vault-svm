@@ -459,7 +459,7 @@ describe("boring-vault-svm", () => {
         baseAsset: JITOSOL,
         signer: authority.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
-        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
       })
       .instruction();
 

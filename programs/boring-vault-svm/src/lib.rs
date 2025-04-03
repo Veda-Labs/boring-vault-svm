@@ -12,7 +12,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::Token,
     token_2022::Token2022,
-    token_interface::{self, Mint, TokenAccount, TokenInterface},
+    token_interface::{self, Mint, TokenAccount},
 };
 use rust_decimal::Decimal;
 
@@ -1212,6 +1212,7 @@ pub struct Deploy<'info> {
     #[account(
         init,
         payer = signer,
+        mint::token_program = token_program_2022,
         mint::decimals = base_asset.decimals,
         mint::authority = boring_vault_state.key(),
         seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
@@ -1222,7 +1223,7 @@ pub struct Deploy<'info> {
     pub base_asset: InterfaceAccount<'info, Mint>,
 
     pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program_2022: Program<'info, Token2022>,
 }
 
 #[derive(Accounts)]
