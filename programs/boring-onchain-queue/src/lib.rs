@@ -29,7 +29,7 @@ use error::*;
 mod state;
 use state::*;
 
-declare_id!("E1mW9wpynHjwU3YhAHALh2x4sB2Jq8M3H5NgGYZnvUkg");
+declare_id!("4yfE2VJQmxmcnUhrb8vdz7H8w313EZ3eJh5DbANBgtmd");
 
 #[program]
 pub mod boring_onchain_queue {

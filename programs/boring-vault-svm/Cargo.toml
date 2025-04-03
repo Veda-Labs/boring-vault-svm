@@ -9,14 +9,11 @@ crate-type = ["cdylib", "lib"]
 name = "boring_vault_svm"
 
 [features]
-default = ["custom-heap", "custom-panic"]
+default = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-custom-heap = []
-custom-panic = []
-anchor-debug = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
