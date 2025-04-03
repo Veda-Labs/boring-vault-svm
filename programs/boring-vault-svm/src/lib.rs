@@ -1219,7 +1219,6 @@ pub struct Deploy<'info> {
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    /// CHECK: Checked in the instruction
     pub base_asset: InterfaceAccount<'info, Mint>,
 
     pub system_program: Program<'info, System>,
