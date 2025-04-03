@@ -3353,7 +3353,7 @@ describe("boring-vault-svm", () => {
       invalidUserAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try deposit with invalid vault ATA (using user's ATA instead)
     const invalidVaultAtaIx = await program.methods
@@ -3383,7 +3383,7 @@ describe("boring-vault-svm", () => {
       invalidVaultAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try to deposit when vault is paused
     // First pause the vault
@@ -3674,7 +3674,7 @@ describe("boring-vault-svm", () => {
       invalidUserAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try withdraw with invalid vault ATA (using user's ATA instead)
     const invalidVaultAtaIx = await program.methods
@@ -3704,7 +3704,7 @@ describe("boring-vault-svm", () => {
       invalidVaultAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try to withdraw when vault is paused
     // First pause the vault
@@ -5129,7 +5129,7 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [solveAuthority]
     );
-    ths.expectTxToFail(txResult, "Invalid token account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // 6. Advance time past deadline and try to fulfill
     await ths.wait(client, context, 4 * 86400); // Past the 3 day deadline

@@ -73,7 +73,7 @@ pub fn validate_associated_token_accounts(
 
     require!(
         user_ata == &expected_user_ata,
-        QueueErrorCode::InvalidTokenAccount
+        QueueErrorCode::InvalidAssociatedTokenAccount
     );
 
     Ok(())

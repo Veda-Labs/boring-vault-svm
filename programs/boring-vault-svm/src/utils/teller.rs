@@ -90,11 +90,11 @@ pub fn validate_associated_token_accounts(
 
     require!(
         user_ata == &expected_user_ata,
-        BoringErrorCode::InvalidTokenAccount
+        BoringErrorCode::InvalidAssociatedTokenAccount
     );
     require!(
         vault_ata == &expected_vault_ata,
-        BoringErrorCode::InvalidTokenAccount
+        BoringErrorCode::InvalidAssociatedTokenAccount
     );
 
     Ok(())

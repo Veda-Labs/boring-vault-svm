@@ -38,4 +38,6 @@ pub enum QueueErrorCode {
     MaximumDeadlineExceeded,
     #[msg("Maximum discount exceeded")]
     MaximumDiscountExceeded,
+    #[msg("Invalid associated token account")]
+    InvalidAssociatedTokenAccount,
 }
