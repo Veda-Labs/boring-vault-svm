@@ -115,7 +115,7 @@ pub struct WithdrawArgs {
 // =============================== Manage ===============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct UpdateCpiDigestArgs {
+pub struct CpiDigestArgs {
     pub vault_id: u64,
     pub cpi_digest: [u8; 32],
     pub operators: Operators,

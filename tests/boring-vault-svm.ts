@@ -1212,7 +1212,7 @@ describe("boring-vault-svm", () => {
     );
 
     const closeIx = await program.methods
-      .updateCpiDigest(
+      .initializeCpiDigest(
         // @ts-ignore
         {
           vaultId: new anchor.BN(0),
@@ -4111,8 +4111,8 @@ describe("boring-vault-svm", () => {
     );
 
     // Update CPI digest
-    const updateDigestIx = await program.methods
-      .updateCpiDigest(
+    const initializeDigestIx = await program.methods
+      .initializeCpiDigest(
         // @ts-ignore
         {
           vaultId: new anchor.BN(0),
@@ -4133,7 +4133,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
-      updateDigestIx,
+      initializeDigestIx,
       [authority]
     );
     ths.expectTxToSucceed(txResult);
@@ -4253,8 +4253,8 @@ describe("boring-vault-svm", () => {
     );
 
     // Update second CPI digest
-    const updateDigest1to0Ix = await program.methods
-      .updateCpiDigest(
+    const initializeDigest1to0Ix = await program.methods
+      .initializeCpiDigest(
         // @ts-ignore
         {
           vaultId: new anchor.BN(0),
@@ -4275,7 +4275,7 @@ describe("boring-vault-svm", () => {
     txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
-      updateDigest1to0Ix,
+      initializeDigest1to0Ix,
       [authority]
     );
     ths.expectTxToSucceed(txResult);

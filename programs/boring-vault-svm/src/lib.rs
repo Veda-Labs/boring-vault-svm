@@ -278,17 +278,17 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
-    /// Updates the CPI digest for managing vault assets
+    /// Initializes the CPI digest for managing vault assets
     ///
     /// Note: This function does not check that the provided digest
     /// actually corresponds to the given operators and expected size
     /// but in the case that it doesn't this digest is just unusable.
     /// # Arguments
     /// * `ctx` - The context of accounts
-    /// * `args` - The CPI digest update arguments
-    pub fn update_cpi_digest(
-        ctx: Context<UpdateCpiDigest>,
-        args: UpdateCpiDigestArgs,
+    /// * `args` - The CPI digest initialize arguments
+    pub fn initialize_cpi_digest(
+        ctx: Context<InitializeCpiDigest>,
+        args: CpiDigestArgs,
     ) -> Result<()> {
         let cpi_digest = &mut ctx.accounts.cpi_digest;
         cpi_digest.operators = args.operators;
@@ -301,10 +301,7 @@ pub mod boring_vault_svm {
     /// # Arguments
     /// * `ctx` - The context of accounts
     /// * `_args` - Used to derive account
-    pub fn close_cpi_digest(
-        _ctx: Context<CloseCpiDigest>,
-        _args: UpdateCpiDigestArgs,
-    ) -> Result<()> {
+    pub fn close_cpi_digest(_ctx: Context<CloseCpiDigest>, _args: CpiDigestArgs) -> Result<()> {
         Ok(())
     }
 
@@ -1551,8 +1548,8 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args: UpdateCpiDigestArgs)]
-pub struct UpdateCpiDigest<'info> {
+#[instruction(args:CpiDigestArgs)]
+pub struct InitializeCpiDigest<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -1579,7 +1576,7 @@ pub struct UpdateCpiDigest<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args: UpdateCpiDigestArgs)]
+#[instruction(args:CpiDigestArgs)]
 pub struct CloseCpiDigest<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,

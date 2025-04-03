@@ -163,9 +163,9 @@ export class CpiService {
       params.program.programId
     );
 
-    // 3. Update CPI Digest
-    const updateIx = await params.program.methods
-      .updateCpiDigest(
+    // 3. Initialize CPI Digest
+    const initializeIx = await params.program.methods
+      .initializeCpiDigest(
         // @ts-ignore
         {
           vaultId: params.vaultId,
@@ -183,15 +183,15 @@ export class CpiService {
       })
       .instruction();
 
-    const updateTxResult = await ths.createAndProcessTransaction(
+    const initializeTxResult = await ths.createAndProcessTransaction(
       params.client,
       params.deployer,
-      updateIx,
+      initializeIx,
       [params.authority]
     );
 
-    if (updateTxResult.result !== null) {
-      throw new Error("Failed to update CPI digest");
+    if (initializeTxResult.result !== null) {
+      throw new Error("Failed to initialize CPI digest");
     }
 
     // 4. Execute Manage
