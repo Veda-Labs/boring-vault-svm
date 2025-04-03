@@ -621,6 +621,10 @@ pub mod boring_vault_svm {
 
     /// Updates the exchange rate for the vault
     ///
+    /// This logic does not explcitily account for pending fees lowering share price.
+    /// It is expected the caller will either account for this while updating share price,
+    /// or that fees will be regularly collected to make this affect minimal.
+    ///
     /// # Arguments
     /// * `ctx` - The context of accounts
     /// * `vault_id` - The vault ID
