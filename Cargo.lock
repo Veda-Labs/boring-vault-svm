@@ -626,6 +626,8 @@ dependencies = [
  "anchor-spl",
  "rust_decimal",
  "solana-program",
+ "spl-token-metadata-interface 0.3.5",
+ "spl-type-length-value 0.4.6",
  "switchboard-on-demand",
 ]
 
