@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "boring-vault-svm"
+version = "0.1.0"
+description = ""
+authors = ["Rhovian <atomicjab@proton.me>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+solders = "^0.26.0"
+pytest = "^8.3.5"
+solana = "^0.36.6"
+borsh-construct = "^0.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
