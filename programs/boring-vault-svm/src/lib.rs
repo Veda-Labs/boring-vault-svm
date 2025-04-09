@@ -1179,6 +1179,9 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
+    #[account(address = crate::ID)]
+    pub program: Signer<'info>,
+
     #[account(
         init,
         payer = signer,

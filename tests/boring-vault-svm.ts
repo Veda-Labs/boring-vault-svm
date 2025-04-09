@@ -14,9 +14,10 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { AddedAccount, BanksClient, ProgramTestContext } from "solana-bankrun";
-import { PublicKey, Transaction, Connection } from "@solana/web3.js";
+import { PublicKey, Transaction, Connection, Keypair } from "@solana/web3.js";
 import { CpiService, TestHelperService as ths } from "./services";
 import bs58 from "bs58";
+import * as fs from "fs";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -158,6 +159,22 @@ describe("boring-vault-svm", () => {
     SOLEND_DESINTATION_DEPOSIT_RESERVE_COLLATERAL_SUPPLY_SPL_TOKEN_ACCOUNT.toString(),
     SOLEND_PYTH_PRICE_ORACLE_SOL.toString(),
   ];
+
+  // Load the boring vault program's keypair
+  const boringVaultProgramKeypair = JSON.parse(
+    fs.readFileSync("target/deploy/boring_vault_svm-keypair.json", "utf-8")
+  );
+  const boringVaultProgramSigner = Keypair.fromSecretKey(
+    new Uint8Array(boringVaultProgramKeypair)
+  );
+
+  // Load the boring queue program's keypair
+  const boringQueueProgramKeypair = JSON.parse(
+    fs.readFileSync("target/deploy/boring_onchain_queue-keypair.json", "utf-8")
+  );
+  const boringQueueProgramSigner = Keypair.fromSecretKey(
+    new Uint8Array(boringQueueProgramKeypair)
+  );
 
   before(async () => {
     connection = new Connection(
@@ -417,11 +434,13 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: programConfigAccount,
         signer: deployer.publicKey,
+        program: boringVaultProgramSigner.publicKey,
       })
       .instruction();
 
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
+      boringVaultProgramSigner,
     ]);
 
     // Expect the tx to succeed.
@@ -1381,11 +1400,13 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: queueProgramConfigAccount,
         systemProgram: anchor.web3.SystemProgram.programId,
+        program: boringQueueProgramSigner.publicKey,
       })
       .instruction();
 
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
+      boringQueueProgramSigner,
     ]);
     ths.expectTxToSucceed(txResult);
 
@@ -2570,6 +2591,7 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: configAccount,
         systemProgram: anchor.web3.SystemProgram.programId,
+        programSigner: boringVaultProgramSigner.publicKey,
       })
       .instruction();
 
@@ -2577,7 +2599,7 @@ describe("boring-vault-svm", () => {
       client,
       deployer,
       initializeIx,
-      [authority]
+      [authority, boringVaultProgramSigner]
     );
 
     // Should fail with a raw anchor error (no custom error message)
@@ -4411,6 +4433,7 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: configAccount,
         systemProgram: anchor.web3.SystemProgram.programId,
+        program: boringQueueProgramSigner.publicKey,
       })
       .instruction();
 
@@ -4418,7 +4441,7 @@ describe("boring-vault-svm", () => {
       client,
       deployer,
       initializeIx,
-      [authority]
+      [authority, boringQueueProgramSigner]
     );
 
     // Should fail with a raw anchor error (no custom error message)
