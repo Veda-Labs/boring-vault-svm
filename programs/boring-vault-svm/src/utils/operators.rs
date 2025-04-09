@@ -14,14 +14,6 @@ pub struct Operators {
     pub operators: Vec<Operator>,
 }
 
-impl Operator {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        self.serialize(&mut bytes).unwrap();
-        bytes
-    }
-}
-
 impl Operators {
     pub fn apply_operators(
         &self,
