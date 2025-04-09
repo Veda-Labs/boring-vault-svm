@@ -1139,6 +1139,8 @@ pub mod boring_vault_svm {
     ///
     /// # Returns
     /// * `u64` - The exchange rate in quote asset
+    /// # Note
+    /// To get the rate in SOL, pass in wSOL (Wrapped SOL) as the quote_mint
     pub fn get_rate_in_quote(ctx: Context<GetRateInQuote>, _vault_id: u64) -> Result<u64> {
         teller::get_rate_in_quote(
             ctx.accounts.boring_vault_state.to_owned(),
@@ -1156,6 +1158,9 @@ pub mod boring_vault_svm {
     ///
     /// # Returns
     /// * `u64` - The exchange rate in quote asset
+    ///
+    /// # Note
+    /// To get the rate in SOL, pass in wSOL (Wrapped SOL) as the quote_mint
     ///
     /// # Errors
     /// * `BoringErrorCode::VaultPaused` - If vault is paused
