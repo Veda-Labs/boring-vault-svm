@@ -1306,7 +1306,9 @@ pub struct UpdateAssetData<'info> {
     pub boring_vault_state: Account<'info, BoringVault>,
     pub system_program: Program<'info, System>,
 
-    /// CHECK: can be zero account, or a Token2022 mint
+    /// CHECK: Can be zero account or Token2022 mint. No explicit validation needed as incorrect account
+    /// would only prevent deposits with that asset, which is not a security risk since the asset mint
+    /// account would not exist.
     pub asset: AccountInfo<'info>,
 
     #[account(
