@@ -26,8 +26,6 @@ pub enum QueueErrorCode {
     InvalidTokenProgram,
     #[msg("Invalid share mint")]
     InvalidShareMint,
-    #[msg("Invalid token account")]
-    InvalidTokenAccount,
     #[msg("Decimal conversion failed")]
     DecimalConversionFailed,
     #[msg("Request deadline not passed")]

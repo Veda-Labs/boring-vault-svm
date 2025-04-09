@@ -61,7 +61,7 @@ pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Resu
 /// * `Result<()>` - Ok if validation passes
 ///
 /// # Errors
-/// * Returns `QueueErrorCode::InvalidTokenAccount` if validation fails
+/// * Returns `QueueErrorCode::InvalidAssociatedTokenAccount` if validation fails
 pub fn validate_associated_token_accounts(
     token: &Pubkey,
     token_program: &Pubkey,

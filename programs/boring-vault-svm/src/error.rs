@@ -24,8 +24,6 @@ pub enum BoringErrorCode {
     InvalidAccounts,
     #[msg("Invalid Token Program")]
     InvalidTokenProgram,
-    #[msg("Invalid Token Account")]
-    InvalidTokenAccount,
     #[msg("Invalid Exchange Rate Provider")]
     InvalidExchangeRateProvider,
     #[msg("Invalid Authority")]
