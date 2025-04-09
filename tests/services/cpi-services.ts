@@ -130,7 +130,6 @@ export class CpiService {
       ixProgramId: PublicKey;
       ixData: Buffer;
       operators: any[];
-      expectedSize: number;
       accounts: {
         boringVaultState: PublicKey;
         boringVault: PublicKey;
@@ -146,7 +145,6 @@ export class CpiService {
           ixProgramId: params.ixProgramId,
           ixData: params.ixData,
           operators: params.operators,
-          expectedSize: params.expectedSize,
         }
       )
       .signers([params.deployer])
@@ -171,7 +169,6 @@ export class CpiService {
           vaultId: params.vaultId,
           cpiDigest: digest,
           operators: params.operators,
-          expectedSize: params.expectedSize,
         }
       )
       .accounts({
@@ -223,15 +220,7 @@ export class CpiService {
 
     // 5. Close CPI Digest
     const closeIx = await params.program.methods
-      .closeCpiDigest(
-        // @ts-ignore
-        {
-          vaultId: params.vaultId,
-          cpiDigest: digest,
-          operators: params.operators,
-          expectedSize: params.expectedSize,
-        }
-      )
+      .closeCpiDigest(params.vaultId, digest)
       .accounts({
         signer: params.authority.publicKey,
         boringVaultState: params.accounts.boringVaultState,

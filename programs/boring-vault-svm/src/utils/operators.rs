@@ -6,6 +6,7 @@ pub enum Operator {
     Noop,
     IngestInstruction(u32, u8), // (ix_index, length)
     IngestAccount(u8),          // (account_index)
+    IngestInstructionDataSize,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -27,11 +28,8 @@ impl Operators {
         ix_program_id: &Pubkey,
         ix_accounts: &[AccountInfo],
         ix_data: &[u8],
-        expected_size: u16,
     ) -> Result<[u8; 32]> {
-        require!(expected_size <= 4_096, OperatorError::ExpectedSizeTooLarge);
-
-        let mut hash_data: Vec<u8> = Vec::with_capacity(expected_size as usize);
+        let mut hash_data: Vec<u8> = Vec::new();
 
         // Add the ix_program_id to the hash_data
         hash_data.extend(ix_program_id.to_bytes());
@@ -51,33 +49,12 @@ impl Operators {
                     hash_data.push(account.is_signer as u8);
                     hash_data.push(account.is_writable as u8);
                 }
+                Operator::IngestInstructionDataSize => {
+                    hash_data.extend_from_slice(&(ix_data.len() as u64).to_le_bytes());
+                }
             }
         }
 
-        // Add the operators to the hash_data
-        hash_data.extend(
-            self.operators
-                .iter()
-                .flat_map(|operator| operator.to_bytes()),
-        );
-
-        msg!("Hash data length: {}", hash_data.len());
-
-        require!(
-            hash_data.len() == expected_size as usize,
-            OperatorError::ExpectedSizeMismatch
-        );
-
         Ok(hash(&hash_data).to_bytes())
     }
-}
-
-#[error_code]
-pub enum OperatorError {
-    #[msg("Invalid operator")]
-    InvalidOperator,
-    #[msg("Expected size too large")]
-    ExpectedSizeTooLarge,
-    #[msg("Expected size mismatch")]
-    ExpectedSizeMismatch,
 }

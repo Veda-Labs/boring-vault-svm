@@ -119,7 +119,6 @@ pub struct CpiDigestArgs {
     pub vault_id: u64,
     pub cpi_digest: [u8; 32],
     pub operators: Operators,
-    pub expected_size: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -134,7 +133,6 @@ pub struct ManageArgs {
 #[derive(Debug)]
 pub struct CpiDigest {
     pub operators: Operators,
-    pub expected_size: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -142,7 +140,6 @@ pub struct ViewCpiDigestArgs {
     pub ix_program_id: Pubkey,
     pub ix_data: Vec<u8>,
     pub operators: Operators,
-    pub expected_size: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]

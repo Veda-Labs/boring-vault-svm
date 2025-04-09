@@ -624,6 +624,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "hex",
  "rust_decimal",
  "solana-program",
  "switchboard-on-demand",

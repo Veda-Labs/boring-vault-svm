@@ -1206,58 +1206,6 @@ describe("boring-vault-svm", () => {
     ).to.equal(expectedFees.toString()); // Fee should be transferred to payout
   });
 
-  it("Can close cpi digests", async () => {
-    // This digest already exists
-    const digest = await program.methods
-      .viewCpiDigest(
-        // @ts-ignore
-        {
-          ixProgramId: NULL,
-          ixData: Buffer.from([]),
-          operators: [],
-          expectedSize: 32,
-        }
-      )
-      .signers([deployer])
-      .view();
-
-    const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("cpi-digest"),
-        Buffer.from(new Array(8).fill(0)),
-        Buffer.from(digest),
-      ],
-      program.programId
-    );
-
-    const closeIx = await program.methods
-      .initializeCpiDigest(
-        // @ts-ignore
-        {
-          vaultId: new anchor.BN(0),
-          cpiDigest: digest,
-          operators: [],
-          expectedSize: 32,
-        }
-      )
-      .accounts({
-        signer: authority.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        cpiDigest: cpiDigestAccount,
-      })
-      .instruction();
-
-    const closeIxResult = await ths.createAndProcessTransaction(
-      client,
-      deployer,
-      closeIx,
-      [authority]
-    );
-
-    ths.expectTxToSucceed(closeIxResult);
-  });
-
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
     // Transfer SOL from user to vault.
     const transferSolIx = anchor.web3.SystemProgram.transfer({
@@ -4140,7 +4088,6 @@ describe("boring-vault-svm", () => {
           vaultId: new anchor.BN(0),
           cpiDigest: digest0to1,
           operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
@@ -4282,7 +4229,6 @@ describe("boring-vault-svm", () => {
           vaultId: new anchor.BN(0),
           cpiDigest: digest1to0,
           operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({

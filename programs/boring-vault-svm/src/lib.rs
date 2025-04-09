@@ -292,7 +292,11 @@ pub mod boring_vault_svm {
     ) -> Result<()> {
         let cpi_digest = &mut ctx.accounts.cpi_digest;
         cpi_digest.operators = args.operators;
-        cpi_digest.expected_size = args.expected_size;
+        msg!(
+            "Vault {} - Initialized Cpi Digest: {}",
+            args.vault_id,
+            hex::encode(args.cpi_digest)
+        );
         Ok(())
     }
 
@@ -301,7 +305,16 @@ pub mod boring_vault_svm {
     /// # Arguments
     /// * `ctx` - The context of accounts
     /// * `_args` - Used to derive account
-    pub fn close_cpi_digest(_ctx: Context<CloseCpiDigest>, _args: CpiDigestArgs) -> Result<()> {
+    pub fn close_cpi_digest(
+        _ctx: Context<CloseCpiDigest>,
+        vault_id: u64,
+        digest: [u8; 32],
+    ) -> Result<()> {
+        msg!(
+            "Vault {} - Closed Cpi Digest: {}",
+            vault_id,
+            hex::encode(digest)
+        );
         Ok(())
     }
 
@@ -806,7 +819,6 @@ pub mod boring_vault_svm {
             &args.ix_program_id,
             &ix_accounts,
             &args.ix_data,
-            cpi_digest.expected_size,
         )?;
 
         // Derive the expected PDA for this digest
@@ -1098,7 +1110,6 @@ pub mod boring_vault_svm {
             &args.ix_program_id,
             ctx.remaining_accounts,
             &args.ix_data,
-            args.expected_size,
         )?;
 
         Ok(digest)
@@ -1586,13 +1597,13 @@ pub struct InitializeCpiDigest<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args:CpiDigestArgs)]
+#[instruction(vault_id: u64, digest: [u8; 32])]
 pub struct CloseCpiDigest<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
-        seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
         constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
@@ -1602,8 +1613,8 @@ pub struct CloseCpiDigest<'info> {
         mut,
         seeds = [
             BASE_SEED_CPI_DIGEST,
-            &args.vault_id.to_le_bytes()[..],
-            args.cpi_digest.as_ref(),
+            &vault_id.to_le_bytes()[..],
+            digest.as_ref(),
         ],
         bump,
         close = signer,
