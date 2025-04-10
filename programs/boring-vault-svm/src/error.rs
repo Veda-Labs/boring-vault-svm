@@ -20,32 +20,28 @@ pub enum BoringErrorCode {
     MathOverflow,
     #[msg("Invalid CPI digest")]
     InvalidCpiDigest,
-    #[msg("Invalid Account")]
-    InvalidAccounts,
-    #[msg("Invalid Token Program")]
+    #[msg("Invalid token program")]
     InvalidTokenProgram,
-    #[msg("Invalid Exchange Rate Provider")]
+    #[msg("Invalid exchange rate provider")]
     InvalidExchangeRateProvider,
-    #[msg("Invalid Authority")]
+    #[msg("Invalid authority")]
     InvalidAuthority,
-    #[msg("Invalid Payout Address")]
+    #[msg("Invalid payout address")]
     InvalidPayoutAddress,
-    #[msg("Invalid Allowed Exchange Rate Change Upper Bound")]
+    #[msg("Invalid allowed exchange rate change upper bound")]
     InvalidAllowedExchangeRateChangeUpperBound,
-    #[msg("Invalid Allowed Exchange Rate Change Lower Bound")]
+    #[msg("Invalid allowed exchange rate change lower bound")]
     InvalidAllowedExchangeRateChangeLowerBound,
-    #[msg("Invalid Platform Fee BPS")]
+    #[msg("Invalid platform fee bps")]
     InvalidPlatformFeeBps,
-    #[msg("Invalid Performance Fee BPS")]
+    #[msg("Invalid performance fee bps")]
     InvalidPerformanceFeeBps,
-    #[msg("Invalid Decimals")]
-    InvalidDecimals,
-    #[msg("Invalid Base Asset")]
+    #[msg("Invalid base asset")]
     InvalidBaseAsset,
     #[msg("Decimal conversion failed")]
     DecimalConversionFailed,
     #[msg("Maximum share premium exceeded")]
     MaximumSharePremiumExceeded,
-    #[msg("Invalid Strategist")]
+    #[msg("Invalid strategist")]
     InvalidStrategist,
 }

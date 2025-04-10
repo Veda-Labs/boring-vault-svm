@@ -2,19 +2,19 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum QueueErrorCode {
-    #[msg("Not Authorized")]
+    #[msg("Not authorized")]
     NotAuthorized,
-    #[msg("Queue Paused")]
+    #[msg("Queue paused")]
     QueuePaused,
-    #[msg("Withdraws Not Allowed For Asset")]
+    #[msg("Withdraws not allowed for asset")]
     WithdrawsNotAllowedForAsset,
-    #[msg("Invalid Discount")]
+    #[msg("Invalid discount")]
     InvalidDiscount,
-    #[msg("Invalid Share Amount")]
+    #[msg("Invalid share amount")]
     InvalidShareAmount,
-    #[msg("Invalid Seconds To Deadline")]
+    #[msg("Invalid seconds to deadline")]
     InvalidSecondsToDeadline,
-    #[msg("Invalid Boring Vault Program")]
+    #[msg("Invalid boring vault program")]
     InvalidBoringVaultProgram,
     #[msg("Request not mature")]
     RequestNotMature,

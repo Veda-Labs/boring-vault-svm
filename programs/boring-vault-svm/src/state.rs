@@ -2,12 +2,14 @@ use crate::utils::*;
 use anchor_lang::prelude::*;
 
 #[account]
+#[derive(Debug)]
 pub struct ProgramConfig {
     pub authority: Pubkey,
     pub vault_count: u64,
 }
 
 #[account]
+#[derive(Debug)]
 pub struct BoringVault {
     pub config: VaultState,
     pub teller: TellerState,

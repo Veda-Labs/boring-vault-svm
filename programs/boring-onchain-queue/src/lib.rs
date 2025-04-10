@@ -73,8 +73,9 @@ pub mod boring_onchain_queue {
         );
 
         // Verify the provided share mint matches the derived one
-        require!(
-            expected_share_mint == args.share_mint,
+        require_keys_eq!(
+            expected_share_mint,
+            args.share_mint,
             QueueErrorCode::InvalidShareMint
         );
 
@@ -148,7 +149,7 @@ pub mod boring_onchain_queue {
     /// * `InvalidDiscount` - If maximum_discount is less than minimum_discount
     /// * `MaximumDiscountExceeded` - If maximum_discount exceeds MAXIMUM_DISCOUNT (10%)
     pub fn update_withdraw_asset_data(
-        ctx: Context<UpdateWithdrawAsset>,
+        ctx: Context<UpdateWithdrawAssetData>,
         args: UpdateWithdrawAssetArgs,
     ) -> Result<()> {
         // Validate deadline and maturity constraints
@@ -167,7 +168,7 @@ pub mod boring_onchain_queue {
             QueueErrorCode::InvalidDiscount
         );
         require!(
-            args.maximum_discount <= MAXIMUM_DISCOUNT,
+            args.maximum_discount <= MAXIMUM_DISCOUNT_BPS,
             QueueErrorCode::MaximumDiscountExceeded
         );
 
@@ -374,8 +375,9 @@ pub mod boring_onchain_queue {
             QueueErrorCode::RequestDeadlinePassed
         );
 
-        require!(
-            ctx.accounts.withdraw_mint.key() == withdraw_request.asset_out,
+        require_keys_eq!(
+            ctx.accounts.withdraw_mint.key(),
+            withdraw_request.asset_out,
             QueueErrorCode::InvalidWithdrawMint
         );
 
@@ -399,8 +401,6 @@ pub mod boring_onchain_queue {
             vault_ata: ctx.accounts.vault_ata.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
             token_program_2022: ctx.accounts.token_program_2022.to_account_info(),
-            system_program: ctx.accounts.system_program.to_account_info(),
-            associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
             share_mint: ctx.accounts.share_mint.to_account_info(),
             user_shares: ctx.accounts.queue_shares.to_account_info(),
             price_feed: ctx.accounts.price_feed.to_account_info(),
@@ -560,7 +560,7 @@ pub struct Unpause<'info> {
 
 #[derive(Accounts)]
 #[instruction(args: UpdateWithdrawAssetArgs)]
-pub struct UpdateWithdrawAsset<'info> {
+pub struct UpdateWithdrawAssetData<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
@@ -651,8 +651,7 @@ pub struct RequestWithdraw<'info> {
     pub queue: SystemAccount<'info>,
 
     /// The vault's share mint
-    /// CHECK: Validated in instruction explicitly, even though
-    /// it is implicitly validated by the cpi
+    /// CHECK: Validated in queue_state constraint.
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     /// The user's share token 2022 account

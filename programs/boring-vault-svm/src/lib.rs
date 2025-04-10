@@ -46,6 +46,11 @@ pub mod boring_vault_svm {
     /// # Returns
     /// * `Result<()>` - Result indicating success or failure
     pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
+        require_keys_neq!(
+            authority,
+            Pubkey::default(),
+            BoringErrorCode::InvalidAuthority
+        );
         let config = &mut ctx.accounts.config;
         config.authority = authority;
         config.vault_count = 0;
@@ -78,8 +83,9 @@ pub mod boring_vault_svm {
     /// * `BoringErrorCode::InvalidPlatformFeeBps` - If platform fee exceeds maximum
     /// * `BoringErrorCode::InvalidPerformanceFeeBps` - If performance fee exceeds maximum
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
-        require!(
-            args.authority != Pubkey::default(),
+        require_keys_neq!(
+            args.authority,
+            Pubkey::default(),
             BoringErrorCode::InvalidAuthority
         );
 
@@ -106,8 +112,9 @@ pub mod boring_vault_svm {
         vault.teller.total_shares_last_update = ctx.accounts.share_mint.supply;
         let clock = &Clock::get()?;
         vault.teller.last_update_timestamp = clock.unix_timestamp as u64;
-        require!(
-            args.payout_address != Pubkey::default(),
+        require_keys_neq!(
+            args.payout_address,
+            Pubkey::default(),
             BoringErrorCode::InvalidPayoutAddress
         );
         vault.teller.payout_address = args.payout_address;
@@ -149,6 +156,11 @@ pub mod boring_vault_svm {
             BoringErrorCode::InvalidStrategist
         );
         vault.manager.strategist = args.strategist;
+
+        // Initialize to defaults.
+        vault.config.pending_authority = Pubkey::default();
+        vault.config.deposit_sub_account = 0;
+        vault.config.withdraw_sub_account = 0;
 
         // Update program config.
         ctx.accounts.config.vault_count += 1;
@@ -332,8 +344,9 @@ pub mod boring_vault_svm {
         vault_id: u64,
         new_provider: Pubkey,
     ) -> Result<()> {
-        require!(
-            new_provider != Pubkey::default(),
+        require_keys_neq!(
+            new_provider,
+            Pubkey::default(),
             BoringErrorCode::InvalidExchangeRateProvider
         );
         ctx.accounts
@@ -910,7 +923,8 @@ pub mod boring_vault_svm {
             args.deposit_amount,
         )?;
 
-        let is_base = NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key();
+        // The base asset must be a Mint account to read decimals on deployment, so NATIVE is never the base asset.
+        let is_base = false;
 
         let shares_out = teller::calculate_shares_and_mint(
             is_base,
@@ -1214,7 +1228,7 @@ pub struct Deploy<'info> {
         mut,
         seeds = [BASE_SEED_CONFIG],
         bump,
-        constraint = config.authority == signer.key() @ BoringErrorCode::NotAuthorized,
+        constraint = signer.key() == config.authority.key() @ BoringErrorCode::NotAuthorized,
     )]
     pub config: Account<'info, ProgramConfig>,
 
@@ -1255,7 +1269,7 @@ pub struct Pause<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1270,7 +1284,7 @@ pub struct Unpause<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1285,7 +1299,7 @@ pub struct TransferAuthority<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1300,7 +1314,7 @@ pub struct AcceptAuthority<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.pending_authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.pending_authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1315,7 +1329,7 @@ pub struct UpdateAssetData<'info> {
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
     pub system_program: Program<'info, System>,
@@ -1490,14 +1504,13 @@ pub struct Deposit<'info> {
 #[derive(Accounts)]
 #[instruction(args: WithdrawArgs)]
 pub struct Withdraw<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     // State
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.teller.withdraw_authority == Pubkey::default() || signer.key() == boring_vault_state.teller.withdraw_authority @ BoringErrorCode::NotAuthorized,
+        constraint = boring_vault_state.teller.withdraw_authority == Pubkey::default() || signer.key() == boring_vault_state.teller.withdraw_authority.key() @ BoringErrorCode::NotAuthorized,
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 
@@ -1538,8 +1551,6 @@ pub struct Withdraw<'info> {
     // Programs
     pub token_program: Program<'info, Token>,
     pub token_program_2022: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
 
     // Share Token
     /// The vault's share mint
@@ -1824,7 +1835,7 @@ pub struct Manage<'info> {
         bump,
     )]
     /// CHECK: Account used to hold assets.
-    pub boring_vault: AccountInfo<'info>,
+    pub boring_vault: SystemAccount<'info>,
 
     /// CHECK: Checked in instruction
     pub cpi_digest: Account<'info, CpiDigest>,

@@ -36,7 +36,7 @@ pub fn to_decimal<T: Into<Decimal>>(amount: T, decimals: u8) -> Result<Decimal> 
 pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Result<T> {
     decimal
         .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
-        .unwrap()
+        .ok_or(error!(BoringErrorCode::MathOverflow))?
         .try_into()
         .map_err(|_| error!(BoringErrorCode::DecimalConversionFailed))
 }
@@ -88,12 +88,14 @@ pub fn validate_associated_token_accounts(
             token_program,
         );
 
-    require!(
-        user_ata == &expected_user_ata,
+    require_keys_eq!(
+        *user_ata,
+        expected_user_ata,
         BoringErrorCode::InvalidAssociatedTokenAccount
     );
-    require!(
-        vault_ata == &expected_vault_ata,
+    require_keys_eq!(
+        *vault_ata,
+        expected_vault_ata,
         BoringErrorCode::InvalidAssociatedTokenAccount
     );
 
@@ -118,8 +120,8 @@ pub fn transfer_tokens_to<'a>(
             token_program,
             token_interface::TransferChecked {
                 from,
-                to,
                 mint,
+                to,
                 authority,
             },
             seeds,
@@ -144,8 +146,8 @@ pub fn transfer_tokens_from<'a>(
             token_program,
             token_interface::TransferChecked {
                 from,
-                to,
                 mint,
+                to,
                 authority,
             },
         ),
@@ -331,7 +333,7 @@ pub fn get_rate_in_quote(
 
 // ================================ Internal Helper Functions ================================
 
-/// Reads the oralce and checks for staleness, and accuracy
+/// Reads the oracle and checks for staleness, and accuracy
 fn read_oracle(price_feed: AccountInfo, max_staleness: u64, min_samples: u32) -> Result<Decimal> {
     // Query price feed.
     let feed_account = price_feed.data.borrow();

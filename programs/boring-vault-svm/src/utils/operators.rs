@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hash;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+#[non_exhaustive]
 pub enum Operator {
     Noop,
     IngestInstruction(u32, u8), // (ix_index, length)
