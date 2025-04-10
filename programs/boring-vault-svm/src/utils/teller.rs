@@ -36,7 +36,7 @@ pub fn to_decimal<T: Into<Decimal>>(amount: T, decimals: u8) -> Result<Decimal> 
 pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Result<T> {
     decimal
         .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
-        .ok_or(error!(BoringErrorCode::MathOverflow))?
+        .ok_or(error!(BoringErrorCode::MathError))?
         .try_into()
         .map_err(|_| error!(BoringErrorCode::DecimalConversionFailed))
 }
@@ -319,9 +319,13 @@ pub fn get_rate_in_quote(
         // want asset/share =  exchange_rate[base/share] / price[base/asset]
         let rate = if asset_data.inverse_price_feed {
             // Multiply instead since we need to inverse price feed.
-            exchange_rate.checked_mul(price).unwrap()
+            exchange_rate
+                .checked_mul(price)
+                .ok_or(error!(BoringErrorCode::MathError))?
         } else {
-            exchange_rate.checked_div(price).unwrap()
+            exchange_rate
+                .checked_div(price)
+                .ok_or(error!(BoringErrorCode::MathError))?
         };
 
         // Scale rate to quote decimals.
@@ -358,7 +362,9 @@ fn calculate_shares_to_mint_using_base_asset(
     let exchange_rate = to_decimal(exchange_rate, share_decimals)?;
 
     // Calculate shares_to_mint = deposit_amount[base] / exchange_rate[base/share]
-    let shares_to_mint = deposit_amount.checked_div(exchange_rate).unwrap();
+    let shares_to_mint = deposit_amount
+        .checked_div(exchange_rate)
+        .ok_or(error!(BoringErrorCode::MathError))?;
     let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
 
     // Scale up shares to mint by share decimals.
@@ -381,7 +387,9 @@ fn calculate_shares_to_mint_using_deposit_asset(
     let exchange_rate = to_decimal(exchange_rate, share_decimals)?;
 
     let asset_price = if inverse_price_feed {
-        Decimal::from(1).checked_div(asset_price).unwrap() // 1 / price
+        Decimal::from(1)
+            .checked_div(asset_price)
+            .ok_or(error!(BoringErrorCode::MathError))? // 1 / price
     } else {
         asset_price
     };
@@ -389,9 +397,9 @@ fn calculate_shares_to_mint_using_deposit_asset(
     // Calculate shares_to_mint = deposit_amount[asset] * asset_price[base/asset] / exchange_rate[base/share]
     let shares_to_mint = deposit_amount
         .checked_mul(asset_price)
-        .unwrap()
+        .ok_or(error!(BoringErrorCode::MathError))?
         .checked_div(exchange_rate)
-        .unwrap();
+        .ok_or(error!(BoringErrorCode::MathError))?;
     let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
 
     // Scale up shares to mint by share decimals.
@@ -404,8 +412,12 @@ fn calculate_shares_to_mint_using_deposit_asset(
 fn factor_in_share_premium(shares_to_mint: Decimal, share_premium_bps: u16) -> Result<Decimal> {
     if share_premium_bps > 0 {
         let premium_bps = to_decimal(share_premium_bps, BPS_DECIMALS)?;
-        let premium_amount = shares_to_mint.checked_mul(premium_bps).unwrap();
-        Ok(shares_to_mint.checked_sub(premium_amount).unwrap())
+        let premium_amount = shares_to_mint
+            .checked_mul(premium_bps)
+            .ok_or(error!(BoringErrorCode::MathError))?;
+        Ok(shares_to_mint
+            .checked_sub(premium_amount)
+            .ok_or(error!(BoringErrorCode::MathError))?)
     } else {
         Ok(shares_to_mint)
     }
@@ -421,7 +433,9 @@ fn calculate_assets_out_in_base_asset(
     let exchange_rate = to_decimal(exchange_rate, decimals)?;
 
     // Calculate assets_out = share_amount[share] * exchange_rate[base/share]
-    let assets_out = share_amount.checked_mul(exchange_rate).unwrap();
+    let assets_out = share_amount
+        .checked_mul(exchange_rate)
+        .ok_or(error!(BoringErrorCode::MathError))?;
 
     // Scale up assets out by decimals.
     let assets_out = from_decimal(assets_out, decimals)?;
@@ -446,15 +460,15 @@ fn calculate_assets_out_using_withdraw_asset(
         // Price feed is inversed, so multiply it instead.
         share_amount
             .checked_mul(exchange_rate)
-            .unwrap()
+            .ok_or(error!(BoringErrorCode::MathError))?
             .checked_mul(asset_price)
-            .unwrap()
+            .ok_or(error!(BoringErrorCode::MathError))?
     } else {
         share_amount
             .checked_mul(exchange_rate)
-            .unwrap()
+            .ok_or(error!(BoringErrorCode::MathError))?
             .checked_div(asset_price)
-            .unwrap()
+            .ok_or(error!(BoringErrorCode::MathError))?
     };
 
     // Scale up assets out by withdraw asset decimals.

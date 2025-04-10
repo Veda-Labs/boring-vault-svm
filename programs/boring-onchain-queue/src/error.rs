@@ -38,4 +38,6 @@ pub enum QueueErrorCode {
     MaximumDiscountExceeded,
     #[msg("Invalid associated token account")]
     InvalidAssociatedTokenAccount,
+    #[msg("Math error")]
+    MathError,
 }

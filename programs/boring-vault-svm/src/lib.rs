@@ -763,10 +763,16 @@ pub mod boring_vault_svm {
                     .minimum_update_delay_in_seconds as u64;
 
         should_pause = should_pause
-            || new_exchange_rate_d > current_exchange_rate_d.checked_mul(upper_bound).unwrap();
+            || new_exchange_rate_d
+                > current_exchange_rate_d
+                    .checked_mul(upper_bound)
+                    .ok_or(error!(BoringErrorCode::MathError))?;
 
         should_pause = should_pause
-            || new_exchange_rate_d < current_exchange_rate_d.checked_mul(lower_bound).unwrap();
+            || new_exchange_rate_d
+                < current_exchange_rate_d
+                    .checked_mul(lower_bound)
+                    .ok_or(error!(BoringErrorCode::MathError))?;
 
         if should_pause {
             ctx.accounts.boring_vault_state.config.paused = true;
@@ -796,20 +802,21 @@ pub mod boring_vault_svm {
                 } else if new_exchange_rate > current_exchange_rate {
                     current_exchange_rate_d
                         .checked_mul(share_supply_to_use_d)
-                        .unwrap()
+                        .ok_or(error!(BoringErrorCode::MathError))?
                 } else {
                     new_exchange_rate_d
                         .checked_mul(share_supply_to_use_d)
-                        .unwrap()
+                        .ok_or(error!(BoringErrorCode::MathError))?
                 };
-                let platform_fee_in_base_asset =
-                    minimum_assets.checked_mul(platform_fee_d).unwrap();
+                let platform_fee_in_base_asset = minimum_assets
+                    .checked_mul(platform_fee_d)
+                    .ok_or(error!(BoringErrorCode::MathError))?;
                 let time_passed = Decimal::from(time_passed);
                 let platform_fee_in_base_asset = platform_fee_in_base_asset
                     .checked_mul(time_passed)
-                    .unwrap()
+                    .ok_or(error!(BoringErrorCode::MathError))?
                     .checked_div(Decimal::from(365 * 86400))
-                    .unwrap();
+                    .ok_or(error!(BoringErrorCode::MathError))?;
                 platform_fees_owed_in_base_asset =
                     teller::from_decimal(platform_fee_in_base_asset, vault_decimals)?;
             }
@@ -833,10 +840,15 @@ pub mod boring_vault_svm {
                         ctx.accounts.boring_vault_state.teller.performance_fee_bps,
                         BPS_DECIMALS,
                     )?;
-                    let delta_rate = new_exchange_rate_d.checked_sub(high_water_mark_d).unwrap();
-                    let yield_earned = delta_rate.checked_mul(share_supply_to_use_d).unwrap();
-                    let performance_fee_in_base_asset =
-                        yield_earned.checked_mul(performance_fee_d).unwrap();
+                    let delta_rate = new_exchange_rate_d
+                        .checked_sub(high_water_mark_d)
+                        .ok_or(error!(BoringErrorCode::MathError))?;
+                    let yield_earned = delta_rate
+                        .checked_mul(share_supply_to_use_d)
+                        .ok_or(error!(BoringErrorCode::MathError))?;
+                    let performance_fee_in_base_asset = yield_earned
+                        .checked_mul(performance_fee_d)
+                        .ok_or(error!(BoringErrorCode::MathError))?;
                     performance_fees_owed_in_base_asset =
                         teller::from_decimal(performance_fee_in_base_asset, vault_decimals)?;
                 }

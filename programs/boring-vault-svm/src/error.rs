@@ -16,8 +16,8 @@ pub enum BoringErrorCode {
     InvalidPriceFeed,
     #[msg("Not authorized")]
     NotAuthorized,
-    #[msg("Math overflow")]
-    MathOverflow,
+    #[msg("Math error")]
+    MathError,
     #[msg("Invalid CPI digest")]
     InvalidCpiDigest,
     #[msg("Invalid token program")]

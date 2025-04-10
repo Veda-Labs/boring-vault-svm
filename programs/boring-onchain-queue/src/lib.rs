@@ -281,12 +281,18 @@ pub mod boring_onchain_queue {
             ctx.accounts.boring_vault_state.teller.decimals,
         )?;
         let rate_d = to_decimal(rate.get(), ctx.accounts.withdraw_mint.decimals)?;
-        let asset_amount = share_amount.checked_mul(rate_d).unwrap();
+        let asset_amount = share_amount
+            .checked_mul(rate_d)
+            .ok_or(error!(QueueErrorCode::MathError))?;
 
         // Apply discount
         let discount = to_decimal(args.discount, BPS_DECIMALS)?;
-        let discount_multiplier = Decimal::from(1).checked_sub(discount).unwrap();
-        let asset_amount = asset_amount.checked_mul(discount_multiplier).unwrap();
+        let discount_multiplier = Decimal::from(1)
+            .checked_sub(discount)
+            .ok_or(error!(QueueErrorCode::MathError))?;
+        let asset_amount = asset_amount
+            .checked_mul(discount_multiplier)
+            .ok_or(error!(QueueErrorCode::MathError))?;
         // Scale up asset_amount by decimals.
         let asset_amount = from_decimal(asset_amount, ctx.accounts.withdraw_mint.decimals)?;
 
