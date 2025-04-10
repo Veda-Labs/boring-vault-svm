@@ -5,18 +5,15 @@ import { BoringVaultSvm } from "../target/types/boring_vault_svm";
 import { BoringOnchainQueue } from "../target/types/boring_onchain_queue";
 import { expect } from "chai";
 import {
-  ComputeBudgetProgram,
-  AddressLookupTableProgram,
-} from "@solana/web3.js";
-import {
   TOKEN_2022_PROGRAM_ID,
+  getTokenMetadata,
+  unpackMint,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { AddedAccount, BanksClient, ProgramTestContext } from "solana-bankrun";
-import { PublicKey, Transaction, Connection, Keypair } from "@solana/web3.js";
+import { PublicKey, Connection, Keypair } from "@solana/web3.js";
 import { CpiService, TestHelperService as ths } from "./services";
-import bs58 from "bs58";
 import * as fs from "fs";
 
 import dotenv from "dotenv";
@@ -454,11 +451,13 @@ describe("boring-vault-svm", () => {
   });
 
   it("Can deploy a vault", async () => {
+    const name = "Boring Vault";
+    const symbol = "BV";
     const ix = await program.methods
       .deploy({
         authority: authority.publicKey,
-        name: "Boring Vault",
-        symbol: "BV",
+        name,
+        symbol,
         exchangeRateProvider: strategist.publicKey,
         exchangeRate: new anchor.BN(1000000000),
         payoutAddress: payout.publicKey,
@@ -478,7 +477,7 @@ describe("boring-vault-svm", () => {
         baseAsset: JITOSOL,
         signer: authority.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
-        tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
       })
       .instruction();
 
@@ -502,6 +501,29 @@ describe("boring-vault-svm", () => {
     expect(boringVault.config.shareMint.equals(boringVaultShareMint)).to.be
       .true;
     expect(boringVault.config.paused).to.be.false;
+
+    const mintInfo = await client.getAccount(boringVaultShareMint);
+    expect(mintInfo).to.not.be.null;
+    const mintAccountInfo = {
+      ...mintInfo,
+      data: Buffer.from(mintInfo.data),
+    };
+
+    const mintData = unpackMint(
+      boringVaultShareMint,
+      mintAccountInfo,
+      TOKEN_2022_PROGRAM_ID
+    );
+    const tokenMetadata = await getTokenMetadata(
+      provider.connection,
+      mintData.address
+    );
+    expect(tokenMetadata).to.not.be.null;
+    expect(tokenMetadata.name).to.equal(name);
+    expect(tokenMetadata.symbol).to.equal(symbol);
+    expect(tokenMetadata.updateAuthority.equals(boringVaultStateAccount)).to.be
+      .true;
+    expect(mintData.mintAuthority.equals(boringVaultStateAccount)).to.be.true;
   });
 
   it("Can transfer authority", async () => {

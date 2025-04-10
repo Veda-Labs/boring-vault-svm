@@ -626,6 +626,8 @@ dependencies = [
  "anchor-spl",
  "hex",
  "rust_decimal",
+ "spl-token-metadata-interface",
+ "spl-type-length-value",
  "switchboard-on-demand",
 ]
 
