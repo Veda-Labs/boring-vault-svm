@@ -20,8 +20,7 @@ use anchor_spl::{
     token::Token,
     token_2022::Token2022,
     token_interface::{
-        self, token_metadata_initialize, Mint, TokenAccount, TokenInterface,
-        TokenMetadataInitialize,
+        self, token_metadata_initialize, Mint, TokenAccount, TokenMetadataInitialize,
     },
 };
 use rust_decimal::Decimal;
@@ -1324,7 +1323,7 @@ pub struct Deploy<'info> {
     pub base_asset: InterfaceAccount<'info, Mint>,
 
     pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Program<'info, Token2022>,
 }
 
 #[derive(Accounts)]
