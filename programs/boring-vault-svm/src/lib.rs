@@ -115,8 +115,9 @@ pub mod boring_vault_svm {
             // Initialize teller state.
             vault.teller.base_asset = ctx.accounts.base_asset.key();
             vault.teller.decimals = ctx.accounts.base_asset.decimals;
-            require!(
-                args.exchange_rate_provider != Pubkey::default(),
+            require_keys_neq!(
+                args.exchange_rate_provider,
+                Pubkey::default(),
                 BoringErrorCode::InvalidExchangeRateProvider
             );
             vault.teller.exchange_rate_provider = args.exchange_rate_provider;
@@ -918,8 +919,9 @@ pub mod boring_vault_svm {
             digest.as_ref(),
         ];
         let (expected_pda, _) = Pubkey::find_program_address(seeds, &crate::ID);
-        require!(
-            expected_pda == cpi_digest.key(),
+        require_keys_eq!(
+            expected_pda,
+            cpi_digest.key(),
             BoringErrorCode::InvalidCpiDigest
         );
 
