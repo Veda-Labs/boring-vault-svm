@@ -4083,12 +4083,14 @@ describe("boring-vault-svm", () => {
       .viewCpiDigest(
         // @ts-ignore
         {
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
           operators: CpiService.getWSolTransferOperators(),
           expectedSize: 104,
         }
       )
+      .accounts({
+        ixProgramId: anchor.web3.SystemProgram.programId,
+      })
       .signers([deployer])
       .remainingAccounts(transfer0to1Accounts)
       .view();
@@ -4152,7 +4154,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4161,6 +4162,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest0to1Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4198,7 +4200,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4207,6 +4208,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest0to1Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4224,12 +4226,14 @@ describe("boring-vault-svm", () => {
       .viewCpiDigest(
         // @ts-ignore
         {
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer1to0IxData,
           operators: CpiService.getWSolTransferOperators(),
           expectedSize: 104,
         }
       )
+      .accounts({
+        ixProgramId: anchor.web3.SystemProgram.programId,
+      })
       .signers([deployer])
       .remainingAccounts(transfer1to0Accounts)
       .view();
@@ -4277,7 +4281,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4286,6 +4289,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest1to0Account, // Wrong digest!
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4308,7 +4312,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4317,6 +4320,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest0to1Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4353,7 +4357,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 1, // Using sub-account 1
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer1to0IxData,
         }
       )
@@ -4362,6 +4365,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultSubAccount1, // Using sub-account 1
         cpiDigest: cpiDigest1to0Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer1to0Accounts)
       .instruction();

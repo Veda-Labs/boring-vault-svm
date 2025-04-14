@@ -147,6 +147,9 @@ export class CpiService {
           operators: params.operators,
         }
       )
+      .accounts({
+        ixProgramId: params.ixProgramId,
+      })
       .signers([params.deployer])
       .remainingAccounts(remainingAccounts)
       .view();
@@ -198,7 +201,6 @@ export class CpiService {
         {
           vaultId: params.vaultId,
           subAccount: 0,
-          ixProgramId: params.ixProgramId,
           ixData: params.ixData,
         }
       )
@@ -207,6 +209,7 @@ export class CpiService {
         boringVaultState: params.accounts.boringVaultState,
         boringVault: params.accounts.boringVault,
         cpiDigest: cpiDigestAccount,
+        ixProgramId: params.ixProgramId,
       })
       .remainingAccounts(remainingAccounts)
       .instruction();

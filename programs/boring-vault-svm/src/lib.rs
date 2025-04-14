@@ -907,7 +907,7 @@ pub mod boring_vault_svm {
 
         // Hash the CPI call down to a digest and confirm it matches the digest in the args.
         let digest = cpi_digest.operators.apply_operators(
-            &args.ix_program_id,
+            ctx.accounts.ix_program_id.key,
             &ix_accounts,
             &args.ix_data,
         )?;
@@ -949,7 +949,7 @@ pub mod boring_vault_svm {
 
         // Create the instruction
         let ix = anchor_lang::solana_program::instruction::Instruction {
-            program_id: args.ix_program_id,
+            program_id: *ctx.accounts.ix_program_id.key,
             accounts: accounts,
             data: args.ix_data,
         };
@@ -1200,7 +1200,7 @@ pub mod boring_vault_svm {
     ) -> Result<[u8; 32]> {
         // Hash the CPI call down to a digest
         let digest = args.operators.apply_operators(
-            &args.ix_program_id,
+            ctx.accounts.ix_program_id.key,
             ctx.remaining_accounts,
             &args.ix_data,
         )?;
@@ -1920,11 +1920,15 @@ pub struct Manage<'info> {
 
     /// CHECK: Checked in instruction
     pub cpi_digest: Account<'info, CpiDigest>,
+
+    /// CHECK: Included in cpi digest.
+    pub ix_program_id: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
 pub struct ViewCpiDigest<'info> {
-    pub system_program: Program<'info, System>,
+    /// CHECK: Included in cpi digest.
+    pub ix_program_id: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
