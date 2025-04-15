@@ -5,18 +5,16 @@ import { BoringVaultSvm } from "../target/types/boring_vault_svm";
 import { BoringOnchainQueue } from "../target/types/boring_onchain_queue";
 import { expect } from "chai";
 import {
-  ComputeBudgetProgram,
-  AddressLookupTableProgram,
-} from "@solana/web3.js";
-import {
   TOKEN_2022_PROGRAM_ID,
+  getTokenMetadata,
+  unpackMint,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { AddedAccount, BanksClient, ProgramTestContext } from "solana-bankrun";
-import { PublicKey, Transaction, Connection } from "@solana/web3.js";
+import { PublicKey, Connection, Keypair } from "@solana/web3.js";
 import { CpiService, TestHelperService as ths } from "./services";
-import bs58 from "bs58";
+import * as fs from "fs";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -158,6 +156,22 @@ describe("boring-vault-svm", () => {
     SOLEND_DESINTATION_DEPOSIT_RESERVE_COLLATERAL_SUPPLY_SPL_TOKEN_ACCOUNT.toString(),
     SOLEND_PYTH_PRICE_ORACLE_SOL.toString(),
   ];
+
+  // Load the boring vault program's keypair
+  const boringVaultProgramKeypair = JSON.parse(
+    fs.readFileSync("target/deploy/boring_vault_svm-keypair.json", "utf-8")
+  );
+  const boringVaultProgramSigner = Keypair.fromSecretKey(
+    new Uint8Array(boringVaultProgramKeypair)
+  );
+
+  // Load the boring queue program's keypair
+  const boringQueueProgramKeypair = JSON.parse(
+    fs.readFileSync("target/deploy/boring_onchain_queue-keypair.json", "utf-8")
+  );
+  const boringQueueProgramSigner = Keypair.fromSecretKey(
+    new Uint8Array(boringQueueProgramKeypair)
+  );
 
   before(async () => {
     connection = new Connection(
@@ -417,11 +431,13 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: programConfigAccount,
         signer: deployer.publicKey,
+        program: boringVaultProgramSigner.publicKey,
       })
       .instruction();
 
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
+      boringVaultProgramSigner,
     ]);
 
     // Expect the tx to succeed.
@@ -435,11 +451,13 @@ describe("boring-vault-svm", () => {
   });
 
   it("Can deploy a vault", async () => {
+    const name = "Boring Vault";
+    const symbol = "BV";
     const ix = await program.methods
       .deploy({
         authority: authority.publicKey,
-        name: "Boring Vault",
-        symbol: "BV",
+        name,
+        symbol,
         exchangeRateProvider: strategist.publicKey,
         exchangeRate: new anchor.BN(1000000000),
         payoutAddress: payout.publicKey,
@@ -483,6 +501,29 @@ describe("boring-vault-svm", () => {
     expect(boringVault.config.shareMint.equals(boringVaultShareMint)).to.be
       .true;
     expect(boringVault.config.paused).to.be.false;
+
+    const mintInfo = await client.getAccount(boringVaultShareMint);
+    expect(mintInfo).to.not.be.null;
+    const mintAccountInfo = {
+      ...mintInfo,
+      data: Buffer.from(mintInfo.data),
+    };
+
+    const mintData = unpackMint(
+      boringVaultShareMint,
+      mintAccountInfo,
+      TOKEN_2022_PROGRAM_ID
+    );
+    const tokenMetadata = await getTokenMetadata(
+      provider.connection,
+      mintData.address
+    );
+    expect(tokenMetadata).to.not.be.null;
+    expect(tokenMetadata.name).to.equal(name);
+    expect(tokenMetadata.symbol).to.equal(symbol);
+    expect(tokenMetadata.updateAuthority.equals(boringVaultStateAccount)).to.be
+      .true;
+    expect(mintData.mintAuthority.equals(boringVaultStateAccount)).to.be.true;
   });
 
   it("Can transfer authority", async () => {
@@ -1187,58 +1228,6 @@ describe("boring-vault-svm", () => {
     ).to.equal(expectedFees.toString()); // Fee should be transferred to payout
   });
 
-  it("Can close cpi digests", async () => {
-    // This digest already exists
-    const digest = await program.methods
-      .viewCpiDigest(
-        // @ts-ignore
-        {
-          ixProgramId: NULL,
-          ixData: Buffer.from([]),
-          operators: [],
-          expectedSize: 32,
-        }
-      )
-      .signers([deployer])
-      .view();
-
-    const [cpiDigestAccount] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("cpi-digest"),
-        Buffer.from(new Array(8).fill(0)),
-        Buffer.from(digest),
-      ],
-      program.programId
-    );
-
-    const closeIx = await program.methods
-      .updateCpiDigest(
-        // @ts-ignore
-        {
-          vaultId: new anchor.BN(0),
-          cpiDigest: digest,
-          operators: [],
-          expectedSize: 32,
-        }
-      )
-      .accounts({
-        signer: authority.publicKey,
-        boringVaultState: boringVaultStateAccount,
-        // @ts-ignore
-        cpiDigest: cpiDigestAccount,
-      })
-      .instruction();
-
-    const closeIxResult = await ths.createAndProcessTransaction(
-      client,
-      deployer,
-      closeIx,
-      [authority]
-    );
-
-    ths.expectTxToSucceed(closeIxResult);
-  });
-
   it("Vault can deposit SOL into JitoSOL stake pool", async () => {
     // Transfer SOL from user to vault.
     const transferSolIx = anchor.web3.SystemProgram.transfer({
@@ -1381,11 +1370,13 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: queueProgramConfigAccount,
         systemProgram: anchor.web3.SystemProgram.programId,
+        program: boringQueueProgramSigner.publicKey,
       })
       .instruction();
 
     let txResult = await ths.createAndProcessTransaction(client, deployer, ix, [
       deployer,
+      boringQueueProgramSigner,
     ]);
     ths.expectTxToSucceed(txResult);
 
@@ -2570,6 +2561,7 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: configAccount,
         systemProgram: anchor.web3.SystemProgram.programId,
+        programSigner: boringVaultProgramSigner.publicKey,
       })
       .instruction();
 
@@ -2577,7 +2569,7 @@ describe("boring-vault-svm", () => {
       client,
       deployer,
       initializeIx,
-      [authority]
+      [authority, boringVaultProgramSigner]
     );
 
     // Should fail with a raw anchor error (no custom error message)
@@ -3353,7 +3345,7 @@ describe("boring-vault-svm", () => {
       invalidUserAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try deposit with invalid vault ATA (using user's ATA instead)
     const invalidVaultAtaIx = await program.methods
@@ -3383,7 +3375,7 @@ describe("boring-vault-svm", () => {
       invalidVaultAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try to deposit when vault is paused
     // First pause the vault
@@ -3674,7 +3666,7 @@ describe("boring-vault-svm", () => {
       invalidUserAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try withdraw with invalid vault ATA (using user's ATA instead)
     const invalidVaultAtaIx = await program.methods
@@ -3704,7 +3696,7 @@ describe("boring-vault-svm", () => {
       invalidVaultAtaIx,
       [user]
     );
-    ths.expectTxToFail(txResult, "Invalid Token Account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // Try to withdraw when vault is paused
     // First pause the vault
@@ -4091,12 +4083,14 @@ describe("boring-vault-svm", () => {
       .viewCpiDigest(
         // @ts-ignore
         {
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
           operators: CpiService.getWSolTransferOperators(),
           expectedSize: 104,
         }
       )
+      .accounts({
+        ixProgramId: anchor.web3.SystemProgram.programId,
+      })
       .signers([deployer])
       .remainingAccounts(transfer0to1Accounts)
       .view();
@@ -4111,14 +4105,13 @@ describe("boring-vault-svm", () => {
     );
 
     // Update CPI digest
-    const updateDigestIx = await program.methods
-      .updateCpiDigest(
+    const initializeDigestIx = await program.methods
+      .initializeCpiDigest(
         // @ts-ignore
         {
           vaultId: new anchor.BN(0),
           cpiDigest: digest0to1,
           operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
@@ -4133,7 +4126,7 @@ describe("boring-vault-svm", () => {
     let txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
-      updateDigestIx,
+      initializeDigestIx,
       [authority]
     );
     ths.expectTxToSucceed(txResult);
@@ -4161,7 +4154,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4170,6 +4162,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest0to1Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4207,7 +4200,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4216,6 +4208,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest0to1Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4233,12 +4226,14 @@ describe("boring-vault-svm", () => {
       .viewCpiDigest(
         // @ts-ignore
         {
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer1to0IxData,
           operators: CpiService.getWSolTransferOperators(),
           expectedSize: 104,
         }
       )
+      .accounts({
+        ixProgramId: anchor.web3.SystemProgram.programId,
+      })
       .signers([deployer])
       .remainingAccounts(transfer1to0Accounts)
       .view();
@@ -4253,14 +4248,13 @@ describe("boring-vault-svm", () => {
     );
 
     // Update second CPI digest
-    const updateDigest1to0Ix = await program.methods
-      .updateCpiDigest(
+    const initializeDigest1to0Ix = await program.methods
+      .initializeCpiDigest(
         // @ts-ignore
         {
           vaultId: new anchor.BN(0),
           cpiDigest: digest1to0,
           operators: CpiService.getWSolTransferOperators(),
-          expectedSize: 104,
         }
       )
       .accounts({
@@ -4275,7 +4269,7 @@ describe("boring-vault-svm", () => {
     txResult = await ths.createAndProcessTransaction(
       client,
       deployer,
-      updateDigest1to0Ix,
+      initializeDigest1to0Ix,
       [authority]
     );
     ths.expectTxToSucceed(txResult);
@@ -4287,7 +4281,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4296,6 +4289,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest1to0Account, // Wrong digest!
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4318,7 +4312,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 0,
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer0to1IxData,
         }
       )
@@ -4327,6 +4320,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultAccount,
         cpiDigest: cpiDigest0to1Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer0to1Accounts)
       .instruction();
@@ -4363,7 +4357,6 @@ describe("boring-vault-svm", () => {
         {
           vaultId: new anchor.BN(0),
           subAccount: 1, // Using sub-account 1
-          ixProgramId: anchor.web3.SystemProgram.programId,
           ixData: transfer1to0IxData,
         }
       )
@@ -4372,6 +4365,7 @@ describe("boring-vault-svm", () => {
         boringVaultState: boringVaultStateAccount,
         boringVault: boringVaultSubAccount1, // Using sub-account 1
         cpiDigest: cpiDigest1to0Account,
+        ixProgramId: anchor.web3.SystemProgram.programId,
       })
       .remainingAccounts(transfer1to0Accounts)
       .instruction();
@@ -4411,6 +4405,7 @@ describe("boring-vault-svm", () => {
         // @ts-ignore
         config: configAccount,
         systemProgram: anchor.web3.SystemProgram.programId,
+        program: boringQueueProgramSigner.publicKey,
       })
       .instruction();
 
@@ -4418,7 +4413,7 @@ describe("boring-vault-svm", () => {
       client,
       deployer,
       initializeIx,
-      [authority]
+      [authority, boringQueueProgramSigner]
     );
 
     // Should fail with a raw anchor error (no custom error message)
@@ -5129,7 +5124,7 @@ describe("boring-vault-svm", () => {
       fulfillIx,
       [solveAuthority]
     );
-    ths.expectTxToFail(txResult, "Invalid token account");
+    ths.expectTxToFail(txResult, "Invalid associated token account");
 
     // 6. Advance time past deadline and try to fulfill
     await ths.wait(client, context, 4 * 86400); // Past the 3 day deadline

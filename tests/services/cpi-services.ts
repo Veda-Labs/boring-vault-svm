@@ -130,7 +130,6 @@ export class CpiService {
       ixProgramId: PublicKey;
       ixData: Buffer;
       operators: any[];
-      expectedSize: number;
       accounts: {
         boringVaultState: PublicKey;
         boringVault: PublicKey;
@@ -146,9 +145,11 @@ export class CpiService {
           ixProgramId: params.ixProgramId,
           ixData: params.ixData,
           operators: params.operators,
-          expectedSize: params.expectedSize,
         }
       )
+      .accounts({
+        ixProgramId: params.ixProgramId,
+      })
       .signers([params.deployer])
       .remainingAccounts(remainingAccounts)
       .view();
@@ -163,15 +164,14 @@ export class CpiService {
       params.program.programId
     );
 
-    // 3. Update CPI Digest
-    const updateIx = await params.program.methods
-      .updateCpiDigest(
+    // 3. Initialize CPI Digest
+    const initializeIx = await params.program.methods
+      .initializeCpiDigest(
         // @ts-ignore
         {
           vaultId: params.vaultId,
           cpiDigest: digest,
           operators: params.operators,
-          expectedSize: params.expectedSize,
         }
       )
       .accounts({
@@ -183,15 +183,15 @@ export class CpiService {
       })
       .instruction();
 
-    const updateTxResult = await ths.createAndProcessTransaction(
+    const initializeTxResult = await ths.createAndProcessTransaction(
       params.client,
       params.deployer,
-      updateIx,
+      initializeIx,
       [params.authority]
     );
 
-    if (updateTxResult.result !== null) {
-      throw new Error("Failed to update CPI digest");
+    if (initializeTxResult.result !== null) {
+      throw new Error("Failed to initialize CPI digest");
     }
 
     // 4. Execute Manage
@@ -201,7 +201,6 @@ export class CpiService {
         {
           vaultId: params.vaultId,
           subAccount: 0,
-          ixProgramId: params.ixProgramId,
           ixData: params.ixData,
         }
       )
@@ -210,6 +209,7 @@ export class CpiService {
         boringVaultState: params.accounts.boringVaultState,
         boringVault: params.accounts.boringVault,
         cpiDigest: cpiDigestAccount,
+        ixProgramId: params.ixProgramId,
       })
       .remainingAccounts(remainingAccounts)
       .instruction();
@@ -223,15 +223,7 @@ export class CpiService {
 
     // 5. Close CPI Digest
     const closeIx = await params.program.methods
-      .closeCpiDigest(
-        // @ts-ignore
-        {
-          vaultId: params.vaultId,
-          cpiDigest: digest,
-          operators: params.operators,
-          expectedSize: params.expectedSize,
-        }
-      )
+      .closeCpiDigest(params.vaultId, digest)
       .accounts({
         signer: params.authority.publicKey,
         boringVaultState: params.accounts.boringVaultState,

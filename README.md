@@ -33,3 +33,14 @@ anchor test
 All Rights Reserved
 
 This code is proprietary and confidential. Unauthorized copying, modification, distribution, or use of this code, via any medium, is strictly prohibited without express written permission.
+
+5. To install new solana version
+
+```bash
+sh -c "$(curl -sSfL https://release.anza.xyz/v2.0.15/install)"
+```
+
+Where 2.0.15 is the version you want to install
+
+solana --version
+solana-cli 2.0.15 (src:f8f3fe31; feat:607245837, client:Agave)

@@ -7,14 +7,25 @@
 //! - Share token minting and burning
 #![allow(unexpected_cfgs)]
 
-use anchor_lang::{prelude::*, solana_program::program::invoke_signed, system_program};
+use anchor_lang::{
+    prelude::*,
+    solana_program::{
+        program::invoke_signed,
+        rent::{DEFAULT_EXEMPTION_THRESHOLD, DEFAULT_LAMPORTS_PER_BYTE_YEAR},
+    },
+    system_program,
+};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::Token,
     token_2022::Token2022,
-    token_interface::{self, Mint, TokenAccount, TokenInterface},
+    token_interface::{
+        self, token_metadata_initialize, Mint, TokenAccount, TokenMetadataInitialize,
+    },
 };
 use rust_decimal::Decimal;
+use spl_token_metadata_interface::state::TokenMetadata;
+use spl_type_length_value::variable_len_pack::VariableLenPack;
 
 // Internal modules
 mod constants;
@@ -46,6 +57,11 @@ pub mod boring_vault_svm {
     /// # Returns
     /// * `Result<()>` - Result indicating success or failure
     pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
+        require_keys_neq!(
+            authority,
+            Pubkey::default(),
+            BoringErrorCode::InvalidAuthority
+        );
         let config = &mut ctx.accounts.config;
         config.authority = authority;
         config.vault_count = 0;
@@ -78,84 +94,146 @@ pub mod boring_vault_svm {
     /// * `BoringErrorCode::InvalidPlatformFeeBps` - If platform fee exceeds maximum
     /// * `BoringErrorCode::InvalidPerformanceFeeBps` - If performance fee exceeds maximum
     pub fn deploy(ctx: Context<Deploy>, args: DeployArgs) -> Result<()> {
-        require!(
-            args.authority != Pubkey::default(),
+        require_keys_neq!(
+            args.authority,
+            Pubkey::default(),
             BoringErrorCode::InvalidAuthority
         );
 
         // Initialize vault.
-        let vault = &mut ctx.accounts.boring_vault_state;
+        let vault_id;
+        {
+            let vault = &mut ctx.accounts.boring_vault_state;
 
-        // Initialize vault state.
-        vault.config.vault_id = ctx.accounts.config.vault_count;
-        vault.config.authority = args.authority;
-        vault.config.share_mint = ctx.accounts.share_mint.key();
-        vault.config.paused = false;
+            // Initialize vault state.
+            vault_id = ctx.accounts.config.vault_count;
+            vault.config.vault_id = vault_id;
+            vault.config.authority = args.authority;
+            vault.config.share_mint = ctx.accounts.share_mint.key();
+            vault.config.paused = false;
 
-        // Initialize teller state.
-        vault.teller.base_asset = ctx.accounts.base_asset.key();
-        vault.teller.decimals = ctx.accounts.base_asset.decimals;
-        require!(
-            args.exchange_rate_provider != Pubkey::default(),
-            BoringErrorCode::InvalidExchangeRateProvider
-        );
-        vault.teller.exchange_rate_provider = args.exchange_rate_provider;
-        vault.teller.exchange_rate = args.exchange_rate;
-        vault.teller.exchange_rate_high_water_mark = args.exchange_rate;
-        vault.teller.fees_owed_in_base_asset = 0;
-        vault.teller.total_shares_last_update = ctx.accounts.share_mint.supply;
-        let clock = &Clock::get()?;
-        vault.teller.last_update_timestamp = clock.unix_timestamp as u64;
-        require!(
-            args.payout_address != Pubkey::default(),
-            BoringErrorCode::InvalidPayoutAddress
-        );
-        vault.teller.payout_address = args.payout_address;
-        require!(
-            args.allowed_exchange_rate_change_upper_bound
-                <= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
-                && args.allowed_exchange_rate_change_upper_bound >= BPS_SCALE,
-            BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound
-        );
-        vault.teller.allowed_exchange_rate_change_upper_bound =
-            args.allowed_exchange_rate_change_upper_bound;
-        require!(
-            args.allowed_exchange_rate_change_lower_bound
-                >= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
-                && args.allowed_exchange_rate_change_lower_bound <= BPS_SCALE,
-            BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound
-        );
-        vault.teller.allowed_exchange_rate_change_lower_bound =
-            args.allowed_exchange_rate_change_lower_bound;
-        vault.teller.minimum_update_delay_in_seconds = args.minimum_update_delay_in_seconds;
-        require!(
-            args.platform_fee_bps <= MAXIMUM_PLATFORM_FEE_BPS,
-            BoringErrorCode::InvalidPlatformFeeBps
-        );
-        vault.teller.platform_fee_bps = args.platform_fee_bps;
-        require!(
-            args.performance_fee_bps <= MAXIMUM_PERFORMANCE_FEE_BPS,
-            BoringErrorCode::InvalidPerformanceFeeBps
-        );
-        vault.teller.performance_fee_bps = args.performance_fee_bps;
+            // Initialize teller state.
+            vault.teller.base_asset = ctx.accounts.base_asset.key();
+            vault.teller.decimals = ctx.accounts.base_asset.decimals;
+            require_keys_neq!(
+                args.exchange_rate_provider,
+                Pubkey::default(),
+                BoringErrorCode::InvalidExchangeRateProvider
+            );
+            vault.teller.exchange_rate_provider = args.exchange_rate_provider;
+            vault.teller.exchange_rate = args.exchange_rate;
+            vault.teller.exchange_rate_high_water_mark = args.exchange_rate;
+            vault.teller.fees_owed_in_base_asset = 0;
+            vault.teller.total_shares_last_update = ctx.accounts.share_mint.supply;
+            let clock = &Clock::get()?;
+            vault.teller.last_update_timestamp = clock.unix_timestamp as u64;
+            require_keys_neq!(
+                args.payout_address,
+                Pubkey::default(),
+                BoringErrorCode::InvalidPayoutAddress
+            );
+            vault.teller.payout_address = args.payout_address;
+            require!(
+                args.allowed_exchange_rate_change_upper_bound
+                    <= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_UPPER_BOUND
+                    && args.allowed_exchange_rate_change_upper_bound >= BPS_SCALE,
+                BoringErrorCode::InvalidAllowedExchangeRateChangeUpperBound
+            );
+            vault.teller.allowed_exchange_rate_change_upper_bound =
+                args.allowed_exchange_rate_change_upper_bound;
+            require!(
+                args.allowed_exchange_rate_change_lower_bound
+                    >= MAXIMUM_ALLOWED_EXCHANGE_RATE_CHANGE_LOWER_BOUND
+                    && args.allowed_exchange_rate_change_lower_bound <= BPS_SCALE,
+                BoringErrorCode::InvalidAllowedExchangeRateChangeLowerBound
+            );
+            vault.teller.allowed_exchange_rate_change_lower_bound =
+                args.allowed_exchange_rate_change_lower_bound;
+            vault.teller.minimum_update_delay_in_seconds = args.minimum_update_delay_in_seconds;
+            require!(
+                args.platform_fee_bps <= MAXIMUM_PLATFORM_FEE_BPS,
+                BoringErrorCode::InvalidPlatformFeeBps
+            );
+            vault.teller.platform_fee_bps = args.platform_fee_bps;
+            require!(
+                args.performance_fee_bps <= MAXIMUM_PERFORMANCE_FEE_BPS,
+                BoringErrorCode::InvalidPerformanceFeeBps
+            );
+            vault.teller.performance_fee_bps = args.performance_fee_bps;
 
-        // Set withdraw_authority, if default, then withdraws are permissionless
-        vault.teller.withdraw_authority = args.withdraw_authority;
+            // Set withdraw_authority, if default, then withdraws are permissionless
+            vault.teller.withdraw_authority = args.withdraw_authority;
 
-        // Initialize manager state.
-        require_keys_neq!(
-            args.strategist,
-            Pubkey::default(),
-            BoringErrorCode::InvalidStrategist
-        );
-        vault.manager.strategist = args.strategist;
+            // Initialize manager state.
+            require_keys_neq!(
+                args.strategist,
+                Pubkey::default(),
+                BoringErrorCode::InvalidStrategist
+            );
+            vault.manager.strategist = args.strategist;
+
+            // Initialize to defaults.
+            vault.config.pending_authority = Pubkey::default();
+            vault.config.deposit_sub_account = 0;
+            vault.config.withdraw_sub_account = 0;
+        }
+
+        // Setup share metadata
+        let token_metadata = TokenMetadata {
+            name: args.name.clone(),
+            symbol: args.symbol.clone(),
+            uri: "".to_string(),
+            ..Default::default()
+        };
+
+        // Add 4 extra bytes for size of MetadataExtension (2 bytes for type, 2 bytes for length)
+        let data_len = 4 + token_metadata.get_packed_len()?;
+
+        // Calculate lamports required for the additional metadata
+        let lamports =
+            data_len as u64 * DEFAULT_LAMPORTS_PER_BYTE_YEAR * DEFAULT_EXEMPTION_THRESHOLD as u64;
+
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.signer.to_account_info(),
+                    to: ctx.accounts.share_mint.to_account_info(),
+                },
+            ),
+            lamports,
+        )?;
+
+        let seeds = &[
+            BASE_SEED_BORING_VAULT_STATE,
+            &vault_id.to_le_bytes()[..],
+            &[ctx.bumps.boring_vault_state],
+        ];
+        let signer_seeds = &[&seeds[..]];
+
+        token_metadata_initialize(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                TokenMetadataInitialize {
+                    token_program_id: ctx.accounts.token_program.to_account_info(),
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    metadata: ctx.accounts.share_mint.to_account_info(),
+                    mint_authority: ctx.accounts.boring_vault_state.to_account_info(),
+                    update_authority: ctx.accounts.boring_vault_state.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            args.name.clone(),
+            args.symbol.clone(),
+            "".to_string(),
+        )?;
 
         // Update program config.
         ctx.accounts.config.vault_count += 1;
 
         msg!(
             "Boring Vault {} deployed successfully with share token {} (name: {}, symbol: {})",
-            ctx.accounts.config.vault_count,
+            vault_id,
             ctx.accounts.share_mint.key(),
             args.name,
             args.symbol
@@ -278,21 +356,25 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
-    /// Updates the CPI digest for managing vault assets
+    /// Initializes the CPI digest for managing vault assets
     ///
     /// Note: This function does not check that the provided digest
     /// actually corresponds to the given operators and expected size
     /// but in the case that it doesn't this digest is just unusable.
     /// # Arguments
     /// * `ctx` - The context of accounts
-    /// * `args` - The CPI digest update arguments
-    pub fn update_cpi_digest(
-        ctx: Context<UpdateCpiDigest>,
-        args: UpdateCpiDigestArgs,
+    /// * `args` - The CPI digest initialize arguments
+    pub fn initialize_cpi_digest(
+        ctx: Context<InitializeCpiDigest>,
+        args: CpiDigestArgs,
     ) -> Result<()> {
         let cpi_digest = &mut ctx.accounts.cpi_digest;
         cpi_digest.operators = args.operators;
-        cpi_digest.expected_size = args.expected_size;
+        msg!(
+            "Vault {} - Initialized Cpi Digest: {}",
+            args.vault_id,
+            hex::encode(args.cpi_digest)
+        );
         Ok(())
     }
 
@@ -303,8 +385,14 @@ pub mod boring_vault_svm {
     /// * `_args` - Used to derive account
     pub fn close_cpi_digest(
         _ctx: Context<CloseCpiDigest>,
-        _args: UpdateCpiDigestArgs,
+        vault_id: u64,
+        digest: [u8; 32],
     ) -> Result<()> {
+        msg!(
+            "Vault {} - Closed Cpi Digest: {}",
+            vault_id,
+            hex::encode(digest)
+        );
         Ok(())
     }
 
@@ -322,8 +410,9 @@ pub mod boring_vault_svm {
         vault_id: u64,
         new_provider: Pubkey,
     ) -> Result<()> {
-        require!(
-            new_provider != Pubkey::default(),
+        require_keys_neq!(
+            new_provider,
+            Pubkey::default(),
             BoringErrorCode::InvalidExchangeRateProvider
         );
         ctx.accounts
@@ -621,6 +710,10 @@ pub mod boring_vault_svm {
 
     /// Updates the exchange rate for the vault
     ///
+    /// This logic does not explcitily account for pending fees lowering share price.
+    /// It is expected the caller will either account for this while updating share price,
+    /// or that fees will be regularly collected to make this affect minimal.
+    ///
     /// # Arguments
     /// * `ctx` - The context of accounts
     /// * `vault_id` - The vault ID
@@ -671,10 +764,16 @@ pub mod boring_vault_svm {
                     .minimum_update_delay_in_seconds as u64;
 
         should_pause = should_pause
-            || new_exchange_rate_d > current_exchange_rate_d.checked_mul(upper_bound).unwrap();
+            || new_exchange_rate_d
+                > current_exchange_rate_d
+                    .checked_mul(upper_bound)
+                    .ok_or(error!(BoringErrorCode::MathError))?;
 
         should_pause = should_pause
-            || new_exchange_rate_d < current_exchange_rate_d.checked_mul(lower_bound).unwrap();
+            || new_exchange_rate_d
+                < current_exchange_rate_d
+                    .checked_mul(lower_bound)
+                    .ok_or(error!(BoringErrorCode::MathError))?;
 
         if should_pause {
             ctx.accounts.boring_vault_state.config.paused = true;
@@ -704,20 +803,21 @@ pub mod boring_vault_svm {
                 } else if new_exchange_rate > current_exchange_rate {
                     current_exchange_rate_d
                         .checked_mul(share_supply_to_use_d)
-                        .unwrap()
+                        .ok_or(error!(BoringErrorCode::MathError))?
                 } else {
                     new_exchange_rate_d
                         .checked_mul(share_supply_to_use_d)
-                        .unwrap()
+                        .ok_or(error!(BoringErrorCode::MathError))?
                 };
-                let platform_fee_in_base_asset =
-                    minimum_assets.checked_mul(platform_fee_d).unwrap();
-                let time_passed_in_years = Decimal::from(time_passed)
-                    .checked_div(Decimal::from(365 * 86400))
-                    .unwrap();
+                let platform_fee_in_base_asset = minimum_assets
+                    .checked_mul(platform_fee_d)
+                    .ok_or(error!(BoringErrorCode::MathError))?;
+                let time_passed = Decimal::from(time_passed);
                 let platform_fee_in_base_asset = platform_fee_in_base_asset
-                    .checked_mul(time_passed_in_years)
-                    .unwrap();
+                    .checked_mul(time_passed)
+                    .ok_or(error!(BoringErrorCode::MathError))?
+                    .checked_div(Decimal::from(365 * 86400))
+                    .ok_or(error!(BoringErrorCode::MathError))?;
                 platform_fees_owed_in_base_asset =
                     teller::from_decimal(platform_fee_in_base_asset, vault_decimals)?;
             }
@@ -741,10 +841,15 @@ pub mod boring_vault_svm {
                         ctx.accounts.boring_vault_state.teller.performance_fee_bps,
                         BPS_DECIMALS,
                     )?;
-                    let delta_rate = new_exchange_rate_d.checked_sub(high_water_mark_d).unwrap();
-                    let yield_earned = delta_rate.checked_mul(share_supply_to_use_d).unwrap();
-                    let performance_fee_in_base_asset =
-                        yield_earned.checked_mul(performance_fee_d).unwrap();
+                    let delta_rate = new_exchange_rate_d
+                        .checked_sub(high_water_mark_d)
+                        .ok_or(error!(BoringErrorCode::MathError))?;
+                    let yield_earned = delta_rate
+                        .checked_mul(share_supply_to_use_d)
+                        .ok_or(error!(BoringErrorCode::MathError))?;
+                    let performance_fee_in_base_asset = yield_earned
+                        .checked_mul(performance_fee_d)
+                        .ok_or(error!(BoringErrorCode::MathError))?;
                     performance_fees_owed_in_base_asset =
                         teller::from_decimal(performance_fee_in_base_asset, vault_decimals)?;
                 }
@@ -802,10 +907,9 @@ pub mod boring_vault_svm {
 
         // Hash the CPI call down to a digest and confirm it matches the digest in the args.
         let digest = cpi_digest.operators.apply_operators(
-            &args.ix_program_id,
+            ctx.accounts.ix_program_id.key,
             &ix_accounts,
             &args.ix_data,
-            cpi_digest.expected_size,
         )?;
 
         // Derive the expected PDA for this digest
@@ -815,8 +919,9 @@ pub mod boring_vault_svm {
             digest.as_ref(),
         ];
         let (expected_pda, _) = Pubkey::find_program_address(seeds, &crate::ID);
-        require!(
-            expected_pda == cpi_digest.key(),
+        require_keys_eq!(
+            expected_pda,
+            cpi_digest.key(),
             BoringErrorCode::InvalidCpiDigest
         );
 
@@ -844,7 +949,7 @@ pub mod boring_vault_svm {
 
         // Create the instruction
         let ix = anchor_lang::solana_program::instruction::Instruction {
-            program_id: args.ix_program_id,
+            program_id: *ctx.accounts.ix_program_id.key,
             accounts: accounts,
             data: args.ix_data,
         };
@@ -897,7 +1002,8 @@ pub mod boring_vault_svm {
             args.deposit_amount,
         )?;
 
-        let is_base = NATIVE.key() == ctx.accounts.boring_vault_state.teller.base_asset.key();
+        // The base asset must be a Mint account to read decimals on deployment, so NATIVE is never the base asset.
+        let is_base = false;
 
         let shares_out = teller::calculate_shares_and_mint(
             is_base,
@@ -1094,10 +1200,9 @@ pub mod boring_vault_svm {
     ) -> Result<[u8; 32]> {
         // Hash the CPI call down to a digest
         let digest = args.operators.apply_operators(
-            &args.ix_program_id,
+            ctx.accounts.ix_program_id.key,
             ctx.remaining_accounts,
             &args.ix_data,
-            args.expected_size,
         )?;
 
         Ok(digest)
@@ -1138,6 +1243,8 @@ pub mod boring_vault_svm {
     ///
     /// # Returns
     /// * `u64` - The exchange rate in quote asset
+    /// # Note
+    /// To get the rate in SOL, pass in wSOL (Wrapped SOL) as the quote_mint
     pub fn get_rate_in_quote(ctx: Context<GetRateInQuote>, _vault_id: u64) -> Result<u64> {
         teller::get_rate_in_quote(
             ctx.accounts.boring_vault_state.to_owned(),
@@ -1156,6 +1263,9 @@ pub mod boring_vault_svm {
     /// # Returns
     /// * `u64` - The exchange rate in quote asset
     ///
+    /// # Note
+    /// To get the rate in SOL, pass in wSOL (Wrapped SOL) as the quote_mint
+    ///
     /// # Errors
     /// * `BoringErrorCode::VaultPaused` - If vault is paused
     pub fn get_rate_in_quote_safe(ctx: Context<GetRateInQuoteSafe>, _vault_id: u64) -> Result<u64> {
@@ -1172,6 +1282,9 @@ pub mod boring_vault_svm {
 pub struct Initialize<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+
+    #[account(address = crate::ID)]
+    pub program: Signer<'info>,
 
     #[account(
         init,
@@ -1194,7 +1307,7 @@ pub struct Deploy<'info> {
         mut,
         seeds = [BASE_SEED_CONFIG],
         bump,
-        constraint = config.authority == signer.key() @ BoringErrorCode::NotAuthorized,
+        constraint = signer.key() == config.authority.key() @ BoringErrorCode::NotAuthorized,
     )]
     pub config: Account<'info, ProgramConfig>,
 
@@ -1211,18 +1324,20 @@ pub struct Deploy<'info> {
     #[account(
         init,
         payer = signer,
+        mint::token_program = token_program,
         mint::decimals = base_asset.decimals,
         mint::authority = boring_vault_state.key(),
         seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
         bump,
+        extensions::metadata_pointer::authority = boring_vault_state,
+        extensions::metadata_pointer::metadata_address = share_mint,
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    /// CHECK: Checked in the instruction
     pub base_asset: InterfaceAccount<'info, Mint>,
 
     pub system_program: Program<'info, System>,
-    pub token_program: Interface<'info, TokenInterface>,
+    pub token_program: Program<'info, Token2022>,
 }
 
 #[derive(Accounts)]
@@ -1235,7 +1350,7 @@ pub struct Pause<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1250,7 +1365,7 @@ pub struct Unpause<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1265,7 +1380,7 @@ pub struct TransferAuthority<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1280,7 +1395,7 @@ pub struct AcceptAuthority<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.pending_authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.pending_authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1295,12 +1410,14 @@ pub struct UpdateAssetData<'info> {
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.authority == signer.key() @ BoringErrorCode::NotAuthorized
+        constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
     pub system_program: Program<'info, System>,
 
-    /// CHECK: can be zero account, or a Token2022 mint
+    /// CHECK: Can be zero account or Token2022 mint. No explicit validation needed as incorrect account
+    /// would only prevent deposits with that asset, which is not a security risk since the asset mint
+    /// account would not exist.
     pub asset: AccountInfo<'info>,
 
     #[account(
@@ -1468,14 +1585,13 @@ pub struct Deposit<'info> {
 #[derive(Accounts)]
 #[instruction(args: WithdrawArgs)]
 pub struct Withdraw<'info> {
-    #[account(mut)]
     pub signer: Signer<'info>,
 
     // State
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.teller.withdraw_authority == Pubkey::default() || signer.key() == boring_vault_state.teller.withdraw_authority @ BoringErrorCode::NotAuthorized,
+        constraint = boring_vault_state.teller.withdraw_authority == Pubkey::default() || signer.key() == boring_vault_state.teller.withdraw_authority.key() @ BoringErrorCode::NotAuthorized,
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 
@@ -1516,8 +1632,6 @@ pub struct Withdraw<'info> {
     // Programs
     pub token_program: Program<'info, Token>,
     pub token_program_2022: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
 
     // Share Token
     /// The vault's share mint
@@ -1547,8 +1661,8 @@ pub struct Withdraw<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args: UpdateCpiDigestArgs)]
-pub struct UpdateCpiDigest<'info> {
+#[instruction(args:CpiDigestArgs)]
+pub struct InitializeCpiDigest<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -1556,7 +1670,6 @@ pub struct UpdateCpiDigest<'info> {
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
         constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
@@ -1576,13 +1689,13 @@ pub struct UpdateCpiDigest<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(args: UpdateCpiDigestArgs)]
+#[instruction(vault_id: u64, digest: [u8; 32])]
 pub struct CloseCpiDigest<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(
-        seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
         constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized
     )]
@@ -1592,8 +1705,8 @@ pub struct CloseCpiDigest<'info> {
         mut,
         seeds = [
             BASE_SEED_CPI_DIGEST,
-            &args.vault_id.to_le_bytes()[..],
-            args.cpi_digest.as_ref(),
+            &vault_id.to_le_bytes()[..],
+            digest.as_ref(),
         ],
         bump,
         close = signer,
@@ -1803,15 +1916,19 @@ pub struct Manage<'info> {
         bump,
     )]
     /// CHECK: Account used to hold assets.
-    pub boring_vault: AccountInfo<'info>,
+    pub boring_vault: SystemAccount<'info>,
 
     /// CHECK: Checked in instruction
     pub cpi_digest: Account<'info, CpiDigest>,
+
+    /// CHECK: Included in cpi digest.
+    pub ix_program_id: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
 pub struct ViewCpiDigest<'info> {
-    pub system_program: Program<'info, System>,
+    /// CHECK: Included in cpi digest.
+    pub ix_program_id: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]

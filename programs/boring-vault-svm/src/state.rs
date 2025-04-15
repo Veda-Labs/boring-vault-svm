@@ -2,12 +2,14 @@ use crate::utils::*;
 use anchor_lang::prelude::*;
 
 #[account]
+#[derive(Debug)]
 pub struct ProgramConfig {
     pub authority: Pubkey,
     pub vault_count: u64,
 }
 
 #[account]
+#[derive(Debug)]
 pub struct BoringVault {
     pub config: VaultState,
     pub teller: TellerState,
@@ -115,18 +117,16 @@ pub struct WithdrawArgs {
 // =============================== Manage ===============================
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct UpdateCpiDigestArgs {
+pub struct CpiDigestArgs {
     pub vault_id: u64,
     pub cpi_digest: [u8; 32],
     pub operators: Operators,
-    pub expected_size: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct ManageArgs {
     pub vault_id: u64,
     pub sub_account: u8,
-    pub ix_program_id: Pubkey,
     pub ix_data: Vec<u8>,
 }
 
@@ -134,15 +134,12 @@ pub struct ManageArgs {
 #[derive(Debug)]
 pub struct CpiDigest {
     pub operators: Operators,
-    pub expected_size: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct ViewCpiDigestArgs {
-    pub ix_program_id: Pubkey,
     pub ix_data: Vec<u8>,
     pub operators: Operators,
-    pub expected_size: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]

@@ -73,8 +73,9 @@ pub mod boring_onchain_queue {
         );
 
         // Verify the provided share mint matches the derived one
-        require!(
-            expected_share_mint == args.share_mint,
+        require_keys_eq!(
+            expected_share_mint,
+            args.share_mint,
             QueueErrorCode::InvalidShareMint
         );
 
@@ -148,7 +149,7 @@ pub mod boring_onchain_queue {
     /// * `InvalidDiscount` - If maximum_discount is less than minimum_discount
     /// * `MaximumDiscountExceeded` - If maximum_discount exceeds MAXIMUM_DISCOUNT (10%)
     pub fn update_withdraw_asset_data(
-        ctx: Context<UpdateWithdrawAsset>,
+        ctx: Context<UpdateWithdrawAssetData>,
         args: UpdateWithdrawAssetArgs,
     ) -> Result<()> {
         // Validate deadline and maturity constraints
@@ -167,7 +168,7 @@ pub mod boring_onchain_queue {
             QueueErrorCode::InvalidDiscount
         );
         require!(
-            args.maximum_discount <= MAXIMUM_DISCOUNT,
+            args.maximum_discount <= MAXIMUM_DISCOUNT_BPS,
             QueueErrorCode::MaximumDiscountExceeded
         );
 
@@ -280,12 +281,18 @@ pub mod boring_onchain_queue {
             ctx.accounts.boring_vault_state.teller.decimals,
         )?;
         let rate_d = to_decimal(rate.get(), ctx.accounts.withdraw_mint.decimals)?;
-        let asset_amount = share_amount.checked_mul(rate_d).unwrap();
+        let asset_amount = share_amount
+            .checked_mul(rate_d)
+            .ok_or(error!(QueueErrorCode::MathError))?;
 
         // Apply discount
         let discount = to_decimal(args.discount, BPS_DECIMALS)?;
-        let discount_multiplier = Decimal::from(1).checked_sub(discount).unwrap();
-        let asset_amount = asset_amount.checked_mul(discount_multiplier).unwrap();
+        let discount_multiplier = Decimal::from(1)
+            .checked_sub(discount)
+            .ok_or(error!(QueueErrorCode::MathError))?;
+        let asset_amount = asset_amount
+            .checked_mul(discount_multiplier)
+            .ok_or(error!(QueueErrorCode::MathError))?;
         // Scale up asset_amount by decimals.
         let asset_amount = from_decimal(asset_amount, ctx.accounts.withdraw_mint.decimals)?;
 
@@ -374,8 +381,9 @@ pub mod boring_onchain_queue {
             QueueErrorCode::RequestDeadlinePassed
         );
 
-        require!(
-            ctx.accounts.withdraw_mint.key() == withdraw_request.asset_out,
+        require_keys_eq!(
+            ctx.accounts.withdraw_mint.key(),
+            withdraw_request.asset_out,
             QueueErrorCode::InvalidWithdrawMint
         );
 
@@ -399,8 +407,6 @@ pub mod boring_onchain_queue {
             vault_ata: ctx.accounts.vault_ata.to_account_info(),
             token_program: ctx.accounts.token_program.to_account_info(),
             token_program_2022: ctx.accounts.token_program_2022.to_account_info(),
-            system_program: ctx.accounts.system_program.to_account_info(),
-            associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
             share_mint: ctx.accounts.share_mint.to_account_info(),
             user_shares: ctx.accounts.queue_shares.to_account_info(),
             price_feed: ctx.accounts.price_feed.to_account_info(),
@@ -475,6 +481,9 @@ pub mod boring_onchain_queue {
 pub struct Initialize<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+
+    #[account(address = crate::ID)]
+    pub program: Signer<'info>,
 
     #[account(
         init,
@@ -557,7 +566,7 @@ pub struct Unpause<'info> {
 
 #[derive(Accounts)]
 #[instruction(args: UpdateWithdrawAssetArgs)]
-pub struct UpdateWithdrawAsset<'info> {
+pub struct UpdateWithdrawAssetData<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
@@ -648,8 +657,7 @@ pub struct RequestWithdraw<'info> {
     pub queue: SystemAccount<'info>,
 
     /// The vault's share mint
-    /// CHECK: Validated in instruction explicitly, even though
-    /// it is implicitly validated by the cpi
+    /// CHECK: Validated in queue_state constraint.
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     /// The user's share token 2022 account

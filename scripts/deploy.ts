@@ -77,7 +77,7 @@ async function main() {
     //     shareMint: shareMint,
     //     baseAsset: JITOSOL,
     //     systemProgram: anchor.web3.SystemProgram.programId,
-    //     tokenProgram: TOKEN_2022_PROGRAM_ID,
+    //     tokenProgram2022: TOKEN_2022_PROGRAM_ID,
     //   })
     //   .rpc();
     // console.log("Vault deployment successful:", vaultDeployTx);

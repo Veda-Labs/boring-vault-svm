@@ -44,7 +44,7 @@ pub fn to_decimal<T: Into<Decimal>>(amount: T, decimals: u8) -> Result<Decimal> 
 pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Result<T> {
     decimal
         .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
-        .unwrap()
+        .ok_or(error!(QueueErrorCode::MathError))?
         .try_into()
         .map_err(|_| error!(QueueErrorCode::DecimalConversionFailed))
 }
@@ -61,7 +61,7 @@ pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Resu
 /// * `Result<()>` - Ok if validation passes
 ///
 /// # Errors
-/// * Returns `QueueErrorCode::InvalidTokenAccount` if validation fails
+/// * Returns `QueueErrorCode::InvalidAssociatedTokenAccount` if validation fails
 pub fn validate_associated_token_accounts(
     token: &Pubkey,
     token_program: &Pubkey,
@@ -71,9 +71,10 @@ pub fn validate_associated_token_accounts(
     let expected_user_ata =
         get_associated_token_address_with_program_id(user, token, token_program);
 
-    require!(
-        user_ata == &expected_user_ata,
-        QueueErrorCode::InvalidTokenAccount
+    require_keys_eq!(
+        *user_ata,
+        expected_user_ata,
+        QueueErrorCode::InvalidAssociatedTokenAccount
     );
 
     Ok(())
