@@ -44,4 +44,14 @@ pub enum BoringErrorCode {
     MaximumSharePremiumExceeded,
     #[msg("Invalid strategist")]
     InvalidStrategist,
+    #[msg("Invalid mint authority")]
+    InvalidMintAuthority,
+    #[msg("Invalid Associated Token Account")]
+    InvalidATA,
+    #[msg("Invalid new mint authority")]
+    InvalidNewMintAuthority,
+    #[msg("No pending mint authority")]
+    NoPendingMintAuthority,
+    #[msg("Invalid amount")]
+    InvalidAmount,
 }

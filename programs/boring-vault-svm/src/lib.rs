@@ -40,7 +40,7 @@ pub use state::*;
 
 // Internal module usage
 use utils::{operators, teller};
-declare_id!("5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE");
+declare_id!("AZewa4rTKhbvyWH6kbqTfJUipYEs3fwgK4qpfdA4qH8e");
 
 #[program]
 pub mod boring_vault_svm {
@@ -57,6 +57,8 @@ pub mod boring_vault_svm {
     /// # Returns
     /// * `Result<()>` - Result indicating success or failure
     pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
+        let config = &mut ctx.accounts.config;
+        config.authority = authority;
         require_keys_neq!(
             authority,
             Pubkey::default(),
@@ -109,8 +111,13 @@ pub mod boring_vault_svm {
             vault_id = ctx.accounts.config.vault_count;
             vault.config.vault_id = vault_id;
             vault.config.authority = args.authority;
-            vault.config.share_mint = ctx.accounts.share_mint.key();
+            vault.config.pending_authority = Pubkey::default();
             vault.config.paused = false;
+            vault.config.share_mint = ctx.accounts.share_mint.key();
+            vault.config.deposit_sub_account = 0;
+            vault.config.withdraw_sub_account = 0;
+            vault.config.current_mint_authority = vault.key(); // Initialize to vault state PDA
+            vault.config.pending_mint_authority = Pubkey::default();
 
             // Initialize teller state.
             vault.teller.base_asset = ctx.accounts.base_asset.key();
@@ -171,11 +178,6 @@ pub mod boring_vault_svm {
                 BoringErrorCode::InvalidStrategist
             );
             vault.manager.strategist = args.strategist;
-
-            // Initialize to defaults.
-            vault.config.pending_authority = Pubkey::default();
-            vault.config.deposit_sub_account = 0;
-            vault.config.withdraw_sub_account = 0;
         }
 
         // Setup share metadata
@@ -213,9 +215,9 @@ pub mod boring_vault_svm {
 
         token_metadata_initialize(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program_2022.to_account_info(),
                 TokenMetadataInitialize {
-                    token_program_id: ctx.accounts.token_program.to_account_info(),
+                    token_program_id: ctx.accounts.token_program_2022.to_account_info(),
                     mint: ctx.accounts.share_mint.to_account_info(),
                     metadata: ctx.accounts.share_mint.to_account_info(),
                     mint_authority: ctx.accounts.boring_vault_state.to_account_info(),
@@ -1276,6 +1278,106 @@ pub mod boring_vault_svm {
             ctx.accounts.price_feed.to_owned(),
         )
     }
+
+    pub fn set_mint_authority(
+        ctx: Context<SetMintAuthority>,
+        vault_id: u64,
+        new_mint_authority: Pubkey,
+    ) -> Result<()> {
+        require!(
+            new_mint_authority != Pubkey::default(),
+            BoringErrorCode::InvalidNewMintAuthority
+        );
+
+        let boring_vault_state = &mut ctx.accounts.boring_vault_state;
+        
+        // Verify authority
+        require!(
+            ctx.accounts.signer.key() == boring_vault_state.config.authority,
+            BoringErrorCode::NotAuthorized
+        );
+
+        // Check if there's already a pending mint authority
+        require!(
+            boring_vault_state.config.pending_mint_authority == Pubkey::default(),
+            BoringErrorCode::NoPendingMintAuthority
+        );
+
+        boring_vault_state.config.pending_mint_authority = new_mint_authority;
+
+        emit!(MintAuthorityProposed {
+            vault_id,
+            new_mint_authority,
+        });
+
+        Ok(())
+    }
+
+    pub fn accept_mint_authority(
+        ctx: Context<AcceptMintAuthority>,
+        vault_id: u64,
+    ) -> Result<()> {
+        let boring_vault_state = &mut ctx.accounts.boring_vault_state;
+        let new_mint_authority = boring_vault_state.config.pending_mint_authority;
+        
+        boring_vault_state.config.current_mint_authority = new_mint_authority;
+        boring_vault_state.config.pending_mint_authority = Pubkey::default();
+
+        emit!(MintAuthorityAccepted {
+            vault_id,
+            new_mint_authority,
+        });
+
+        Ok(())
+    }
+
+    pub fn mint_shares(
+        ctx: Context<MintShares>,
+        vault_id: u64,
+        amount: u64,
+    ) -> Result<()> {
+        require!(amount > 0, BoringErrorCode::InvalidAmount);
+
+        let share_mint = &ctx.accounts.share_mint;
+        let ata = &ctx.accounts.ata;
+
+        // Verify ATA
+        require!(
+            ata.mint == share_mint.key(),
+            BoringErrorCode::InvalidATA
+        );
+
+        // Mint shares using CPI
+        let cpi_accounts = token_interface::MintTo {
+            mint: share_mint.to_account_info(),
+            to: ata.to_account_info(),
+            authority: ctx.accounts.boring_vault_state.to_account_info(),
+        };
+
+        let cpi_program = ctx.accounts.token_program_2022.to_account_info();
+        let vault_id_bytes = vault_id.to_le_bytes();
+        let bump = [ctx.bumps.boring_vault_state];
+        let seeds = &[
+            BASE_SEED_BORING_VAULT_STATE,
+            &vault_id_bytes[..],
+            &bump[..],
+        ];
+        let signer_seeds = &[&seeds[..]];
+        let cpi_ctx = CpiContext::new_with_signer(
+            cpi_program,
+            cpi_accounts,
+            signer_seeds,
+        );
+        token_interface::mint_to(cpi_ctx, amount)?;
+
+        emit!(SharesMinted {
+            vault_id,
+            amount,
+            recipient: ata.owner,
+        });
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -1324,7 +1426,7 @@ pub struct Deploy<'info> {
     #[account(
         init,
         payer = signer,
-        mint::token_program = token_program,
+        mint::token_program = token_program_2022,
         mint::decimals = base_asset.decimals,
         mint::authority = boring_vault_state.key(),
         seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
@@ -1337,7 +1439,7 @@ pub struct Deploy<'info> {
     pub base_asset: InterfaceAccount<'info, Mint>,
 
     pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token2022>,
+    pub token_program_2022: Program<'info, Token2022>,
 }
 
 #[derive(Accounts)]
@@ -2011,4 +2113,79 @@ pub struct GetRateInQuoteSafe<'info> {
         )]
     /// CHECK: Checked in the constraint
     pub price_feed: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct SetMintAuthority<'info> {
+    #[account(mut)]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct AcceptMintAuthority<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.pending_mint_authority.key() @ BoringErrorCode::InvalidMintAuthority,
+        constraint = boring_vault_state.config.pending_mint_authority != Pubkey::default() @ BoringErrorCode::NoPendingMintAuthority
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: u64)]
+pub struct MintShares<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    #[account(
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        bump,
+        constraint = signer.key() == boring_vault_state.config.current_mint_authority.key() @ BoringErrorCode::InvalidMintAuthority
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        seeds = [BASE_SEED_SHARE_TOKEN, boring_vault_state.key().as_ref()],
+        bump,
+        constraint = share_mint.key() == boring_vault_state.config.share_mint @ BoringErrorCode::InvalidShareMint
+    )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(mut)]
+    pub ata: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+    pub token_program_2022: Program<'info, Token2022>,
+}
+
+#[event]
+pub struct MintAuthorityProposed {
+    pub vault_id: u64,
+    pub new_mint_authority: Pubkey,
+}
+
+#[event]
+pub struct MintAuthorityAccepted {
+    pub vault_id: u64,
+    pub new_mint_authority: Pubkey,
+}
+
+#[event]
+pub struct SharesMinted {
+    pub vault_id: u64,
+    pub amount: u64,
+    pub recipient: Pubkey,
 }

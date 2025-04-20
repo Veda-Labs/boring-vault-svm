@@ -6,3 +6,10 @@ node_modules
 test-ledger
 .yarn
 .env
+
+# Python virtual environment
+venv/
+env/
+.env/
+.venv/
+ENV/
