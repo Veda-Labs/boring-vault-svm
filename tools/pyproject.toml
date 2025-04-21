@@ -1,0 +1,23 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "boring-vault-tools"
+version = "0.1.0"
+description = "Tools for interacting with the Boring Vault program"
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.31.0",
+    "python-dotenv>=1.1.0",
+    "urllib3>=2.0.7",
+    "certifi>=2023.11.17",
+    "idna>=3.6",
+    "charset-normalizer>=3.4.1",
+    "solana>=0.36.6",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "src/python"
+module-name = "boring_vault_tools.boring_vault_tools" 

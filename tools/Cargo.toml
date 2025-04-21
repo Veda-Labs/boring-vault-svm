@@ -1,0 +1,28 @@
+[package]
+name = "boring-vault-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Tools for querying Boring Vault balances"
+authors = ["Boring Vault Team"]
+
+[lib]
+name = "boring_vault_tools"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+solana-client = "1.18.26"
+solana-sdk = "1.18.26"
+solana-account-decoder = "1.18.26"
+spl-token = "4.0"
+anyhow = "1.0"
+pyo3 = { version = "0.19", features = ["extension-module", "abi3-py37", "auto-initialize"] }
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.10"
+base64 = "0.21"
+borsh = "1.3"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
+
+[workspace]
