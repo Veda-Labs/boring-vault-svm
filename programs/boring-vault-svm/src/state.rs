@@ -27,6 +27,10 @@ pub struct VaultState {
     pub share_mint: Pubkey,
     pub deposit_sub_account: u8,
     pub withdraw_sub_account: u8,
+    /// Current mint authority for the share token
+    pub current_mint_authority: Pubkey,
+    /// Pending mint authority waiting to be accepted
+    pub pending_mint_authority: Pubkey,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
