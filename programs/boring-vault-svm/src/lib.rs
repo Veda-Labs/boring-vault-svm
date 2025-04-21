@@ -40,7 +40,7 @@ pub use state::*;
 
 // Internal module usage
 use utils::{operators, teller};
-declare_id!("AZewa4rTKhbvyWH6kbqTfJUipYEs3fwgK4qpfdA4qH8e");
+declare_id!("5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE");
 
 #[program]
 pub mod boring_vault_svm {
