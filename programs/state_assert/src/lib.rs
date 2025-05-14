@@ -18,7 +18,7 @@ pub mod state_assert {
         ctx: Context<PushStateAssert>,
         data_offset: u16,
         compare_to: u64,
-        assert_type: AssertType,
+        comparison_method: ComparisonMethod,
         direction: ChangeDirection,
     ) -> Result<()> {
         // Get account data as a byte slice
@@ -42,7 +42,7 @@ pub mod state_assert {
             data_offset,
             initial_value,
             compare_to,
-            assert_type,
+            comparison_method,
             direction,
         };
 
@@ -111,8 +111,8 @@ pub mod state_assert {
         };
 
         // Perform the assertion
-        match state_assert.assert_type {
-            AssertType::Log => {
+        match state_assert.comparison_method {
+            ComparisonMethod::Log => {
                 msg!(
                     "Log assert - Current: {}, Saved: {}, Diff: {}, Compare To: {}",
                     current_value,
@@ -121,31 +121,31 @@ pub mod state_assert {
                     state_assert.compare_to
                 );
             }
-            AssertType::GT => {
+            ComparisonMethod::GT => {
                 require!(
                     difference > state_assert.compare_to,
                     ErrorCode::AssertionFailed
                 );
             }
-            AssertType::LT => {
+            ComparisonMethod::LT => {
                 require!(
                     difference < state_assert.compare_to,
                     ErrorCode::AssertionFailed
                 );
             }
-            AssertType::GTE => {
+            ComparisonMethod::GTE => {
                 require!(
                     difference >= state_assert.compare_to,
                     ErrorCode::AssertionFailed
                 );
             }
-            AssertType::LTE => {
+            ComparisonMethod::LTE => {
                 require!(
                     difference <= state_assert.compare_to,
                     ErrorCode::AssertionFailed
                 );
             }
-            AssertType::EQ => {
+            ComparisonMethod::EQ => {
                 require!(
                     difference == state_assert.compare_to,
                     ErrorCode::AssertionFailed
@@ -153,7 +153,10 @@ pub mod state_assert {
             }
         }
 
-        msg!("Assertion passed - Type: {:?}", state_assert.assert_type);
+        msg!(
+            "Assertion passed - Type: {:?}",
+            state_assert.comparison_method
+        );
         Ok(())
     }
 }
@@ -190,6 +193,8 @@ impl StateAssertStack {
         Ok(())
     }
 
+    // Note this does not clear the old value, the space in the account does not change,
+    // and since we are tracking the len, we can safely ignore zeroing this struct.
     pub fn pop(&mut self) -> Result<StateAssert> {
         require!(self.len > 0, ErrorCode::EmptyStack);
         let sa = self.stack[self.len as usize].clone();
@@ -211,14 +216,14 @@ pub enum ChangeDirection {
 pub struct StateAssert {
     pub target_account: Pubkey, // the account we need to read data from
     pub data_offset: u16, // how many bytes in target_account data to index before extracting initial_value
-    pub initial_value: u64,
-    pub compare_to: u64,
-    pub assert_type: AssertType,
-    pub direction: ChangeDirection,
+    pub initial_value: u64, // where the initial value is stored on push operations
+    pub compare_to: u64,  // the value we are comparing the change in value to
+    pub comparison_method: ComparisonMethod, // how to compare the delta value and compare_to
+    pub direction: ChangeDirection, // the direction we expect delta value to change in
 }
 
 #[derive(Debug, AnchorSerialize, AnchorDeserialize, Clone)]
-pub enum AssertType {
+pub enum ComparisonMethod {
     Log,
     GT,
     LT,
