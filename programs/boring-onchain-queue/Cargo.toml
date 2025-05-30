@@ -17,7 +17,7 @@ no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
-anchor-spl = "0.31.0"
-rust_decimal = "1.36.0"
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
+rust_decimal = { workspace = true }
 boring-vault-svm = { path = "../boring-vault-svm", features = ["cpi"] }
