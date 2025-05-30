@@ -1,8 +1,11 @@
 [workspace]
-members = [
-    "programs/*"
-]
+members = ["programs/*"]
 resolver = "2"
+
+[workspace.dependencies]
+anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
+anchor-spl = "0.31.1"
+rust_decimal = "1.36.0"
 
 [profile.release]
 overflow-checks = true

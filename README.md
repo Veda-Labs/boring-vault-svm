@@ -22,7 +22,13 @@ Then edit `.env` and fill in your values.
 anchor build
 ```
 
-4. Rust tests:
+4. Sync program IDs (if you encounter program ID mismatch errors):
+
+```bash
+anchor keys sync
+```
+
+5. Rust tests:
 
 ```bash
 anchor test
