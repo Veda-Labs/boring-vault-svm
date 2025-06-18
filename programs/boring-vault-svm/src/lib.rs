@@ -40,7 +40,7 @@ pub use state::*;
 
 // Internal module usage
 use utils::{operators, teller};
-declare_id!("5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE");
+declare_id!("7EhvDhSEgWZXkwsrSNwF1xXJpAAFNoCsDJ2vGCjn1BcH");
 
 #[program]
 pub mod boring_vault_svm {
@@ -215,7 +215,7 @@ pub mod boring_vault_svm {
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 TokenMetadataInitialize {
-                    token_program_id: ctx.accounts.token_program.to_account_info(),
+                    program_id: ctx.accounts.token_program.to_account_info(),
                     mint: ctx.accounts.share_mint.to_account_info(),
                     metadata: ctx.accounts.share_mint.to_account_info(),
                     mint_authority: ctx.accounts.boring_vault_state.to_account_info(),

@@ -1,7 +1,7 @@
 #![allow(unexpected_cfgs)]
 use anchor_lang::prelude::*;
 
-declare_id!("HA9Yp7Janz8pQr7KwK18cU8em7137bWnMbahfjZBa8RX");
+declare_id!("5AQBro2Lk3SMYVcptngCfVKEiDK4AYwhCMWqxNywmjN");
 
 const MAX_STACK_SIZE: u8 = 16;
 
@@ -197,7 +197,7 @@ impl StateAssertStack {
     // and since we are tracking the len, we can safely ignore zeroing this struct.
     pub fn pop(&mut self) -> Result<StateAssert> {
         require!(self.len > 0, ErrorCode::EmptyStack);
-        let sa = self.stack[self.len as usize].clone();
+        let sa = self.stack[(self.len - 1) as usize].clone();
         self.len -= 1;
 
         Ok(sa)

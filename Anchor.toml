@@ -1,19 +1,20 @@
 [toolchain]
+anchor_version = "0.31.1"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.localnet]
-boring_onchain_queue = "4yfE2VJQmxmcnUhrb8vdz7H8w313EZ3eJh5DbANBgtmd"
-boring_vault_svm = "5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE"
-state_assert = "HA9Yp7Janz8pQr7KwK18cU8em7137bWnMbahfjZBa8RX"
+boring_onchain_queue = "76ysLELEDSLN74mSq5g24gtjFKkxSpgQFnPrq5iAnTfb"
+boring_vault_svm = "7EhvDhSEgWZXkwsrSNwF1xXJpAAFNoCsDJ2vGCjn1BcH"
+state_assert = "5AQBro2Lk3SMYVcptngCfVKEiDK4AYwhCMWqxNywmjN"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
