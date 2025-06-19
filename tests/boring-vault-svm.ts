@@ -3,6 +3,7 @@ import { BankrunProvider, startAnchor } from "anchor-bankrun";
 import { Program } from "@coral-xyz/anchor";
 import { BoringVaultSvm } from "../target/types/boring_vault_svm";
 import { BoringOnchainQueue } from "../target/types/boring_onchain_queue";
+import { StateAssert } from "../target/types/state_assert";
 import { expect } from "chai";
 import {
   TOKEN_2022_PROGRAM_ID,
@@ -12,7 +13,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { AddedAccount, BanksClient, ProgramTestContext } from "solana-bankrun";
-import { PublicKey, Connection, Keypair } from "@solana/web3.js";
+import { PublicKey, Connection, Keypair, SystemProgram } from "@solana/web3.js";
 import { CpiService, TestHelperService as ths } from "./services";
 import * as fs from "fs";
 
@@ -23,6 +24,7 @@ describe("boring-vault-svm", () => {
   let provider: BankrunProvider;
   let program: Program<BoringVaultSvm>;
   let queueProgram: Program<BoringOnchainQueue>;
+  let stateAssertProgram: Program<StateAssert>;
   let context: ProgramTestContext;
   let client: BanksClient;
   let connection: Connection;
@@ -56,6 +58,7 @@ describe("boring-vault-svm", () => {
   let queueShareAta: anchor.web3.PublicKey;
   let cpiDigestAccount: anchor.web3.PublicKey;
   let vault0SolendJitoSol: anchor.web3.PublicKey;
+  let userStack: anchor.web3.PublicKey;
 
   const PROJECT_DIRECTORY = "";
   const STAKE_POOL_PROGRAM_ID = new anchor.web3.PublicKey(
@@ -173,6 +176,14 @@ describe("boring-vault-svm", () => {
     new Uint8Array(boringQueueProgramKeypair)
   );
 
+  // Load the state_assert program's keypair
+  const stateAssertProgramKeypair = JSON.parse(
+    fs.readFileSync("target/deploy/state_assert-keypair.json", "utf-8")
+  );
+  const stateAssertProgramSigner = Keypair.fromSecretKey(
+    new Uint8Array(stateAssertProgramKeypair)
+  );
+
   before(async () => {
     connection = new Connection(
       process.env.ALCHEMY_API_KEY
@@ -257,6 +268,10 @@ describe("boring-vault-svm", () => {
           name: "solend",
           programId: SOLEND_PROGRAM_ID,
         },
+        {
+          name: "state_assert",
+          programId: stateAssertProgramSigner.publicKey,
+        },
       ],
       allAccounts
     );
@@ -268,6 +283,8 @@ describe("boring-vault-svm", () => {
     program = anchor.workspace.BoringVaultSvm as Program<BoringVaultSvm>;
     queueProgram = anchor.workspace
       .BoringOnchainQueue as Program<BoringOnchainQueue>;
+
+    stateAssertProgram = anchor.workspace.StateAssert as Program<StateAssert>;
     // Find PDAs
     let bump;
     [programConfigAccount, bump] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -422,6 +439,25 @@ describe("boring-vault-svm", () => {
       0,
       false
     );
+
+    // Find the PDA for the user's assertion stack
+    [userStack] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("stack"), user.publicKey.toBuffer()],
+      stateAssertProgram.programId
+    );
+
+    const setupStackIx = await stateAssertProgram.methods
+      .setupStack()
+      .accounts({
+        signer: user.publicKey,
+        userStack: userStack,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    await ths.createAndProcessTransaction(client, deployer, setupStackIx, [
+      user,
+    ]);
   });
 
   it("Is initialized", async () => {
@@ -886,6 +922,138 @@ describe("boring-vault-svm", () => {
     expect(
       (vaultJitoSolEndBalance - vaultJitoSolStartBalance).toString()
     ).to.equal(depositAmount.toString());
+  });
+
+  describe("State-Assert Integration", () => {
+    it("Asserts that a JitoSOL deposit increases the user's share balance", async () => {
+      const depositAmount = new anchor.BN(1_000_000_000);
+      const dataOffset = 64; // Offset of 'amount' in an SPL token account
+
+      // 1. Push an assertion: The user's share balance MUST increase.
+      await stateAssertProgram.methods
+        .pushStateAssert(
+          dataOffset,
+          new anchor.BN(0), // The change should be > 0
+          { gt: {} }, // Comparison: Greater Than
+          { increase: {} } // Direction: Must increase
+        )
+        .accounts({
+          signer: user.publicKey,
+          targetAccount: userShareAta, // The account we are monitoring
+          userStack: userStack,
+        })
+        .signers([user])
+        .rpc();
+
+      // 2. Perform the vault deposit operation
+      const depositIx = await program.methods
+        .deposit({
+          vaultId: new anchor.BN(0),
+          depositAmount: depositAmount,
+          minMintAmount: new anchor.BN(0),
+        })
+        .accounts({
+          signer: user.publicKey,
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+          depositMint: JITOSOL,
+          assetData: jitoSolAssetDataPda,
+          userAta: userJitoSolAta,
+          vaultAta: vaultJitoSolAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          shareMint: boringVaultShareMint,
+          userShares: userShareAta,
+          priceFeed: anchor.web3.PublicKey.default,
+        })
+        .instruction();
+
+      await ths.createAndProcessTransaction(client, deployer, depositIx, [
+        user,
+      ]);
+
+      // 3. Pop the assertion to verify the state changed as expected.
+      // This will succeed because the deposit minted new shares.
+      await stateAssertProgram.methods
+        .popStateAssert()
+        .accounts({
+          signer: user.publicKey,
+          targetAccount: userShareAta,
+          userStack: userStack,
+        })
+        .signers([user])
+        .rpc();
+    });
+
+    it("Fails assertion if a zero-amount deposit doesn't increase share balance", async () => {
+      const depositAmount = new anchor.BN(0); // A zero-amount deposit
+      const dataOffset = 64;
+
+      // 1. Push the same assertion: The user's share balance MUST increase.
+      await stateAssertProgram.methods
+        .pushStateAssert(
+          dataOffset,
+          new anchor.BN(0),
+          { gt: {} },
+          { increase: {} }
+        )
+        .accounts({
+          signer: user.publicKey,
+          targetAccount: userShareAta,
+          userStack: userStack,
+        })
+        .signers([user])
+        .rpc();
+
+      // 2. Perform the zero-amount deposit. This transaction will succeed but mint 0 shares.
+      const depositIx = await program.methods
+        .deposit({
+          vaultId: new anchor.BN(0),
+          depositAmount: depositAmount,
+          minMintAmount: new anchor.BN(0),
+        })
+        .accounts({
+          signer: user.publicKey,
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+          depositMint: JITOSOL,
+          assetData: jitoSolAssetDataPda,
+          userAta: userJitoSolAta,
+          vaultAta: vaultJitoSolAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          shareMint: boringVaultShareMint,
+          userShares: userShareAta,
+          priceFeed: anchor.web3.PublicKey.default,
+        })
+        .instruction();
+
+      await ths.createAndProcessTransaction(client, deployer, depositIx, [
+        user,
+      ]);
+
+      // 3. Pop the assertion. This MUST fail.
+      try {
+        await stateAssertProgram.methods
+          .popStateAssert()
+          .accounts({
+            signer: user.publicKey,
+            targetAccount: userShareAta,
+            userStack: userStack,
+          })
+          .signers([user])
+          .rpc();
+        // If the above line does not throw an error, the test should fail.
+        expect.fail("Should have failed with DirectionConstraintViolated");
+      } catch (error) {
+        // The test passes if the expected error is caught.
+        expect(error.toString()).to.include("AssertionFailed");
+      }
+    });
   });
 
   it("Can withdraw JitoSOL from the vault", async () => {
