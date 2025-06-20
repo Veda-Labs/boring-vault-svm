@@ -1772,7 +1772,6 @@ describe("boring-vault-svm", () => {
     );
     ths.expectTxToSucceed(txResult);
 
-    // NEW: verify metadata fields
     const withdrawAccount = await queueProgram.account.withdrawRequest.fetch(
       userWithdrawRequest
     );
