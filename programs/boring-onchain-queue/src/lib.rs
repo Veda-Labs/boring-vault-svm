@@ -232,6 +232,8 @@ pub mod boring_onchain_queue {
         withdraw_request.vault_id = args.vault_id;
         withdraw_request.asset_out = ctx.accounts.withdraw_mint.key();
         withdraw_request.share_amount = args.share_amount;
+        withdraw_request.user = ctx.accounts.signer.key();
+        withdraw_request.nonce = ctx.accounts.user_withdraw_state.last_nonce;
 
         // Make sure that user provided discount is within the range
         require!(

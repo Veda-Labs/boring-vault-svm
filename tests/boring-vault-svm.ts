@@ -1771,6 +1771,12 @@ describe("boring-vault-svm", () => {
       [user]
     );
     ths.expectTxToSucceed(txResult);
+
+    const withdrawAccount = await queueProgram.account.withdrawRequest.fetch(
+      userWithdrawRequest
+    );
+    expect(withdrawAccount.user.equals(user.publicKey)).to.be.true;
+    expect(withdrawAccount.nonce.toNumber()).to.equal(0);
   });
 
   it("Allows requests to be solved", async () => {
