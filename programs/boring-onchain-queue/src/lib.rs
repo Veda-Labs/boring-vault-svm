@@ -29,7 +29,7 @@ use error::*;
 mod state;
 use state::*;
 
-declare_id!("4yfE2VJQmxmcnUhrb8vdz7H8w313EZ3eJh5DbANBgtmd");
+declare_id!("BmJ8USC2Dgt7qdRvnejE6TsukfHGjCxy13awAjxA8ioj");
 
 #[program]
 pub mod boring_onchain_queue {
@@ -232,6 +232,8 @@ pub mod boring_onchain_queue {
         withdraw_request.vault_id = args.vault_id;
         withdraw_request.asset_out = ctx.accounts.withdraw_mint.key();
         withdraw_request.share_amount = args.share_amount;
+        withdraw_request.user = ctx.accounts.signer.key();
+        withdraw_request.nonce = ctx.accounts.user_withdraw_state.last_nonce;
 
         // Make sure that user provided discount is within the range
         require!(

@@ -35,6 +35,8 @@ pub struct WithdrawRequest {
     pub creation_time: u64,
     pub seconds_to_maturity: u32,
     pub seconds_to_deadline: u32,
+    pub user: Pubkey,
+    pub nonce: u64,
 }
 
 #[account]
