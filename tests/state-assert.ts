@@ -720,18 +720,16 @@ describe("state-assert", () => {
         expect(error.toString()).to.include("AssertionFailed");
       }
     });
-
-    it("Should pass GTE and LTE comparisons when value does not change", async () => {
+    it("Should pass GTE comparison when value does not change", async () => {
       const dataOffset = 8;
       const initialValue = new anchor.BN(5000);
-      const compareTo = new anchor.BN(0); // Assert the change is >= 0 or <= 0
+      const compareTo = new anchor.BN(0); // Assert the change is >= 0
       await writeU64ToAccount(
         testDataAccount.publicKey,
         dataOffset,
         initialValue
       );
-
-      // Test GTE
+    
       await program.methods
         .pushStateAssert(dataOffset, compareTo, { gte: {} }, { any: {} })
         .accounts({
@@ -741,7 +739,7 @@ describe("state-assert", () => {
         })
         .signers([user])
         .rpc();
-
+    
       await program.methods
         .popStateAssert()
         .accounts({
@@ -751,8 +749,18 @@ describe("state-assert", () => {
         })
         .signers([user])
         .rpc(); // Should succeed as 0 >= 0
-
-      // Test LTE
+    });
+    
+    it("Should pass LTE comparison when value does not change", async () => {
+      const dataOffset = 8;
+      const initialValue = new anchor.BN(5000);
+      const compareTo = new anchor.BN(0); // Assert the change is <= 0
+      await writeU64ToAccount(
+        testDataAccount.publicKey,
+        dataOffset,
+        initialValue
+      );
+    
       await program.methods
         .pushStateAssert(dataOffset, compareTo, { lte: {} }, { any: {} })
         .accounts({
@@ -762,7 +770,7 @@ describe("state-assert", () => {
         })
         .signers([user])
         .rpc();
-
+    
       await program.methods
         .popStateAssert()
         .accounts({
