@@ -7,49 +7,57 @@ import "dotenv/config";
 const anchor = require("@coral-xyz/anchor");
 
 // Create connection with polling-only (no websockets)
-const connection = new Connection(
-  process.env.ANCHOR_PROVIDER_URL!,
-  {
-    commitment: 'confirmed',
-    disableRetryOnRateLimit: false,
-    confirmTransactionInitialTimeout: 60000, // 60 seconds
-  }
-);
+const connection = new Connection(process.env.ANCHOR_PROVIDER_URL!, {
+  commitment: "confirmed",
+  disableRetryOnRateLimit: false,
+  confirmTransactionInitialTimeout: 60000, // 60 seconds
+});
 
 // Create provider with the polling connection
 const provider = new anchor.AnchorProvider(
   connection,
   anchor.AnchorProvider.env().wallet,
   {
-    commitment: 'confirmed',
+    commitment: "confirmed",
     skipPreflight: false,
   }
 );
 anchor.setProvider(provider);
 
 // Helper function to poll for transaction confirmation
-async function waitForConfirmation(signature: string, connection: Connection): Promise<void> {
+async function waitForConfirmation(
+  signature: string,
+  connection: Connection
+): Promise<void> {
   console.log(`Polling for confirmation of transaction: ${signature}`);
-  
-  for (let i = 0; i < 60; i++) { // Poll for up to 60 seconds
+
+  for (let i = 0; i < 60; i++) {
+    // Poll for up to 60 seconds
     try {
       const result = await connection.getSignatureStatus(signature);
-      if (result?.value?.confirmationStatus === 'confirmed' || result?.value?.confirmationStatus === 'finalized') {
+      if (
+        result?.value?.confirmationStatus === "confirmed" ||
+        result?.value?.confirmationStatus === "finalized"
+      ) {
         console.log(`Transaction confirmed after ${i + 1} attempts`);
         return;
       }
       if (result?.value?.err) {
-        throw new Error(`Transaction failed: ${JSON.stringify(result.value.err)}`);
+        throw new Error(
+          `Transaction failed: ${JSON.stringify(result.value.err)}`
+        );
       }
     } catch (error) {
       console.log(`Polling attempt ${i + 1} failed, retrying...`);
     }
-    
+
     // Wait 1 second before next poll
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  
-  throw new Error(`Transaction confirmation timeout after 60 seconds: ${signature}`);
+
+  throw new Error(
+    `Transaction confirmation timeout after 60 seconds: ${signature}`
+  );
 }
 
 const JITOSOL = new anchor.web3.PublicKey(
@@ -81,7 +89,9 @@ async function main() {
 
     // Get current vault count to determine next vault ID
     console.log("Fetching current vault count...");
-    const configAccount = await vaultProgram.account.programConfig.fetch(vaultConfig);
+    const configAccount = await vaultProgram.account.programConfig.fetch(
+      vaultConfig
+    );
     const nextVaultId = configAccount.vaultCount;
     console.log(`Next vault ID will be: ${nextVaultId.toString()}`);
 
@@ -126,23 +136,26 @@ async function main() {
     // Create transaction and add instruction
     const vaultTransaction = new anchor.web3.Transaction();
     vaultTransaction.add(vaultInstruction);
-    
+
     // Get recent blockhash
     const { blockhash } = await connection.getLatestBlockhash();
     vaultTransaction.recentBlockhash = blockhash;
     vaultTransaction.feePayer = authority.publicKey;
-    
+
     // Sign and send transaction
     vaultTransaction.sign(provider.wallet.payer);
-    const vaultTxSignature = await connection.sendRawTransaction(vaultTransaction.serialize(), {
-      skipPreflight: false,
-    });
+    const vaultTxSignature = await connection.sendRawTransaction(
+      vaultTransaction.serialize(),
+      {
+        skipPreflight: false,
+      }
+    );
 
     console.log("✅ Vault deployment transaction sent!");
     console.log(`📊 Vault ID: ${nextVaultId.toString()}`);
     console.log(`🏦 Base Asset: ${JITOSOL.toString()} (jitoSOL)`);
     console.log(`🔗 Transaction: ${vaultTxSignature}`);
-    
+
     // Poll for confirmation without websockets
     console.log("Polling for vault deployment confirmation...");
     await waitForConfirmation(vaultTxSignature, connection);
@@ -175,26 +188,29 @@ async function main() {
     // Create transaction and add instruction
     const queueTransaction = new anchor.web3.Transaction();
     queueTransaction.add(queueInstruction);
-    
+
     // Get recent blockhash
     const { blockhash: queueBlockhash } = await connection.getLatestBlockhash();
     queueTransaction.recentBlockhash = queueBlockhash;
     queueTransaction.feePayer = authority.publicKey;
-    
+
     // Sign and send transaction
     queueTransaction.sign(provider.wallet.payer);
-    const queueTxSignature = await connection.sendRawTransaction(queueTransaction.serialize(), {
-      skipPreflight: false,
-    });
-    
+    const queueTxSignature = await connection.sendRawTransaction(
+      queueTransaction.serialize(),
+      {
+        skipPreflight: false,
+      }
+    );
+
     console.log("✅ Queue deployment transaction sent!");
     console.log(`🔗 Queue Transaction: ${queueTxSignature}`);
-    
+
     // Poll for confirmation without websockets
     console.log("Polling for queue deployment confirmation...");
     await waitForConfirmation(queueTxSignature, connection);
     console.log("Queue deployment confirmed!");
-    
+
     console.log("\n🎉 All deployments completed successfully!");
   } catch (error) {
     console.error("Deployment failed:", error);
