@@ -695,6 +695,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -738,6 +739,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -786,6 +788,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: true,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -3105,6 +3108,7 @@ describe("boring-vault-svm", () => {
         inversePriceFeed: false,
         maxStaleness: new anchor.BN(1),
         minSamples: 1,
+        oracleSource: { switchboardV2: {} },
       },
     };
 
@@ -3320,6 +3324,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -3380,6 +3385,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -3629,6 +3635,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -3692,6 +3699,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -3950,6 +3958,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({
@@ -4013,6 +4022,7 @@ describe("boring-vault-svm", () => {
           inversePriceFeed: false,
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
+          oracleSource: { switchboardV2: {} },
         },
       })
       .accounts({

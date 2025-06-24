@@ -11,6 +11,8 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
+use crate::OracleSource; // enum declared in state.rs
+use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
 
 // Internal modules
 use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
@@ -196,7 +198,12 @@ pub fn calculate_shares_and_mint<'a>(
         )?
     } else {
         // Query price feed.
-        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
+        let price = read_oracle(
+            asset_data.oracle_source.clone(),
+            price_feed,
+            asset_data.max_staleness,
+            asset_data.min_samples,
+        )?;
 
         calculate_shares_to_mint_using_deposit_asset(
             args.deposit_amount,
@@ -258,7 +265,12 @@ pub fn calculate_assets_out<'a>(
         assets_out
     } else {
         // Query price feed.
-        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
+        let price = read_oracle(
+            asset_data.oracle_source.clone(),
+            price_feed,
+            asset_data.max_staleness,
+            asset_data.min_samples,
+        )?;
 
         calculate_assets_out_using_withdraw_asset(
             args.share_amount,
@@ -312,7 +324,12 @@ pub fn get_rate_in_quote(
         )?;
 
         // Query price feed.
-        let price = read_oracle(price_feed, asset_data.max_staleness, asset_data.min_samples)?;
+        let price = read_oracle(
+            asset_data.oracle_source.clone(),
+            price_feed,
+            asset_data.max_staleness,
+            asset_data.min_samples,
+        )?;
 
         // price[base/asset]
         // exchange_rate[base/share]
@@ -338,16 +355,40 @@ pub fn get_rate_in_quote(
 // ================================ Internal Helper Functions ================================
 
 /// Reads the oracle and checks for staleness, and accuracy
-fn read_oracle(price_feed: AccountInfo, max_staleness: u64, min_samples: u32) -> Result<Decimal> {
-    // Query price feed.
-    let feed_account = price_feed.data.borrow();
-    let feed = PullFeedAccountData::parse(feed_account).unwrap();
+fn read_oracle(
+    oracle_source: OracleSource,
+    price_feed: AccountInfo,
+    max_staleness: u64,
+    min_samples: u32,
+) -> Result<Decimal> {
+    match oracle_source {
+        OracleSource::SwitchboardV2 => {
+            let feed_account = price_feed.data.borrow();
+            let feed = PullFeedAccountData::parse(feed_account).unwrap();
 
-    let price = feed
-        .get_value(&Clock::get()?, max_staleness, min_samples, true)
-        .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
-
-    Ok(price)
+            let price = feed
+                .get_value(&Clock::get()?, max_staleness, min_samples, true)
+                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+            Ok(price)
+        }
+        OracleSource::Pyth => {
+            // Decode Pyth price account
+            let pyth_feed: PythFeed = SolanaPriceAccount::account_info_to_feed(&price_feed)
+                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+            // Convert slot staleness threshold (max_staleness) to seconds ~ 0.4s per slot.
+            let max_age_sec = max_staleness.saturating_mul(400) / 1000;
+            let max_age_sec_u64: u64 = max_age_sec;
+            let current_ts = Clock::get()?.unix_timestamp;
+            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts as i64, max_age_sec_u64);
+            let price_data = price_data_opt.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
+            // Ensure we have sufficient confidence; we ignore min_samples for Pyth.
+            let decimal_price = Decimal::from_i128_with_scale(
+                price_data.price as i128,
+                (-price_data.expo) as u32,
+            );
+            Ok(decimal_price)
+        }
+    }
 }
 
 /// Calculates shares to mint using base asset

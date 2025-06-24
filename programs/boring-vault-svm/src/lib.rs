@@ -40,7 +40,7 @@ pub use state::*;
 
 // Internal module usage
 use utils::{operators, teller};
-declare_id!("5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE");
+declare_id!("Ai42AjDwGyujQyzyHTx7ZR1W5G7mTaqQecbe5AfKUmxR");
 
 #[program]
 pub mod boring_vault_svm {
@@ -353,6 +353,7 @@ pub mod boring_vault_svm {
         asset_data.inverse_price_feed = args.asset_data.inverse_price_feed;
         asset_data.max_staleness = args.asset_data.max_staleness;
         asset_data.min_samples = args.asset_data.min_samples;
+        asset_data.oracle_source = args.asset_data.oracle_source;
         Ok(())
     }
 

@@ -103,6 +103,19 @@ pub struct AssetData {
     pub inverse_price_feed: bool,
     pub max_staleness: u64,
     pub min_samples: u32,
+    /// Identifies which oracle implementation is used for `price_feed`.
+    pub oracle_source: OracleSource,
+}
+
+// ================================ Oracle Source ================================
+
+/// Enumerates the supported on-chain oracle adapters.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq)]
+pub enum OracleSource {
+    /// Switchboard on-demand PullFeed (current default)
+    SwitchboardV2,
+    /// Pyth price account
+    Pyth,
 }
 
 // =============================== Withdraw =============================
