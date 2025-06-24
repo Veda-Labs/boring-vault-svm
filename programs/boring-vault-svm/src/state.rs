@@ -112,9 +112,9 @@ pub struct AssetData {
 /// Enumerates the supported on-chain oracle adapters.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq)]
 pub enum OracleSource {
-    /// Switchboard on-demand PullFeed (current default)
+    /// Switchboard on-demand PullFeed
     SwitchboardV2,
-    /// Pyth price account
+    /// Pyth price account (preferred)
     Pyth,
 }
 

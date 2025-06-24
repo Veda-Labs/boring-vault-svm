@@ -163,9 +163,6 @@ describe("oracle tests", () => {
         throw e;
       }
     }
-
-    // This test simply demonstrates SwitchboardV2 enum works in assetData
-    // without requiring complex oracle mocking - use isPeggedToBaseAsset
   });
 
   // -----------------------------------------------------------------------------
@@ -234,14 +231,14 @@ describe("oracle tests", () => {
       rentEpoch: 0n,
     });
 
-    // Add randomness to vault name to make transaction unique
-    const randomSuffix = Math.floor(Math.random() * 1000000);
+    // Use unique keypair-based name for true uniqueness
+    const uniqueId = testMint.publicKey.toString().slice(0, 8);
     
     // Deploy a vault first to create the vault state PDA
     await program.methods
       .deploy({
         authority: authority.publicKey,
-        name: `PYTH_ORACLE_TEST_${randomSuffix}`,
+        name: `PYTH_ORACLE_${uniqueId}`,
         symbol: "POT",
         exchangeRateProvider: authority.publicKey,
         exchangeRate: new BN(1_000_000_000),
@@ -275,7 +272,7 @@ describe("oracle tests", () => {
     const mockPriceFeed = anchor.web3.Keypair.generate().publicKey;
 
     // Test pyth oracle source enum - this is the key test
-    const randomBps = Math.floor(Math.random() * 100);
+    const uniqueBps = parseInt(uniqueId.slice(0, 2), 16) % 100; // Use part of unique ID for BPS
     
     await program.methods
       .updateAssetData({
@@ -283,11 +280,11 @@ describe("oracle tests", () => {
         assetData: {
           allowDeposits: true,
           allowWithdrawals: true,
-          sharePremiumBps: randomBps,
-          isPeggedToBaseAsset: true, // Bypass oracle validation
+          sharePremiumBps: uniqueBps,
+          isPeggedToBaseAsset: true, // Set to true to bypass oracle validation for this test
           priceFeed: mockPriceFeed,
           inversePriceFeed: false,
-          maxStaleness: new BN(5_000_000_000),
+          maxStaleness: new BN(5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000), // Use unique ID
           minSamples: 0,
           oracleSource: { pyth: {} }, // Test pyth enum variant
         },
@@ -377,14 +374,14 @@ describe("oracle tests", () => {
       rentEpoch: 0n,
     });
 
-    // Add randomness to vault name
-    const randomSuffix = Math.floor(Math.random() * 1000000);
+    // Use unique keypair-based name for true uniqueness
+    const uniqueId = baseAssetMint.publicKey.toString().slice(0, 8);
     
     // Deploy a vault with base asset
     await program.methods
       .deploy({
         authority: authority.publicKey,
-        name: `SOL_PYTH_VAULT_${randomSuffix}`,
+        name: `SOL_PYTH_${uniqueId}`,
         symbol: "SPV",
         exchangeRateProvider: authority.publicKey,
         exchangeRate: new BN(1_000_000_000), // 1:1 exchange rate
@@ -420,7 +417,7 @@ describe("oracle tests", () => {
     const mockPythPriceFeed = anchor.web3.Keypair.generate().publicKey;
 
     // Update asset data for SOL with Pyth oracle source
-    const randomBps = Math.floor(Math.random() * 100);
+    const uniqueBps = parseInt(uniqueId.slice(0, 2), 16) % 100; // Use part of unique ID for BPS
     
     await program.methods
       .updateAssetData({
@@ -428,11 +425,11 @@ describe("oracle tests", () => {
         assetData: {
           allowDeposits: true,
           allowWithdrawals: true,
-          sharePremiumBps: randomBps,
-          isPeggedToBaseAsset: true, // Set to true to bypass oracle price validation
+          sharePremiumBps: uniqueBps,
+          isPeggedToBaseAsset: true, // Set to true to bypass oracle validation for this test
           priceFeed: mockPythPriceFeed,
           inversePriceFeed: false,
-          maxStaleness: new BN(5_000_000_000),
+          maxStaleness: new BN(5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000), // Use unique ID
           minSamples: 0,
           oracleSource: { pyth: {} }, // Use Pyth oracle source
         },

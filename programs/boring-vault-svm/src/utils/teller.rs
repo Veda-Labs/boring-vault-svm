@@ -364,7 +364,8 @@ fn read_oracle(
     match oracle_source {
         OracleSource::SwitchboardV2 => {
             let feed_account = price_feed.data.borrow();
-            let feed = PullFeedAccountData::parse(feed_account).unwrap();
+            let feed = PullFeedAccountData::parse(feed_account)
+                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
 
             let price = feed
                 .get_value(&Clock::get()?, max_staleness, min_samples, true)
