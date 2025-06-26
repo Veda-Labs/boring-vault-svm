@@ -8,7 +8,7 @@ skip-lint = false
 [programs.localnet]
 boring_onchain_queue = "4yfE2VJQmxmcnUhrb8vdz7H8w313EZ3eJh5DbANBgtmd"
 boring_vault_svm = "5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE"
-state_assert = "5AQBro2Lk3SMYVcptngCfVKEiDK4AYwhCMWqxNywmjN"
+state_assert = "72mmDHDfvH1hGgo4thWjhpQRASkebRW1fjFMRzE5zimG"
 
 [registry]
 url = "https://api.apr.dev"
