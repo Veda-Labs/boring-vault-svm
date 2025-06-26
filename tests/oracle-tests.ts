@@ -459,10 +459,13 @@ describe("oracle tests", () => {
         lamports: 2_000_000_000, // 2 SOL
       })
     );
-    transferTx.recentBlockhash = context.lastBlockhash;
+
+    const [latestBlockhash] = await context.banksClient.getLatestBlockhash();
+    transferTx.recentBlockhash = latestBlockhash;
+
     transferTx.feePayer = authority.publicKey;
     transferTx.sign(authority);
-    
+
     await context.banksClient.processTransaction(transferTx);
 
     // Get user's share token account
