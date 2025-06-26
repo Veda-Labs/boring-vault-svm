@@ -8,13 +8,13 @@ skip-lint = false
 [programs.localnet]
 boring_onchain_queue = "4yfE2VJQmxmcnUhrb8vdz7H8w313EZ3eJh5DbANBgtmd"
 boring_vault_svm = "5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE"
-state_assert = "5AQBro2Lk3SMYVcptngCfVKEiDK4AYwhCMWqxNywmjN"
+state_assert = "BF9FzK4LYhnrqp5E3AwH5J71BY1tLNSfxf8EmZ3SAxE9"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "mainnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
