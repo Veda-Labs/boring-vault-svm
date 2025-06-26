@@ -14,7 +14,7 @@ state_assert = "72mmDHDfvH1hGgo4thWjhpQRASkebRW1fjFMRzE5zimG"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "mainnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
