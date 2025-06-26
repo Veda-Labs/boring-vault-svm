@@ -3135,7 +3135,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "state_assert"
+name = "state-assert"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
