@@ -27,6 +27,22 @@ pub struct VaultState {
     pub share_mint: Pubkey,
     pub deposit_sub_account: u8,
     pub withdraw_sub_account: u8,
+    pub bridge_program: Pubkey,
+}
+
+impl VaultState {
+    /// Derive the ShareMover PDA that serves as mint authority
+    pub fn derive_bridge_authority(&self) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[b"share_mover", self.share_mint.as_ref()],
+            &self.bridge_program,
+        )
+    }
+
+    pub fn verify_bridge_authority(&self, provided_authority: &Pubkey) -> bool {
+        let (expected_authority, _) = self.derive_bridge_authority();
+        *provided_authority == expected_authority
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]

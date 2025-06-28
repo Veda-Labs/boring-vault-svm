@@ -9,6 +9,7 @@ skip-lint = false
 boring_onchain_queue = "4yfE2VJQmxmcnUhrb8vdz7H8w313EZ3eJh5DbANBgtmd"
 boring_vault_svm = "5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE"
 state_assert = "72mmDHDfvH1hGgo4thWjhpQRASkebRW1fjFMRzE5zimG"
+layer-zero-share-mover = "3f2EpbAR6sGNy3wUpWugtwN2EHGDbyiG8ZpySFVnmY9q"
 
 [registry]
 url = "https://api.apr.dev"
