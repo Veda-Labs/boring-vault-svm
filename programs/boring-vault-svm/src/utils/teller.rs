@@ -7,12 +7,12 @@
 //! - Managing token transfers
 //! - Computing exchange rates
 
+use crate::OracleSource; // enum declared in state.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
+use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
-use crate::OracleSource; // enum declared in state.rs
-use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
 
 // Internal modules
 use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
@@ -260,9 +260,7 @@ pub fn calculate_assets_out<'a>(
         let assets_out_in_base =
             calculate_assets_out_in_base_asset(args.share_amount, exchange_rate, share_decimals)?;
         let assets_out_in_base = to_decimal(assets_out_in_base, share_decimals)?;
-        let assets_out = from_decimal(assets_out_in_base, asset_decimals)?;
-
-        assets_out
+        from_decimal(assets_out_in_base, asset_decimals)?
     } else {
         // Query price feed.
         let price = read_oracle(
@@ -380,13 +378,11 @@ fn read_oracle(
             let max_age_sec = max_staleness.saturating_mul(400) / 1000;
             let max_age_sec_u64: u64 = max_age_sec;
             let current_ts = Clock::get()?.unix_timestamp;
-            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts as i64, max_age_sec_u64);
+            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts, max_age_sec_u64);
             let price_data = price_data_opt.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
             // Ensure we have sufficient confidence; we ignore min_samples for Pyth.
-            let decimal_price = Decimal::from_i128_with_scale(
-                price_data.price as i128,
-                (-price_data.expo) as u32,
-            );
+            let decimal_price =
+                Decimal::from_i128_with_scale(price_data.price as i128, (-price_data.expo) as u32);
             Ok(decimal_price)
         }
     }

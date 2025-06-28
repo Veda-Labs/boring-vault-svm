@@ -898,6 +898,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "layer-zero-share-mover"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "boring-vault-svm",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

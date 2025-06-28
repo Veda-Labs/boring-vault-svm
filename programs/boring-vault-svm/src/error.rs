@@ -44,4 +44,12 @@ pub enum BoringErrorCode {
     MaximumSharePremiumExceeded,
     #[msg("Invalid strategist")]
     InvalidStrategist,
+    #[msg("Invalid amount")]
+    InvalidAmount,
+    #[msg("Insufficient balance")]
+    InsufficientBalance,
+    #[msg("Invalid bridge program")]
+    InvalidBridgeProgram,
+    #[msg("Invalid vault")]
+    InvalidVault,
 }
