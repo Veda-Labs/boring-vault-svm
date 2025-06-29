@@ -13,6 +13,7 @@ use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 use crate::OracleSource; // enum declared in state.rs
 use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
+use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 // Internal modules
 use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
@@ -203,6 +204,7 @@ pub fn calculate_shares_and_mint<'a>(
             price_feed,
             asset_data.max_staleness,
             asset_data.min_samples,
+            asset_data.feed_id,
         )?;
 
         calculate_shares_to_mint_using_deposit_asset(
@@ -270,6 +272,7 @@ pub fn calculate_assets_out<'a>(
             price_feed,
             asset_data.max_staleness,
             asset_data.min_samples,
+            asset_data.feed_id,
         )?;
 
         calculate_assets_out_using_withdraw_asset(
@@ -329,6 +332,7 @@ pub fn get_rate_in_quote(
             price_feed,
             asset_data.max_staleness,
             asset_data.min_samples,
+            asset_data.feed_id,
         )?;
 
         // price[base/asset]
@@ -360,6 +364,7 @@ fn read_oracle(
     price_feed: AccountInfo,
     max_staleness: u64,
     min_samples: u32,
+    feed_id: Option<[u8; 32]>,
 ) -> Result<Decimal> {
     match oracle_source {
         OracleSource::SwitchboardV2 => {
@@ -373,7 +378,7 @@ fn read_oracle(
             Ok(price)
         }
         OracleSource::Pyth => {
-            // Decode Pyth price account
+            // Decode Pyth price account (traditional)
             let pyth_feed: PythFeed = SolanaPriceAccount::account_info_to_feed(&price_feed)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
             // Convert slot staleness threshold (max_staleness) to seconds ~ 0.4s per slot.
@@ -386,6 +391,28 @@ fn read_oracle(
             let decimal_price = Decimal::from_i128_with_scale(
                 price_data.price as i128,
                 (-price_data.expo) as u32,
+            );
+            Ok(decimal_price)
+        }
+        OracleSource::PythV2 => {
+            // Require feed_id for PythV2
+            let feed_id = feed_id.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
+            
+            // Decode Pyth Pull Oracle price update account
+            let price_update_account = PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
+                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+            
+            // Convert slot staleness threshold (max_staleness) to seconds ~ 0.4s per slot.
+            let max_age_sec = max_staleness.saturating_mul(400) / 1000;
+            
+            // Get price with feed_id validation
+            let price_data = price_update_account
+                .get_price_no_older_than(&Clock::get()?, max_age_sec, &feed_id)
+                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+            
+            let decimal_price = Decimal::from_i128_with_scale(
+                price_data.price as i128,
+                (-price_data.exponent) as u32,
             );
             Ok(decimal_price)
         }

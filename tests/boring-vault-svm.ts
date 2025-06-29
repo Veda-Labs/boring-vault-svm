@@ -696,6 +696,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -740,6 +741,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -789,6 +791,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -3109,6 +3112,7 @@ describe("boring-vault-svm", () => {
         maxStaleness: new anchor.BN(1),
         minSamples: 1,
         oracleSource: { switchboardV2: {} },
+        feedId: null, // Not used for SwitchboardV2 oracle
       },
     };
 
@@ -3151,6 +3155,7 @@ describe("boring-vault-svm", () => {
         ...updateArgs.assetData,
         isPeggedToBaseAsset: false,
         priceFeed: anchor.web3.PublicKey.default,
+        feedId: null, // Not used for SwitchboardV2 oracle
       },
     };
     const invalidPriceFeedIx = await program.methods
@@ -3180,6 +3185,7 @@ describe("boring-vault-svm", () => {
       assetData: {
         ...updateArgs.assetData,
         sharePremiumBps: 1100, // 11%, exceeds maximum 10% (1000 basis points)
+        feedId: null, // Not used for SwitchboardV2 oracle
       },
     };
     const invalidSharePremiumIx = await program.methods
@@ -3219,6 +3225,7 @@ describe("boring-vault-svm", () => {
         ...updateArgs.assetData,
         isPeggedToBaseAsset: false,
         priceFeed: anchor.web3.PublicKey.default,
+        feedId: null, // Not used for SwitchboardV2 oracle
       },
     };
     const validPeggedIx = await program.methods
@@ -3325,6 +3332,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -3386,6 +3394,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -3636,6 +3645,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -3700,6 +3710,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -3959,6 +3970,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
@@ -4023,6 +4035,7 @@ describe("boring-vault-svm", () => {
           maxStaleness: new anchor.BN(1),
           minSamples: 1,
           oracleSource: { switchboardV2: {} },
+          feedId: null, // Not used for SwitchboardV2 oracle
         },
       })
       .accounts({
