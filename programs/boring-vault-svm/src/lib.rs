@@ -354,6 +354,7 @@ pub mod boring_vault_svm {
         asset_data.max_staleness = args.asset_data.max_staleness;
         asset_data.min_samples = args.asset_data.min_samples;
         asset_data.oracle_source = args.asset_data.oracle_source;
+        asset_data.feed_id = args.asset_data.feed_id; // Save the feed_id for PythV2 oracle
         Ok(())
     }
 
