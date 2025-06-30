@@ -11,11 +11,25 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
+import { ComputeBudgetProgram } from "@solana/web3.js";
 import { BN } from "bn.js";
 
 // Load the IDL JSON ourselves (synchronously, no require).
 const idlPath = resolve(process.cwd(), "target/idl/boring_vault_svm.json");
 const idl = JSON.parse(readFileSync(idlPath, "utf-8"));
+
+// -------------------- Transaction Uniqueness Helper --------------------
+let testTxNonce = 0;
+
+// Helper function to make transactions unique by adding a compute budget instruction
+function addUniquenessToMethod(method: any) {
+  const currentNonce = testTxNonce++;
+  return method.preInstructions([
+    ComputeBudgetProgram.setComputeUnitLimit({
+      units: 1_400_000 + currentNonce,
+    })
+  ]);
+}
 
 // -------------------- Bankrun Setup --------------------
 let provider: BankrunProvider;
@@ -207,8 +221,8 @@ describe("oracle tests", () => {
 
     // Initialize if needed (idempotent)
     try {
-      await program.methods
-        .initialize(authority.publicKey)
+      await addUniquenessToMethod(program.methods
+        .initialize(authority.publicKey))
         .accounts({
           signer: authority.publicKey,
           program: programKeypair.publicKey,
@@ -254,7 +268,7 @@ describe("oracle tests", () => {
     const uniqueId = testMint.publicKey.toString().slice(0, 8);
     
     // Deploy a vault first to create the vault state PDA
-    await program.methods
+    await addUniquenessToMethod(program.methods
       .deploy({
         authority: authority.publicKey,
         name: `PYTH_ORACLE_${uniqueId}`,
@@ -269,7 +283,7 @@ describe("oracle tests", () => {
         performanceFeeBps: 0,
         withdrawAuthority: anchor.web3.PublicKey.default,
         strategist: authority.publicKey,
-      })
+      }))
       .accounts({
         signer: authority.publicKey,
         config: configPda,
@@ -293,7 +307,7 @@ describe("oracle tests", () => {
     // Test pyth oracle source enum - this is the key test
     const uniqueBps = parseInt(uniqueId.slice(0, 2), 16) % 100; // Use part of unique ID for BPS
     
-    await program.methods
+    await addUniquenessToMethod(program.methods
       .updateAssetData({
         vaultId,
         assetData: {
@@ -308,7 +322,7 @@ describe("oracle tests", () => {
           oracleSource: { pyth: {} }, // Test pyth enum variant
           feedId: null, // Not used for Pyth oracle
         },
-      })
+      }))
       .accounts({
         signer: authority.publicKey,
         boringVaultState: vaultStatePda,
