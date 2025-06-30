@@ -18,9 +18,7 @@ use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
 use super::math;
 
-// ================================ Decimal Conversions ================================
-// Re-export math functions for backwards compatibility
-pub use math::{to_decimal, from_decimal};
+use math::{to_decimal, from_decimal};
 
 // ================================ Validation Functions ================================
 
@@ -406,7 +404,7 @@ fn calculate_shares_to_mint_using_base_asset(
     let shares_to_mint = deposit_amount
         .checked_div(exchange_rate)
         .ok_or(error!(BoringErrorCode::MathError))?;
-    let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
+    let shares_to_mint = math::apply_share_premium(shares_to_mint, share_premium_bps)?;
 
     // Scale up shares to mint by share decimals.
     let shares_to_mint = from_decimal(shares_to_mint, share_decimals)?;
@@ -435,7 +433,7 @@ fn calculate_shares_to_mint_using_deposit_asset(
         .ok_or(error!(BoringErrorCode::MathError))?
         .checked_div(exchange_rate)
         .ok_or(error!(BoringErrorCode::MathError))?;
-    let shares_to_mint = factor_in_share_premium(shares_to_mint, share_premium_bps)?;
+    let shares_to_mint = math::apply_share_premium(shares_to_mint, share_premium_bps)?;
 
     // Scale up shares to mint by share decimals.
     let shares_to_mint = from_decimal(shares_to_mint, share_decimals)?;
@@ -443,10 +441,7 @@ fn calculate_shares_to_mint_using_deposit_asset(
     Ok(shares_to_mint)
 }
 
-/// Applies share premium to calculated shares
-fn factor_in_share_premium(shares_to_mint: Decimal, share_premium_bps: u16) -> Result<Decimal> {
-    math::apply_share_premium(shares_to_mint, share_premium_bps)
-}
+
 
 /// Calculates assets to withdraw in base asset
 fn calculate_assets_out_in_base_asset(
