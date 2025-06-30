@@ -2,13 +2,16 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::get_associated_token_address_with_program_id, token_2022::ID as TOKEN_2022_ID,
 };
+use common::message::decode_message;
 
 use crate::{
     error::BoringErrorCode,
-    message::decode_message,
     seed::{L0_ENDPOINT_PROGRAM_ID, PEER_SEED, SHARE_MOVER_SEED},
-    state::{LzAccount, ShareMover},
-    utils::{get_accounts_for_clear, LzReceiveParams},
+    state::{
+        lz::{LzAccount, LzReceiveParams},
+        share_mover::ShareMover,
+    },
+    utils::get_accounts_for_clear,
 };
 
 #[derive(Accounts)]

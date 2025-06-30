@@ -1,8 +1,7 @@
 use crate::{
     error::BoringErrorCode,
     seed::{PEER_SEED, SHARE_MOVER_SEED},
-    state::ShareMover,
-    utils::PeerConfig,
+    state::{lz::PeerConfig, share_mover::ShareMover},
 };
 use anchor_lang::prelude::*;
 

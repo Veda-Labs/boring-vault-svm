@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{seed::PROGRAM_CONFIG_SEED, state::ProgramConfig};
+use crate::{seed::PROGRAM_CONFIG_SEED, state::share_mover::ProgramConfig};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {

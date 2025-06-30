@@ -1,4 +1,4 @@
-use crate::error::BoringErrorCode;
+use crate::error::RateLimitError;
 use anchor_lang::prelude::*; // Assuming you have an error enum
 
 // A new struct to encapsulate the state for a single rate limit bucket.
@@ -43,7 +43,7 @@ impl RateLimitState {
         // Check if there are enough tokens in the bucket for the requested amount.
         require!(
             self.current_bucket_size >= amount,
-            BoringErrorCode::RateLimitExceeded
+            RateLimitError::RateLimitExceeded
         );
 
         // Consume the tokens from the bucket.
@@ -73,26 +73,23 @@ impl RateLimitState {
     }
 }
 
+pub fn create_test_rate_limit_state(
+    limit: u64,
+    capacity: u64,
+    current_timestamp: i64,
+) -> RateLimitState {
+    RateLimitState {
+        limit,
+        capacity,
+        last_refill_timestamp: current_timestamp,
+        current_bucket_size: capacity,
+    }
+}
+
 #[cfg(test)]
 mod rate_limit_tests {
-    use crate::state::{PeerChain, ShareMover};
-
     use super::*;
     use anchor_lang::error;
-
-    // Helper to create a default RateLimitState for testing
-    fn create_test_rate_limit_state(
-        limit: u64,
-        capacity: u64,
-        current_timestamp: i64,
-    ) -> RateLimitState {
-        RateLimitState {
-            limit,
-            capacity,
-            last_refill_timestamp: current_timestamp,
-            current_bucket_size: capacity, // Start with a full bucket
-        }
-    }
 
     #[test]
     fn test_rate_limit_disabled() {
@@ -124,7 +121,7 @@ mod rate_limit_tests {
             "Should fail when consuming more than available"
         );
         let err = result.unwrap_err();
-        assert_eq!(err, error!(BoringErrorCode::RateLimitExceeded));
+        assert_eq!(err, error!(RateLimitError::RateLimitExceeded));
     }
 
     #[test]
@@ -199,66 +196,5 @@ mod rate_limit_tests {
         assert!(result2.is_ok());
         assert_eq!(state.current_bucket_size, 50); // 300 - 250 = 50
         assert_eq!(state.last_refill_timestamp, 5);
-    }
-
-    // --- ShareMover Integration Tests ---
-
-    // Mock ShareMover for testing purposes
-    fn create_test_share_mover() -> ShareMover {
-        ShareMover {
-            admin: Pubkey::new_unique(),
-            endpoint_program: Pubkey::new_unique(),
-            boring_vault_program: Pubkey::new_unique(),
-            vault: Pubkey::new_unique(),
-            mint: Pubkey::new_unique(),
-            is_paused: false,
-            peer_decimals: 18,
-            bump: 0,
-            outbound_rate_limit: Default::default(),
-            inbound_rate_limit: Default::default(),
-            peer_chain: PeerChain::Unknown,
-        }
-    }
-
-    #[test]
-    fn test_share_mover_outbound_check() {
-        let mut share_mover = create_test_share_mover();
-        let current_time = 100;
-        share_mover.outbound_rate_limit = create_test_rate_limit_state(50, 500, current_time);
-
-        // Successful check. Bucket starts full at 500. No refill. Consumes 400. 100 left.
-        let result = share_mover.check_outbound_rate_limit(400, current_time + 1);
-        assert!(result.is_ok());
-        assert_eq!(share_mover.outbound_rate_limit.current_bucket_size, 100); // 500 - 400 = 100
-
-        // Failed check. 1 second passes, refills by 50. Bucket becomes 150.
-        // Attempting to consume 200 fails.
-        let result_fail = share_mover.check_outbound_rate_limit(200, current_time + 2);
-        assert!(result_fail.is_err());
-        assert_eq!(
-            result_fail.unwrap_err(),
-            error!(BoringErrorCode::RateLimitExceeded)
-        );
-
-        // IMPORTANT: The bucket state is still updated by the refill, even on failure.
-        assert_eq!(share_mover.outbound_rate_limit.current_bucket_size, 150);
-    }
-
-    #[test]
-    fn test_share_mover_inbound_check() {
-        let mut share_mover = create_test_share_mover();
-        let current_time = 200;
-        share_mover.inbound_rate_limit = create_test_rate_limit_state(1000, 10000, current_time);
-
-        // Successful check. Bucket starts full at 10000. No refill. Consumes 5000. 5000 left.
-        let result = share_mover.check_inbound_rate_limit(5000, current_time + 1);
-        assert!(result.is_ok());
-        assert_eq!(share_mover.inbound_rate_limit.current_bucket_size, 5000); // 10000 - 5000 = 5000
-
-        // Failed check due to amount > u64::MAX
-        let large_amount = u64::MAX as u128 + 1;
-        let result_large = share_mover.check_inbound_rate_limit(large_amount, current_time + 2);
-        assert!(result_large.is_err());
-        assert_eq!(result_large.unwrap_err(), error!(BoringErrorCode::Overflow));
     }
 }

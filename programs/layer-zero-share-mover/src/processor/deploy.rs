@@ -1,14 +1,17 @@
 use crate::{
     error::BoringErrorCode,
-    rate_limit::RateLimitState,
     seed::{L0_ENDPOINT_PROGRAM_ID, LZ_RECEIVE_TYPES_SEED, PROGRAM_CONFIG_SEED, SHARE_MOVER_SEED},
-    state::{LzReceiveTypesAccounts, PeerChain, ProgramConfig, ShareMover},
+    state::{
+        lz::LzReceiveTypesAccounts,
+        share_mover::{PeerChain, ProgramConfig, ShareMover},
+    },
 };
 use anchor_lang::{
     prelude::*,
     solana_program::{instruction::Instruction, program::invoke_signed},
 };
 use anchor_spl::token_interface::Mint;
+use common::rate_limit::RateLimitState;
 use std::mem::size_of;
 
 const OAPP_REGISTER_DISCRIMINATOR: [u8; 8] = [129, 89, 71, 68, 11, 82, 210, 125];

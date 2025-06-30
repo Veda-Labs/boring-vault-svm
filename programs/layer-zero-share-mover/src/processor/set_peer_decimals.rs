@@ -1,4 +1,4 @@
-use crate::{error::BoringErrorCode, seed::SHARE_MOVER_SEED, state::ShareMover};
+use crate::{error::BoringErrorCode, seed::SHARE_MOVER_SEED, state::share_mover::ShareMover};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]

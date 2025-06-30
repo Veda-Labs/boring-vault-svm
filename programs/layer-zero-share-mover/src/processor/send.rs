@@ -1,9 +1,10 @@
 use crate::{
-    error::{BoringErrorCode, ShareBridgeCodecError},
-    message::{encode_message, ShareBridgeMessage},
+    error::BoringErrorCode,
     seed::{ENDPOINT_SEED, PEER_SEED, SHARE_MOVER_SEED},
-    state::{PeerChain, ShareMover},
-    utils::{EndpointSettings, PeerConfig},
+    state::{
+        lz::{EndpointSettings, PeerConfig},
+        share_mover::{PeerChain, ShareMover},
+    },
 };
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
@@ -15,6 +16,10 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount},
 };
 use boring_vault_svm::{BoringVault, BASE_SEED_BORING_VAULT_STATE};
+use common::{
+    error::ShareBridgeCodecError,
+    message::{encode_message, ShareBridgeMessage},
+};
 
 const SEND_DISCRIMINATOR: [u8; 8] = [102, 251, 20, 187, 65, 75, 12, 69];
 const BURN_SHARES_DISCRIMINATOR: [u8; 8] = [98, 168, 88, 31, 217, 221, 191, 214];

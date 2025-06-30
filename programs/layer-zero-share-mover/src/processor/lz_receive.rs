@@ -1,15 +1,17 @@
 use crate::{
     error::BoringErrorCode,
-    message::{decode_message, ShareBridgeMessage},
     seed::{PEER_SEED, SHARE_MOVER_SEED},
-    state::ShareMover,
-    utils::{ClearParams, LzReceiveParams, PeerConfig},
+    state::{
+        lz::{LzReceiveParams, PeerConfig},
+        share_mover::ShareMover,
+    },
 };
 use anchor_lang::{
     prelude::*,
     solana_program::{instruction::Instruction, program::invoke_signed},
 };
 use anchor_spl::token_interface::Mint;
+use common::message::{decode_message, ShareBridgeMessage};
 
 // min accounts len for clear cpi, found here:
 // https://github.com/LayerZero-Labs/LayerZero-v2/blob/main/packages/layerzero-v2/solana/programs/programs/endpoint/src/instructions/oapp/clear.rs
@@ -28,6 +30,16 @@ struct ShareMoverData {
     peer_decimals: u8,
     endpoint_program: Pubkey,
     boring_vault_program: Pubkey,
+}
+
+#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+pub struct ClearParams {
+    pub receiver: Pubkey,
+    pub src_eid: u32,
+    pub sender: [u8; 32],
+    pub nonce: u64,
+    pub guid: [u8; 32],
+    pub message: Vec<u8>,
 }
 
 #[derive(Accounts)]

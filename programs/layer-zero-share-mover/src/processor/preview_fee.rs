@@ -1,15 +1,17 @@
 use crate::{
     error::BoringErrorCode,
-    message::{encode_message, ShareBridgeMessage},
     seed::{ENDPOINT_SEED, L0_ENDPOINT_PROGRAM_ID, PEER_SEED, SHARE_MOVER_SEED},
-    state::ShareMover,
-    utils::{EndpointSettings, MessagingFee, PeerConfig},
+    state::{
+        lz::{EndpointSettings, MessagingFee, PeerConfig},
+        share_mover::ShareMover,
+    },
 };
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke_signed,
 };
+use common::message::{encode_message, ShareBridgeMessage};
 
 const QUOTE_DISCRIMINATOR: [u8; 8] = [149, 42, 109, 247, 134, 146, 213, 123];
 

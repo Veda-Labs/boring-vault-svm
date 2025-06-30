@@ -2,9 +2,7 @@
 #![allow(clippy::too_many_arguments)]
 
 mod error;
-mod message;
 mod processor;
-mod rate_limit;
 mod seed;
 mod state;
 mod utils;
@@ -12,15 +10,12 @@ mod utils;
 use anchor_lang::prelude::*;
 use processor::*;
 
-use crate::{state::LzAccount, utils::LzReceiveParams};
+use crate::state::lz::{LzAccount, LzReceiveParams, MessagingFee};
 
 declare_id!("3f2EpbAR6sGNy3wUpWugtwN2EHGDbyiG8ZpySFVnmY9q");
 
 #[program]
 pub mod layer_zero_share_mover {
-
-    use crate::utils::MessagingFee;
-
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
