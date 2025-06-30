@@ -1,7 +1,6 @@
 //! Teller module - Handles exchange rate calculations, token transfers, and share calculations
 //!
 //! This module provides utilities for:
-//! - Converting between decimals and integers
 //! - Validating token accounts
 //! - Calculating shares for deposits/withdrawals
 //! - Managing token transfers
@@ -17,32 +16,11 @@ use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 // Internal modules
 use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
+use super::math;
 
 // ================================ Decimal Conversions ================================
-
-/// Converts a value to a Decimal with specified decimal places
-///
-/// # Arguments
-/// * `amount` - The value to convert
-/// * `decimals` - Number of decimal places
-pub fn to_decimal<T: Into<Decimal>>(amount: T, decimals: u8) -> Result<Decimal> {
-    let mut decimal = amount.into();
-    decimal.set_scale(decimals as u32).unwrap();
-    Ok(decimal)
-}
-
-/// Converts a Decimal back to the specified numeric type
-///
-/// # Arguments
-/// * `decimal` - The Decimal to convert
-/// * `decimals` - Number of decimal places for the result
-pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Result<T> {
-    decimal
-        .checked_mul(Decimal::from(10u64.pow(decimals as u32)))
-        .ok_or(error!(BoringErrorCode::MathError))?
-        .try_into()
-        .map_err(|_| error!(BoringErrorCode::DecimalConversionFailed))
-}
+// Re-export math functions for backwards compatibility
+pub use math::{to_decimal, from_decimal};
 
 // ================================ Validation Functions ================================
 
@@ -381,17 +359,13 @@ fn read_oracle(
             // Decode Pyth price account (traditional)
             let pyth_feed: PythFeed = SolanaPriceAccount::account_info_to_feed(&price_feed)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
-            // Convert slot staleness threshold (max_staleness) to seconds ~ 0.4s per slot.
-            let max_age_sec = max_staleness.saturating_mul(400) / 1000;
-            let max_age_sec_u64: u64 = max_age_sec;
+            // Convert slot staleness threshold to seconds using pure math function
+            let max_age_sec = math::slots_to_seconds(max_staleness);
             let current_ts = Clock::get()?.unix_timestamp;
-            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts as i64, max_age_sec_u64);
+            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts as i64, max_age_sec);
             let price_data = price_data_opt.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
-            // Ensure we have sufficient confidence; we ignore min_samples for Pyth.
-            let decimal_price = Decimal::from_i128_with_scale(
-                price_data.price as i128,
-                (-price_data.expo) as u32,
-            );
+            // Convert to decimal using pure math function
+            let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.expo)?;
             Ok(decimal_price)
         }
         OracleSource::PythV2 => {
@@ -402,18 +376,16 @@ fn read_oracle(
             let price_update_account = PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
             
-            // Convert slot staleness threshold (max_staleness) to seconds ~ 0.4s per slot.
-            let max_age_sec = max_staleness.saturating_mul(400) / 1000;
+            // Convert slot staleness threshold to seconds using pure math function
+            let max_age_sec = math::slots_to_seconds(max_staleness);
             
             // Get price with feed_id validation
             let price_data = price_update_account
                 .get_price_no_older_than(&Clock::get()?, max_age_sec, &feed_id)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
             
-            let decimal_price = Decimal::from_i128_with_scale(
-                price_data.price as i128,
-                (-price_data.exponent) as u32,
-            );
+            // Convert to decimal using pure math function
+            let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.exponent)?;
             Ok(decimal_price)
         }
     }
@@ -455,13 +427,7 @@ fn calculate_shares_to_mint_using_deposit_asset(
     let deposit_amount = to_decimal(deposit_amount, deposit_asset_decimals)?;
     let exchange_rate = to_decimal(exchange_rate, share_decimals)?;
 
-    let asset_price = if inverse_price_feed {
-        Decimal::from(1)
-            .checked_div(asset_price)
-            .ok_or(error!(BoringErrorCode::MathError))? // 1 / price
-    } else {
-        asset_price
-    };
+    let asset_price = math::apply_price_inversion(asset_price, inverse_price_feed)?;
 
     // Calculate shares_to_mint = deposit_amount[asset] * asset_price[base/asset] / exchange_rate[base/share]
     let shares_to_mint = deposit_amount
@@ -479,17 +445,7 @@ fn calculate_shares_to_mint_using_deposit_asset(
 
 /// Applies share premium to calculated shares
 fn factor_in_share_premium(shares_to_mint: Decimal, share_premium_bps: u16) -> Result<Decimal> {
-    if share_premium_bps > 0 {
-        let premium_bps = to_decimal(share_premium_bps, BPS_DECIMALS)?;
-        let premium_amount = shares_to_mint
-            .checked_mul(premium_bps)
-            .ok_or(error!(BoringErrorCode::MathError))?;
-        Ok(shares_to_mint
-            .checked_sub(premium_amount)
-            .ok_or(error!(BoringErrorCode::MathError))?)
-    } else {
-        Ok(shares_to_mint)
-    }
+    math::apply_share_premium(shares_to_mint, share_premium_bps)
 }
 
 /// Calculates assets to withdraw in base asset
@@ -526,7 +482,7 @@ fn calculate_assets_out_using_withdraw_asset(
 
     // Calculate assets_out = share_amount[share] * exchange_rate[base/share] / asset_price[base/asset]
     let assets_out = if inverse_price_feed {
-        // Price feed is inversed, so multiply it instead.
+        // Price feed is inversed, so multiply instead of divide
         share_amount
             .checked_mul(exchange_rate)
             .ok_or(error!(BoringErrorCode::MathError))?
