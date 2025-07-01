@@ -32,10 +32,10 @@ pub struct DeployParams {
     pub vault_id: u64,
     pub sub_account: u8,
     pub peer_decimals: u8,
-    pub outbound_limit: u64,
-    pub outbound_capacity: u64,
-    pub inbound_limit: u64,
-    pub inbound_capacity: u64,
+    pub outbound_limit: u64,  // Maximum amount allowed in the window
+    pub outbound_window: u64, // Window duration in seconds (renamed from capacity)
+    pub inbound_limit: u64,   // Maximum amount allowed in the window
+    pub inbound_window: u64,  // Window duration in seconds (renamed from capacity)
     pub peer_chain: PeerChain,
 }
 
@@ -121,17 +121,19 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     share_mover.peer_chain = params.peer_chain;
 
     // Initialize rate limiters
+    // So if they want 1000 tokens per hour, they set limit=1000, window=3600
     share_mover.outbound_rate_limit = RateLimitState {
+        amount_in_flight: 0,
+        last_updated: clock.unix_timestamp,
         limit: params.outbound_limit,
-        capacity: params.outbound_capacity,
-        last_refill_timestamp: clock.unix_timestamp,
-        current_bucket_size: params.outbound_capacity, // Start with a full bucket
+        window: params.outbound_window,
     };
+
     share_mover.inbound_rate_limit = RateLimitState {
+        amount_in_flight: 0,
+        last_updated: clock.unix_timestamp,
         limit: params.inbound_limit,
-        capacity: params.inbound_capacity,
-        last_refill_timestamp: clock.unix_timestamp,
-        current_bucket_size: params.inbound_capacity, // Start with a full bucket
+        window: params.inbound_window,
     };
 
     // Prepare seeds for CPI signing
