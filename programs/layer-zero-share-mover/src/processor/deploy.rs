@@ -27,11 +27,11 @@ pub struct RegisterOAppParams {
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct DeployParams {
     pub admin: Pubkey,
+    pub executor_program: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
     pub sub_account: u8,
     pub peer_decimals: u8,
-    // New fields for rate limiting
     pub outbound_limit: u64,
     pub outbound_capacity: u64,
     pub inbound_limit: u64,
@@ -106,6 +106,7 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
 
     // Initialize all ShareMover fields
     share_mover.admin = params.admin;
+    share_mover.executor_program = params.executor_program;
     share_mover.endpoint_program = ctx.accounts.endpoint_program.key();
     share_mover.boring_vault_program = params.boring_vault_program;
     share_mover.vault = Deploy::get_vault(

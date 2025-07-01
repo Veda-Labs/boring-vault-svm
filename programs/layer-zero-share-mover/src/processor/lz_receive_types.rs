@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, solana_program::sysvar::instructions::ID as INSTRUCTION_SYSVAR_ID};
 use anchor_spl::{
     associated_token::get_associated_token_address_with_program_id, token_2022::ID as TOKEN_2022_ID,
 };
@@ -104,6 +104,11 @@ pub fn lz_receive_types(
             pubkey: TOKEN_2022_ID,
             is_signer: false,
             is_writable: false,
+        },
+        LzAccount {
+            pubkey: INSTRUCTION_SYSVAR_ID,
+            is_signer: false,
+            is_writable: true,
         },
     ]);
 

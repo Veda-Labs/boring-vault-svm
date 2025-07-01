@@ -36,4 +36,10 @@ pub enum BoringErrorCode {
     SendAmountConversionFailed,
     #[msg("Invalid peer chain")]
     InvalidPeerChain,
+    #[msg("Unauthorized Executor")]
+    UnauthorizedExecutor,
+    #[msg("Not Allowed from")]
+    NotAllowedFrom,
+    #[msg("Not Allowed to")]
+    NotAllowedTo,
 }

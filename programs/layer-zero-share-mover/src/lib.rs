@@ -79,8 +79,16 @@ pub mod layer_zero_share_mover {
         processor::set_pause(ctx, paused)
     }
 
-    pub fn set_peer_decimals(ctx: Context<SetPeerDecimals>, new_decimals: u8) -> Result<()> {
-        processor::set_peer_decimals(ctx, new_decimals)
+    pub fn set_executor_program(ctx: Context<SetExecutorProgram>, executor: Pubkey) -> Result<()> {
+        processor::set_executor_program(ctx, executor)
+    }
+
+    pub fn set_endpoint_program(ctx: Context<SetEndpointProgram>, executor: Pubkey) -> Result<()> {
+        processor::set_endpoint_program(ctx, executor)
+    }
+
+    pub fn set_allow(ctx: Context<SetAllow>, allow_from: bool, allow_to: bool) -> Result<()> {
+        processor::set_allow(ctx, allow_from, allow_to)
     }
 
     pub fn transfer_authority(ctx: Context<TransferAuthority>, new_admin: Pubkey) -> Result<()> {

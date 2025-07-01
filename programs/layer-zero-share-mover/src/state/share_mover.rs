@@ -18,18 +18,27 @@ impl Default for PeerChain {
     }
 }
 
+// TODO: review immutability
 #[account]
 pub struct ShareMover {
     pub admin: Pubkey,
     pub endpoint_program: Pubkey,
+    pub executor_program: Pubkey,
+    // immutable after deployment
     pub boring_vault_program: Pubkey,
+    // immutable after deployment
     pub vault: Pubkey,
+    // immutable after deployment
     pub mint: Pubkey,
     pub is_paused: bool,
+    // immutable after deployment
     pub peer_decimals: u8,
     pub bump: u8,
+    pub allow_from: bool,
+    pub allow_to: bool,
     pub outbound_rate_limit: RateLimitState,
     pub inbound_rate_limit: RateLimitState,
+    // immutable after deployment
     pub peer_chain: PeerChain,
 }
 
@@ -80,12 +89,15 @@ mod tests {
         ShareMover {
             admin: Pubkey::new_unique(),
             endpoint_program: Pubkey::new_unique(),
+            executor_program: Pubkey::new_unique(),
             boring_vault_program: Pubkey::new_unique(),
             vault: Pubkey::new_unique(),
             mint: Pubkey::new_unique(),
             is_paused: false,
             peer_decimals: 18,
             bump: 0,
+            allow_from: false,
+            allow_to: false,
             outbound_rate_limit: Default::default(),
             inbound_rate_limit: Default::default(),
             peer_chain: PeerChain::Unknown,

@@ -257,6 +257,11 @@ pub fn send<'info>(
     ctx: Context<'_, '_, 'info, 'info, Send<'info>>,
     params: SendMessageParams,
 ) -> Result<()> {
+    // Validate allow to
+    require!(
+        ctx.accounts.share_mover.allow_to,
+        BoringErrorCode::NotAllowedTo
+    );
     let clock = Clock::get()?;
     ctx.accounts
         .share_mover

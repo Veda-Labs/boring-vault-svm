@@ -2,7 +2,7 @@ use crate::{error::BoringErrorCode, seed::SHARE_MOVER_SEED, state::share_mover::
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
-pub struct SetPeerDecimals<'info> {
+pub struct SetAllow<'info> {
     #[account(
         constraint = signer.key() == share_mover.admin @ BoringErrorCode::NotAuthorized
     )]
@@ -16,8 +16,8 @@ pub struct SetPeerDecimals<'info> {
     pub share_mover: Account<'info, ShareMover>,
 }
 
-pub fn set_peer_decimals(ctx: Context<SetPeerDecimals>, new_decimals: u8) -> Result<()> {
-    ctx.accounts.share_mover.peer_decimals = new_decimals;
-    msg!("ShareMover peer decimals updated to: {}", new_decimals);
+pub fn set_allow(ctx: Context<SetAllow>, allow_from: bool, allow_to: bool) -> Result<()> {
+    ctx.accounts.share_mover.allow_from = allow_from;
+    ctx.accounts.share_mover.allow_to = allow_to;
     Ok(())
 }

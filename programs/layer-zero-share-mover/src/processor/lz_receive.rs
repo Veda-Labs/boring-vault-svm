@@ -8,10 +8,12 @@ use crate::{
 };
 use anchor_lang::{
     prelude::*,
-    solana_program::{instruction::Instruction, program::invoke_signed},
+    solana_program::{
+        instruction::Instruction, program::invoke_signed,
+        sysvar::instructions::get_instruction_relative,
+    },
 };
-use anchor_spl::token_interface::Mint;
-use common::message::{decode_message, ShareBridgeMessage};
+use common::message::decode_message;
 
 // min accounts len for clear cpi, found here:
 // https://github.com/LayerZero-Labs/LayerZero-v2/blob/main/packages/layerzero-v2/solana/programs/programs/endpoint/src/instructions/oapp/clear.rs
@@ -27,8 +29,8 @@ struct ShareMoverData {
     key: Pubkey,
     bump: u8,
     mint: Pubkey,
-    peer_decimals: u8,
     endpoint_program: Pubkey,
+    executor_program: Pubkey,
     boring_vault_program: Pubkey,
 }
 
@@ -112,23 +114,8 @@ impl<'info> LzReceive<'info> {
             BoringErrorCode::InvalidMessage
         );
 
-        // convert amount to u64 and appropriate decimals for the mint
-        // deserialize the mint to get solana mint decimals
-        let mint_account = &accounts[2];
-        let mint_data = InterfaceAccount::<'info, Mint>::try_from(mint_account)?;
-
-        let mint_amount = u64::try_from(
-            ShareBridgeMessage::convert_amount_decimals(
-                amount,
-                share_mover_data.peer_decimals,
-                mint_data.decimals,
-            )
-            .ok_or(BoringErrorCode::InvalidMessageAmount)?,
-        )
-        .map_err(|_| BoringErrorCode::InvalidMessageAmount)?;
-
         // Build mint instruction data
-        let mint_data = Self::build_mint_data(mint_amount);
+        let mint_data = Self::build_mint_data(u64::try_from(amount)?);
 
         // Build instruction
         let mint_ix = Instruction {
@@ -184,6 +171,11 @@ pub fn lz_receive<'info>(
     ctx: Context<'_, '_, 'info, 'info, LzReceive<'info>>,
     params: &LzReceiveParams,
 ) -> Result<()> {
+    // Validate we can receive
+    require!(
+        ctx.accounts.share_mover.allow_from,
+        BoringErrorCode::NotAllowedFrom
+    );
     // Validate we have enough remaining accounts
     require!(
         ctx.remaining_accounts.len() >= CLEAR_MIN_ACCOUNTS_LEN + MINT_ACCOUNTS_LEN,
@@ -212,8 +204,8 @@ pub fn lz_receive<'info>(
         key: ctx.accounts.share_mover.key(),
         bump: ctx.accounts.share_mover.bump,
         mint: ctx.accounts.share_mover.mint,
-        peer_decimals: ctx.accounts.share_mover.peer_decimals,
         endpoint_program: ctx.accounts.share_mover.endpoint_program,
+        executor_program: ctx.accounts.share_mover.executor_program,
         boring_vault_program: ctx.accounts.share_mover.boring_vault_program,
     };
 
@@ -228,10 +220,21 @@ pub fn lz_receive<'info>(
 
     // Split remaining accounts into two groups with explicit validation
     let (clear_accounts, remaining) = remaining_accounts.split_at(CLEAR_MIN_ACCOUNTS_LEN);
-    let (mint_accounts, extra) = remaining.split_at(MINT_ACCOUNTS_LEN);
+    let (mint_accounts, ix_sys_var) = remaining.split_at(MINT_ACCOUNTS_LEN);
 
     // validate no extra accounts
-    require_eq!(extra.len(), 0, BoringErrorCode::InvalidMessageExtraAccounts);
+    require_eq!(
+        ix_sys_var.len(),
+        1,
+        BoringErrorCode::InvalidMessageExtraAccounts
+    );
+
+    // Validate CPI call came from configured executor program
+    let origin_ix = get_instruction_relative(0, &ix_sys_var[0]).unwrap();
+
+    if origin_ix.program_id != share_mover_data.executor_program {
+        return err!(BoringErrorCode::UnauthorizedExecutor);
+    }
 
     // Validate the ShareMover account is passed as the bridge authority
     require_keys_eq!(
