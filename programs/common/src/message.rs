@@ -7,12 +7,12 @@
 
 // Message layout (matches struct field order):
 // Offset →
-// 0       32      48       56
-// |------|-------|--------|
-// | 32B  | 16B   | 8B     |
-// |recip | amt   | vault  |
-// |      |(u128) |  id    |
-// |------|-------|--------|
+// 0       32      48
+// |------|-------|
+// | 32B  | 16B   |
+// |recip | amt   |
+// |      |(u128) |
+// |------|-------|
 
 use anchor_lang::prelude::*;
 
@@ -20,8 +20,7 @@ use crate::error::ShareBridgeCodecError;
 
 pub const RECIPIENT_OFFSET: usize = 0;
 pub const AMOUNT_OFFSET: usize = 32;
-pub const VAULT_ID_OFFSET: usize = 48;
-pub const MESSAGE_SIZE: usize = 56;
+pub const MESSAGE_SIZE: usize = 48;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShareBridgeMessage {
@@ -106,7 +105,7 @@ pub fn decode_message(data: &[u8]) -> Result<ShareBridgeMessage> {
         .map_err(|_| ShareBridgeCodecError::InvalidLength)?;
 
     // Decode amount (u128)
-    let amount_bytes: [u8; 16] = data[AMOUNT_OFFSET..VAULT_ID_OFFSET]
+    let amount_bytes: [u8; 16] = data[AMOUNT_OFFSET..MESSAGE_SIZE]
         .try_into()
         .map_err(|_| ShareBridgeCodecError::InvalidLength)?;
     let amount = u128::from_be_bytes(amount_bytes);
