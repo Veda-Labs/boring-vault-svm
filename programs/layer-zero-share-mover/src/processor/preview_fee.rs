@@ -20,7 +20,6 @@ pub struct PreviewFeeParams {
     pub dst_eid: u32,          // Destination chain endpoint ID
     pub recipient: [u8; 32],   // Recipient address (32 bytes for any chain)
     pub amount: u128,          // Amount of shares to bridge
-    pub vault_id: u64,         // Vault ID for the shares
     pub options: Vec<u8>,      // LayerZero messaging options
     pub pay_in_lz_token: bool, // Whether to pay in LZ token
 }
@@ -64,7 +63,7 @@ pub struct PreviewFee<'info> {
 }
 
 pub fn preview_fee(ctx: &Context<PreviewFee>, params: PreviewFeeParams) -> Result<MessagingFee> {
-    let message = ShareBridgeMessage::new(params.recipient, params.amount, params.vault_id);
+    let message = ShareBridgeMessage::new(params.recipient, params.amount);
     let encoded_message = encode_message(&message);
 
     // Prepare LayerZero quote parameters

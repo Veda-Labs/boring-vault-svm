@@ -104,7 +104,6 @@ impl<'info> LzReceive<'info> {
         accounts: &'info [AccountInfo<'info>],
         share_mover_data: &ShareMoverData,
         signer_seeds: &[&[u8]],
-        vault_id: u64,
         amount: u128,
     ) -> Result<()> {
         // Validate we have the right number of accounts
@@ -129,7 +128,7 @@ impl<'info> LzReceive<'info> {
         .map_err(|_| BoringErrorCode::InvalidMessageAmount)?;
 
         // Build mint instruction data
-        let mint_data = Self::build_mint_data(vault_id, mint_amount);
+        let mint_data = Self::build_mint_data(mint_amount);
 
         // Build instruction
         let mint_ix = Instruction {
@@ -173,10 +172,9 @@ impl<'info> LzReceive<'info> {
         Ok(data)
     }
 
-    fn build_mint_data(vault_id: u64, amount: u64) -> Vec<u8> {
+    fn build_mint_data(amount: u64) -> Vec<u8> {
         let mut data = Vec::with_capacity(24); // discriminator + 2 u64s
         data.extend_from_slice(&MINT_SHARES_DISCRIMINATOR);
-        data.extend_from_slice(&vault_id.to_le_bytes());
         data.extend_from_slice(&amount.to_le_bytes());
         data
     }
@@ -250,7 +248,6 @@ pub fn lz_receive<'info>(
         mint_accounts,
         &share_mover_data,
         share_mover_seeds,
-        decoded_msg.vault_id,
         decoded_msg.amount,
     )?;
 

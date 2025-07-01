@@ -27,16 +27,11 @@ pub const MESSAGE_SIZE: usize = 56;
 pub struct ShareBridgeMessage {
     pub recipient: [u8; 32],
     pub amount: u128,
-    pub vault_id: u64,
 }
 
 impl ShareBridgeMessage {
-    pub fn new(recipient: [u8; 32], amount: u128, vault_id: u64) -> Self {
-        Self {
-            recipient,
-            amount,
-            vault_id,
-        }
+    pub fn new(recipient: [u8; 32], amount: u128) -> Self {
+        Self { recipient, amount }
     }
 
     /// Helper to convert amount between different decimal representations
@@ -95,9 +90,6 @@ pub fn encode_message(msg: &ShareBridgeMessage) -> Vec<u8> {
     // Amount (16 bytes, big endian)
     buffer.extend_from_slice(&msg.amount.to_be_bytes());
 
-    // Vault ID (8 bytes, big endian)
-    buffer.extend_from_slice(&msg.vault_id.to_be_bytes());
-
     buffer
 }
 
@@ -119,17 +111,7 @@ pub fn decode_message(data: &[u8]) -> Result<ShareBridgeMessage> {
         .map_err(|_| ShareBridgeCodecError::InvalidLength)?;
     let amount = u128::from_be_bytes(amount_bytes);
 
-    // Decode vault_id
-    let vault_id_bytes: [u8; 8] = data[VAULT_ID_OFFSET..MESSAGE_SIZE]
-        .try_into()
-        .map_err(|_| ShareBridgeCodecError::InvalidLength)?;
-    let vault_id = u64::from_be_bytes(vault_id_bytes);
-
-    Ok(ShareBridgeMessage {
-        recipient,
-        amount,
-        vault_id,
-    })
+    Ok(ShareBridgeMessage { recipient, amount })
 }
 
 #[cfg(test)]
@@ -141,8 +123,7 @@ mod tests {
         // Test basic encoding/decoding
         let recipient = [0x11u8; 32];
         let amount = 1_000_000_000_000_000_000u128; // 1 token with 18 decimals
-        let vault_id = 42;
-        let msg = ShareBridgeMessage::new(recipient, amount, vault_id);
+        let msg = ShareBridgeMessage::new(recipient, amount);
 
         let encoded = encode_message(&msg);
         assert_eq!(encoded.len(), MESSAGE_SIZE);
@@ -151,7 +132,6 @@ mod tests {
         assert_eq!(decoded, msg);
         assert_eq!(decoded.recipient, recipient);
         assert_eq!(decoded.amount, amount);
-        assert_eq!(decoded.vault_id, vault_id);
     }
 
     #[test]
@@ -162,9 +142,8 @@ mod tests {
         recipient[31] = 0xBB;
 
         let amount = 0x1234567890ABCDEFu128;
-        let vault_id = 0xFEDCBA9876543210u64;
 
-        let msg = ShareBridgeMessage::new(recipient, amount, vault_id);
+        let msg = ShareBridgeMessage::new(recipient, amount);
         let encoded = encode_message(&msg);
 
         // Check recipient bytes
@@ -177,13 +156,6 @@ mod tests {
             u128::from_be_bytes(amount_bytes.try_into().unwrap()),
             amount
         );
-
-        // Check vault_id bytes (big endian)
-        let vault_bytes = &encoded[48..56];
-        assert_eq!(
-            u64::from_be_bytes(vault_bytes.try_into().unwrap()),
-            vault_id
-        );
     }
 
     #[test]
@@ -191,14 +163,12 @@ mod tests {
         // Test with maximum values
         let recipient = [0xFFu8; 32];
         let amount = u128::MAX;
-        let vault_id = u64::MAX;
 
-        let msg = ShareBridgeMessage::new(recipient, amount, vault_id);
+        let msg = ShareBridgeMessage::new(recipient, amount);
         let encoded = encode_message(&msg);
         let decoded = decode_message(&encoded).unwrap();
 
         assert_eq!(decoded.amount, u128::MAX);
-        assert_eq!(decoded.vault_id, u64::MAX);
     }
 
     #[test]

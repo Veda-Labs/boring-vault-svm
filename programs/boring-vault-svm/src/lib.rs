@@ -1209,12 +1209,7 @@ pub mod boring_vault_svm {
         Ok(())
     }
 
-    pub fn mint_shares(
-        ctx: Context<MintShares>,
-        _recipient: Pubkey,
-        vault_id: u64,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn mint_shares(ctx: Context<MintShares>, _recipient: Pubkey, amount: u64) -> Result<()> {
         require!(amount > 0, BoringErrorCode::InvalidAmount);
         require!(
             ctx.accounts.vault.config.bridge_program != Pubkey::default(),
@@ -1223,7 +1218,7 @@ pub mod boring_vault_svm {
 
         let vault_seeds = &[
             BASE_SEED_BORING_VAULT_STATE,
-            &vault_id.to_le_bytes()[..],
+            &ctx.accounts.vault.config.vault_id.to_le_bytes()[..],
             &[ctx.bumps.vault],
         ];
         let signer_seeds = &[&vault_seeds[..]];
@@ -2104,7 +2099,7 @@ pub struct SetBridgeProgram<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(recipient: Pubkey, vault_id: u64, amount: u64)]
+#[instruction(recipient: Pubkey, amount: u64)]
 pub struct MintShares<'info> {
     #[account(
         constraint = vault.config.verify_bridge_authority(&bridge_authority.key()) @ BoringErrorCode::NotAuthorized,
@@ -2114,8 +2109,7 @@ pub struct MintShares<'info> {
     #[account(
         constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused,
-        constraint = vault.config.vault_id == vault_id @ BoringErrorCode::InvalidVault,
-        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault.config.vault_id.to_le_bytes()[..]],
         bump,
     )]
     pub vault: Account<'info, BoringVault>,
@@ -2137,16 +2131,15 @@ pub struct MintShares<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(vault_id: u64, amount: u64)]
+#[instruction(amount: u64)]
 pub struct BurnShares<'info> {
     #[account()]
     pub signer: Signer<'info>,
 
     #[account(
         constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,
-        constraint = vault.config.vault_id == vault_id @ BoringErrorCode::InvalidVault,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused,
-        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault.config.vault_id.to_le_bytes()[..]],
         bump,
     )]
     pub vault: Account<'info, BoringVault>,

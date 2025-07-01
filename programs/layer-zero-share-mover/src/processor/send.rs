@@ -32,7 +32,6 @@ pub struct SendMessageParams {
     pub dst_eid: u32,        // Destination chain endpoint ID
     pub recipient: [u8; 32], // Recipient address (32 bytes for any chain)
     pub amount: u64,         // Amount of shares to bridge
-    pub vault_id: u64,       // Vault ID for the shares
     pub options: Vec<u8>,    // LayerZero messaging options
     pub native_fee: u64,     // Native fee amount (from quote)
     pub lz_token_fee: u64,   // LZ token fee amount (from quote)
@@ -97,12 +96,11 @@ pub struct Send<'info> {
     #[account(
         seeds = [
             BASE_SEED_BORING_VAULT_STATE,
-            &params.vault_id.to_le_bytes()
+            &vault.config.vault_id.to_le_bytes()
         ],
         bump,
         seeds::program = share_mover.boring_vault_program,
         constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,
-        constraint = vault.config.vault_id == params.vault_id @ BoringErrorCode::InvalidVault,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused
     )]
     pub vault: Account<'info, BoringVault>,
@@ -140,12 +138,10 @@ impl<'info> Send<'info> {
         token_program: &AccountInfo<'a>,
         share_mover_data: &ShareMoverData,
         amount: u64,
-        vault_id: u64,
     ) -> Result<()> {
         // Build burn instruction data
         let mut burn_data = Vec::with_capacity(24); // discriminator + vault_id + amount
         burn_data.extend_from_slice(&BURN_SHARES_DISCRIMINATOR);
-        burn_data.extend_from_slice(&vault_id.to_le_bytes());
         burn_data.extend_from_slice(&amount.to_le_bytes());
 
         // Build burn instruction
@@ -313,7 +309,6 @@ pub fn send<'info>(
         &ctx.accounts.token_program.to_account_info(),
         &share_mover_data,
         params.amount,
-        params.vault_id,
     )?;
 
     match ctx.accounts.share_mover.peer_chain {
@@ -330,7 +325,7 @@ pub fn send<'info>(
     }
 
     // Step 2: Create and encode the ShareBridgeMessage
-    let message = ShareBridgeMessage::new(params.recipient, message_amount, params.vault_id);
+    let message = ShareBridgeMessage::new(params.recipient, message_amount);
     let encoded_message = encode_message(&message);
 
     // Step 3: Send LayerZero message
