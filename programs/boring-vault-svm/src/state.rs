@@ -121,6 +121,9 @@ pub struct AssetData {
     pub min_samples: u32,
     /// Identifies which oracle implementation is used for `price_feed`.
     pub oracle_source: OracleSource,
+    /// Feed ID for PythV2 oracle source (32 bytes). Optional for backward compatibility.
+    /// Required when oracle_source = PythV2. Format: 0x1234...
+    pub feed_id: Option<[u8; 32]>,
 }
 
 // ================================ Oracle Source ================================
@@ -130,8 +133,10 @@ pub struct AssetData {
 pub enum OracleSource {
     /// Switchboard on-demand PullFeed
     SwitchboardV2,
-    /// Pyth price account (preferred)
+    /// Pyth price account (traditional, continuously updated)
     Pyth,
+    /// Pyth Pull Oracle (newer, requires price update submission)
+    PythV2,
 }
 
 // =============================== Withdraw =============================

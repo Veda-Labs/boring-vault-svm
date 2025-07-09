@@ -6,6 +6,7 @@ resolver = "2"
 anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
 anchor-spl = "0.31.1"
 rust_decimal = "1.36.0"
+common = { path = "crates/common"}
 
 [profile.release]
 overflow-checks = true

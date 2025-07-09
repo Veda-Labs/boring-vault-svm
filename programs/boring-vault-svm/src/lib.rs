@@ -40,7 +40,7 @@ pub use error::*;
 pub use state::*;
 
 // Internal module usage
-use utils::{operators, teller};
+use utils::{math, operators, teller};
 declare_id!("5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE");
 
 #[program]
@@ -345,12 +345,20 @@ pub mod boring_vault_svm {
             );
         }
 
-        require!(
-            args.asset_data.share_premium_bps <= MAXIMUM_SHARE_PREMIUM_BPS,
-            BoringErrorCode::MaximumSharePremiumExceeded
-        );
+            require!(
+        args.asset_data.share_premium_bps <= MAXIMUM_SHARE_PREMIUM_BPS,
+        BoringErrorCode::MaximumSharePremiumExceeded
+    );
 
-        let asset_data = &mut ctx.accounts.asset_data;
+    // Validate that feed_id is provided when oracle_source is PythV2
+    if matches!(args.asset_data.oracle_source, OracleSource::PythV2) {
+        require!(
+            args.asset_data.feed_id.is_some(),
+            BoringErrorCode::InvalidPriceFeed
+        );
+    }
+
+    let asset_data = &mut ctx.accounts.asset_data;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
         asset_data.share_premium_bps = args.asset_data.share_premium_bps;
@@ -360,6 +368,7 @@ pub mod boring_vault_svm {
         asset_data.max_staleness = args.asset_data.max_staleness;
         asset_data.min_samples = args.asset_data.min_samples;
         asset_data.oracle_source = args.asset_data.oracle_source;
+        asset_data.feed_id = args.asset_data.feed_id; // Save the feed_id for PythV2 oracle
         Ok(())
     }
 
@@ -736,17 +745,17 @@ pub mod boring_vault_svm {
         let clock = &Clock::get()?;
         let current_time = clock.unix_timestamp as u64;
         let vault_decimals = ctx.accounts.share_mint.decimals;
-        let new_exchange_rate_d = teller::to_decimal(new_exchange_rate, vault_decimals)?;
+        let new_exchange_rate_d = math::to_decimal(new_exchange_rate, vault_decimals)?;
         let current_exchange_rate = ctx.accounts.boring_vault_state.teller.exchange_rate;
-        let current_exchange_rate_d = teller::to_decimal(current_exchange_rate, vault_decimals)?;
-        let upper_bound = teller::to_decimal(
+        let current_exchange_rate_d = math::to_decimal(current_exchange_rate, vault_decimals)?;
+        let upper_bound = math::to_decimal(
             ctx.accounts
                 .boring_vault_state
                 .teller
                 .allowed_exchange_rate_change_upper_bound,
             BPS_DECIMALS,
         )?;
-        let lower_bound = teller::to_decimal(
+        let lower_bound = math::to_decimal(
             ctx.accounts
                 .boring_vault_state
                 .teller
@@ -791,13 +800,13 @@ pub mod boring_vault_svm {
             let mut performance_fees_owed_in_base_asset: u64 = 0;
             // First determine platform fee
             let share_supply_to_use_d = if current_total_shares > total_shares_last_update {
-                teller::to_decimal(total_shares_last_update, vault_decimals)?
+                math::to_decimal(total_shares_last_update, vault_decimals)?
             } else {
-                teller::to_decimal(current_total_shares, vault_decimals)?
+                math::to_decimal(current_total_shares, vault_decimals)?
             };
 
             if ctx.accounts.boring_vault_state.teller.platform_fee_bps > 0 {
-                let platform_fee_d = teller::to_decimal(
+                let platform_fee_d = math::to_decimal(
                     ctx.accounts.boring_vault_state.teller.platform_fee_bps,
                     BPS_DECIMALS,
                 )?;
@@ -826,7 +835,7 @@ pub mod boring_vault_svm {
                     .checked_div(Decimal::from(365 * 86400))
                     .ok_or(error!(BoringErrorCode::MathError))?;
                 platform_fees_owed_in_base_asset =
-                    teller::from_decimal(platform_fee_in_base_asset, vault_decimals)?;
+                    math::from_decimal(platform_fee_in_base_asset, vault_decimals)?;
             }
 
             if new_exchange_rate
@@ -837,14 +846,14 @@ pub mod boring_vault_svm {
                     .exchange_rate_high_water_mark
             {
                 if ctx.accounts.boring_vault_state.teller.performance_fee_bps > 0 {
-                    let high_water_mark_d = teller::to_decimal(
+                    let high_water_mark_d = math::to_decimal(
                         ctx.accounts
                             .boring_vault_state
                             .teller
                             .exchange_rate_high_water_mark,
                         vault_decimals,
                     )?;
-                    let performance_fee_d = teller::to_decimal(
+                    let performance_fee_d = math::to_decimal(
                         ctx.accounts.boring_vault_state.teller.performance_fee_bps,
                         BPS_DECIMALS,
                     )?;
@@ -858,7 +867,7 @@ pub mod boring_vault_svm {
                         .checked_mul(performance_fee_d)
                         .ok_or(error!(BoringErrorCode::MathError))?;
                     performance_fees_owed_in_base_asset =
-                        teller::from_decimal(performance_fee_in_base_asset, vault_decimals)?;
+                        math::from_decimal(performance_fee_in_base_asset, vault_decimals)?;
                 }
 
                 // Always update high water mark

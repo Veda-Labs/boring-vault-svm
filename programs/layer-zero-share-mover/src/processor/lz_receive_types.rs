@@ -16,6 +16,7 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct LzReceiveTypes<'info> {
+    /// CHECK: share mover is validated at runtime
     pub store: UncheckedAccount<'info>,
 }
 
