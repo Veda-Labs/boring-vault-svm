@@ -450,8 +450,6 @@ describe("boring-vault-svm", () => {
       .setupStack()
       .accounts({
         signer: user.publicKey,
-        userStack: userStack,
-        systemProgram: SystemProgram.programId,
       })
       .instruction();
 
@@ -946,7 +944,6 @@ describe("boring-vault-svm", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: userShareAta, // The account we are monitoring
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -963,15 +960,8 @@ describe("boring-vault-svm", () => {
           boringVaultState: boringVaultStateAccount,
           boringVault: boringVaultAccount,
           depositMint: JITOSOL,
-          assetData: jitoSolAssetDataPda,
           userAta: userJitoSolAta,
           vaultAta: vaultJitoSolAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          tokenProgram2022: TOKEN_2022_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          shareMint: boringVaultShareMint,
-          userShares: userShareAta,
           priceFeed: anchor.web3.PublicKey.default,
         })
         .instruction();
@@ -987,7 +977,6 @@ describe("boring-vault-svm", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: userShareAta,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -1008,7 +997,6 @@ describe("boring-vault-svm", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: userShareAta,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -1025,15 +1013,8 @@ describe("boring-vault-svm", () => {
           boringVaultState: boringVaultStateAccount,
           boringVault: boringVaultAccount,
           depositMint: JITOSOL,
-          assetData: jitoSolAssetDataPda,
           userAta: userJitoSolAta,
           vaultAta: vaultJitoSolAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          tokenProgram2022: TOKEN_2022_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          shareMint: boringVaultShareMint,
-          userShares: userShareAta,
           priceFeed: anchor.web3.PublicKey.default,
         })
         .instruction();
@@ -1049,7 +1030,6 @@ describe("boring-vault-svm", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: userShareAta,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();

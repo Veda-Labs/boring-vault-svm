@@ -6,12 +6,12 @@
 //! - Managing token transfers
 //! - Computing exchange rates
 
+use crate::OracleSource; // enum declared in state.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
+use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
-use crate::OracleSource; // enum declared in state.rs
-use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 // Internal modules
@@ -238,9 +238,7 @@ pub fn calculate_assets_out<'a>(
         let assets_out_in_base =
             calculate_assets_out_in_base_asset(args.share_amount, exchange_rate, share_decimals)?;
         let assets_out_in_base = to_decimal(assets_out_in_base, share_decimals)?;
-        let assets_out = from_decimal(assets_out_in_base, asset_decimals)?;
-
-        assets_out
+        from_decimal(assets_out_in_base, asset_decimals)?
     } else {
         // Query price feed.
         let price = read_oracle(
