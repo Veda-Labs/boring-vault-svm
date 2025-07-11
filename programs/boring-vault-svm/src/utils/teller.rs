@@ -10,15 +10,15 @@ use crate::OracleSource; // enum declared in state.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
 use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
+use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
-use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 // Internal modules
-use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
 use super::math;
+use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
 
-use math::{to_decimal, from_decimal};
+use math::{from_decimal, to_decimal};
 
 // ================================ Validation Functions ================================
 
@@ -367,19 +367,20 @@ fn read_oracle(
         OracleSource::PythV2 => {
             // Require feed_id for PythV2
             let feed_id = feed_id.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
-            
+
             // Decode Pyth Pull Oracle price update account
-            let price_update_account = PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
-                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
-            
+            let price_update_account =
+                PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
+                    .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+
             // Convert slot staleness threshold to seconds using pure math function
             let max_age_sec = math::slots_to_seconds(max_staleness);
-            
+
             // Get price with feed_id validation
             let price_data = price_update_account
                 .get_price_no_older_than(&Clock::get()?, max_age_sec, &feed_id)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
-            
+
             // Convert to decimal using pure math function
             let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.exponent)?;
             Ok(decimal_price)
@@ -438,8 +439,6 @@ fn calculate_shares_to_mint_using_deposit_asset(
 
     Ok(shares_to_mint)
 }
-
-
 
 /// Calculates assets to withdraw in base asset
 fn calculate_assets_out_in_base_asset(

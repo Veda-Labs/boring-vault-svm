@@ -75,12 +75,10 @@ pub struct Deploy<'info> {
     pub mint: InterfaceAccount<'info, Mint>,
 
     /// CHECK: oapp registry is initialized in LZ CPI call
+    #[account(mut)]
     pub oapp_registry: UncheckedAccount<'info>,
 
-    /// CHECK: endpoint program is known
-    #[account(
-        address = L0_ENDPOINT_PROGRAM_ID @ BoringErrorCode::InvalidEndpointProgram,
-    )]
+    /// CHECK: admin configured endpoint program
     pub endpoint_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,

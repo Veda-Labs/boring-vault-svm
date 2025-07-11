@@ -1,12 +1,13 @@
 use anchor_lang::{prelude::Pubkey, prelude::*};
 use common::{error::MathError, rate_limit::RateLimitState};
 
+#[derive(InitSpace)]
 #[account]
 pub struct ProgramConfig {
     pub authority: Pubkey,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
 pub enum PeerChain {
     Unknown,
     Evm,
@@ -19,6 +20,7 @@ impl Default for PeerChain {
 }
 
 // TODO: review immutability
+#[derive(InitSpace)]
 #[account]
 pub struct ShareMover {
     pub admin: Pubkey,

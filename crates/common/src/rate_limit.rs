@@ -2,7 +2,7 @@ use crate::error::RateLimitError;
 use anchor_lang::prelude::*;
 
 /// Rate limit state matching the EVM implementation's linear decay model
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, InitSpace)]
 pub struct RateLimitState {
     /// The amount currently in flight (being tracked in the window)
     pub amount_in_flight: u64,

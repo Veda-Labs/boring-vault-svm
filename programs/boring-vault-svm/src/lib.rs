@@ -345,20 +345,20 @@ pub mod boring_vault_svm {
             );
         }
 
-            require!(
-        args.asset_data.share_premium_bps <= MAXIMUM_SHARE_PREMIUM_BPS,
-        BoringErrorCode::MaximumSharePremiumExceeded
-    );
-
-    // Validate that feed_id is provided when oracle_source is PythV2
-    if matches!(args.asset_data.oracle_source, OracleSource::PythV2) {
         require!(
-            args.asset_data.feed_id.is_some(),
-            BoringErrorCode::InvalidPriceFeed
+            args.asset_data.share_premium_bps <= MAXIMUM_SHARE_PREMIUM_BPS,
+            BoringErrorCode::MaximumSharePremiumExceeded
         );
-    }
 
-    let asset_data = &mut ctx.accounts.asset_data;
+        // Validate that feed_id is provided when oracle_source is PythV2
+        if matches!(args.asset_data.oracle_source, OracleSource::PythV2) {
+            require!(
+                args.asset_data.feed_id.is_some(),
+                BoringErrorCode::InvalidPriceFeed
+            );
+        }
+
+        let asset_data = &mut ctx.accounts.asset_data;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
         asset_data.share_premium_bps = args.asset_data.share_premium_bps;
