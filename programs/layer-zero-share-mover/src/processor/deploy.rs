@@ -135,6 +135,9 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
         window: params.inbound_window,
     };
 
+    // Initialize LzReceiveTypesAccounts with ShareMover as the store ------------------
+    ctx.accounts.lz_receive_types_accounts.store = share_mover.key();
+
     // Prepare seeds for CPI signing
     let mint_key = ctx.accounts.mint.key();
     let seeds = [

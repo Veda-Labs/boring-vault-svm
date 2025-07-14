@@ -697,7 +697,7 @@ describe("state-assert", () => {
         dataOffset,
         initialValue
       );
-    
+
       await program.methods
         .pushStateAssert(dataOffset, compareTo, { gte: {} }, { any: {} })
         .accounts({
@@ -706,7 +706,7 @@ describe("state-assert", () => {
         })
         .signers([user])
         .rpc();
-    
+
       await program.methods
         .popStateAssert()
         .accounts({
@@ -716,7 +716,7 @@ describe("state-assert", () => {
         .signers([user])
         .rpc(); // Should succeed as 0 >= 0
     });
-    
+
     it("Should pass LTE comparison when value does not change", async () => {
       const dataOffset = 8;
       const initialValue = new anchor.BN(5000);
@@ -726,7 +726,7 @@ describe("state-assert", () => {
         dataOffset,
         initialValue
       );
-    
+
       await program.methods
         .pushStateAssert(dataOffset, compareTo, { lte: {} }, { any: {} })
         .accounts({
@@ -735,7 +735,7 @@ describe("state-assert", () => {
         })
         .signers([user])
         .rpc();
-    
+
       await program.methods
         .popStateAssert()
         .accounts({

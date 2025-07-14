@@ -42,4 +42,10 @@ pub enum BoringErrorCode {
     NotAllowedFrom,
     #[msg("Not Allowed to")]
     NotAllowedTo,
+
+    #[msg("Invalid new admin")]
+    InvalidNewAdmin,
+
+    #[msg("Invalid peer address")]
+    InvalidPeerAddress,
 }

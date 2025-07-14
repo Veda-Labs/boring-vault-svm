@@ -38,6 +38,8 @@ pub struct SetPeer<'info> {
 }
 
 pub fn set_peer(ctx: Context<SetPeer>, params: SetPeerParams) -> Result<()> {
+    // Reject all-zero peer address
+    require!(params.peer_address.iter().any(|&b| b != 0), BoringErrorCode::InvalidPeerAddress);
     ctx.accounts.peer.peer_address = params.peer_address;
     ctx.accounts.peer.bump = ctx.bumps.peer;
     Ok(())
