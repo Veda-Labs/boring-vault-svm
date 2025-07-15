@@ -115,8 +115,8 @@ pub mod boring_vault_svm {
             vault.config.share_mint = ctx.accounts.share_mint.key();
             vault.config.paused = false;
 
-            // Bridge program default pubkey, must be explicitly set
-            vault.config.bridge_program = Pubkey::default();
+            // Share mover default pubkey, must be explicitly set
+            vault.config.share_mover = Pubkey::default();
 
             // Initialize teller state.
             vault.teller.base_asset = ctx.accounts.base_asset.key();
@@ -1202,18 +1202,18 @@ pub mod boring_vault_svm {
 
     // ================================== Bridge Functions ==================================
 
-    pub fn set_bridge_program(
-        ctx: Context<SetBridgeProgram>,
-        bridge_program: Pubkey,
+    pub fn set_share_mover(
+        ctx: Context<SetShareMover>,
+        share_mover: Pubkey,
     ) -> Result<()> {
         require_keys_neq!(
-            bridge_program,
+            share_mover,
             Pubkey::default(),
             BoringErrorCode::InvalidBridgeProgram
         );
 
         let vault = &mut ctx.accounts.vault;
-        vault.config.bridge_program = bridge_program;
+        vault.config.share_mover = share_mover;
 
         Ok(())
     }
@@ -1221,7 +1221,7 @@ pub mod boring_vault_svm {
     pub fn mint_shares(ctx: Context<MintShares>, _recipient: Pubkey, amount: u64) -> Result<()> {
         require!(amount > 0, BoringErrorCode::InvalidAmount);
         require!(
-            ctx.accounts.vault.config.bridge_program != Pubkey::default(),
+            ctx.accounts.vault.config.share_mover != Pubkey::default(),
             BoringErrorCode::InvalidBridgeProgram
         );
 
@@ -1250,7 +1250,7 @@ pub mod boring_vault_svm {
     pub fn burn_shares(ctx: Context<BurnShares>, amount: u64) -> Result<()> {
         require!(amount > 0, BoringErrorCode::InvalidAmount);
         require!(
-            ctx.accounts.vault.config.bridge_program != Pubkey::default(),
+            ctx.accounts.vault.config.share_mover != Pubkey::default(),
             BoringErrorCode::InvalidBridgeProgram
         );
 
@@ -2098,7 +2098,7 @@ pub struct GetRateInQuoteSafe<'info> {
 }
 
 #[derive(Accounts)]
-pub struct SetBridgeProgram<'info> {
+pub struct SetShareMover<'info> {
     pub authority: Signer<'info>,
     #[account(
         mut,
@@ -2111,9 +2111,9 @@ pub struct SetBridgeProgram<'info> {
 #[instruction(recipient: Pubkey, amount: u64)]
 pub struct MintShares<'info> {
     #[account(
-        constraint = vault.config.verify_bridge_authority(&bridge_authority.key()) @ BoringErrorCode::NotAuthorized,
+        constraint = vault.config.share_mover == share_mover.key() @ BoringErrorCode::NotAuthorized,
     )]
-    pub bridge_authority: Signer<'info>,
+    pub share_mover: Signer<'info>,
 
     #[account(
         constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,

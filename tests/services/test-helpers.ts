@@ -200,8 +200,6 @@ export class TestHelperService {
       .accounts({
         signer: exchangeRateProvider.publicKey,
         boringVaultState: boringVaultStateAccount,
-        shareMint: boringVaultShareMint,
-        clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
       })
       .instruction();
 
