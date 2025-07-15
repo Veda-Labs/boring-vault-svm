@@ -13,9 +13,7 @@ use arbitrary::Arbitrary;
 use quickcheck::{quickcheck, TestResult};
 
 // Re-export the types/functions we want to test from the crate
-use common::message::{
-    decode_message, encode_message, ShareBridgeMessage, MESSAGE_SIZE,
-};
+use common::message::{decode_message, encode_message, ShareBridgeMessage, MESSAGE_SIZE};
 
 // =============================================================================
 // 1. ARBITRARY IMPLEMENTATIONS FOR PROPERTY-BASED TESTING
@@ -221,7 +219,7 @@ mod structured_fuzz_tests {
     fn fuzz_message_boundaries() {
         let boundary_cases = vec![
             (MESSAGE_SIZE - 1, false), // Too short
-            (MESSAGE_SIZE,     true ), // Exact size
+            (MESSAGE_SIZE, true),      // Exact size
             (MESSAGE_SIZE + 1, false), // Too long
         ];
 
@@ -269,23 +267,26 @@ mod structured_fuzz_tests {
 
             // Decoding should succeed (size unchanged) but produce a different message
             let decoded = decode_message(&mutated).unwrap();
-            assert_ne!(decoded, original_msg, "Byte index {i} mutation did not alter message");
+            assert_ne!(
+                decoded, original_msg,
+                "Byte index {i} mutation did not alter message"
+            );
         }
     }
 
     #[test]
     fn fuzz_malformed_messages() {
         let malformed_cases = vec![
-            vec![],                          // Empty
-            vec![0u8; 1],                    // Single byte
-            vec![0u8; 16],                   // Half message
-            vec![0u8; 31],                   // Almost recipient
-            vec![0u8; 32],                   // Just recipient
-            vec![0u8; 47],                   // Almost complete
-            vec![0u8; 49],                   // Too long by 1
-            vec![0u8; 100],                  // Much too long
-            vec![0xFFu8; MESSAGE_SIZE],      // All 0xFF – formally correct length
-            vec![0x00u8; MESSAGE_SIZE],      // All zeros
+            vec![],                     // Empty
+            vec![0u8; 1],               // Single byte
+            vec![0u8; 16],              // Half message
+            vec![0u8; 31],              // Almost recipient
+            vec![0u8; 32],              // Just recipient
+            vec![0u8; 47],              // Almost complete
+            vec![0u8; 49],              // Too long by 1
+            vec![0u8; 100],             // Much too long
+            vec![0xFFu8; MESSAGE_SIZE], // All 0xFF – formally correct length
+            vec![0x00u8; MESSAGE_SIZE], // All zeros
         ];
 
         for data in malformed_cases {
@@ -303,18 +304,20 @@ mod structured_fuzz_tests {
         let test_cases = vec![
             (0, 0, 0, Some(0)),
             (0, 18, 6, Some(0)),
-            (1, 18, 6, None),                          // Dust
-            (999_999_999_999, 18, 6, None),           // Dust
-            (1_000_000_000_000, 18, 6, Some(1)),      // Minimum non-dust
-            (u128::MAX, 0, 1, None),                  // Overflow
+            (1, 18, 6, None),                                    // Dust
+            (999_999_999_999, 18, 6, None),                      // Dust
+            (1_000_000_000_000, 18, 6, Some(1)),                 // Minimum non-dust
+            (u128::MAX, 0, 1, None),                             // Overflow
             (u128::MAX / 10, 0, 1, Some((u128::MAX / 10) * 10)), // Just fits
         ];
 
         for (amount, from_decimals, to_decimals, expected) in test_cases {
-            let result = ShareBridgeMessage::convert_amount_decimals(
-                amount, from_decimals, to_decimals
+            let result =
+                ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals);
+            assert_eq!(
+                result, expected,
+                "Failed for amount={amount}, from={from_decimals}, to={to_decimals}"
             );
-            assert_eq!(result, expected, "Failed for amount={amount}, from={from_decimals}, to={to_decimals}");
         }
     }
 }
@@ -381,4 +384,4 @@ mod codec_invariant_tests {
             }
         }
     }
-} 
+}

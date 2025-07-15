@@ -17,7 +17,10 @@ pub struct TransferAuthority<'info> {
 }
 
 pub fn transfer_authority(ctx: Context<TransferAuthority>, new_admin: Pubkey) -> Result<()> {
-    require!(new_admin != Pubkey::default(), BoringErrorCode::InvalidNewAdmin);
+    require!(
+        new_admin != Pubkey::default(),
+        BoringErrorCode::InvalidNewAdmin
+    );
     ctx.accounts.share_mover.admin = new_admin;
     msg!("ShareMover admin updated to: {}", new_admin);
     Ok(())

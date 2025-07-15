@@ -1202,10 +1202,7 @@ pub mod boring_vault_svm {
 
     // ================================== Bridge Functions ==================================
 
-    pub fn set_share_mover(
-        ctx: Context<SetShareMover>,
-        share_mover: Pubkey,
-    ) -> Result<()> {
+    pub fn set_share_mover(ctx: Context<SetShareMover>, share_mover: Pubkey) -> Result<()> {
         require_keys_neq!(
             share_mover,
             Pubkey::default(),

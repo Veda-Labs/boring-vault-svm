@@ -1,6 +1,6 @@
 use crate::{
     error::BoringErrorCode,
-    seed::{L0_ENDPOINT_PROGRAM_ID, LZ_RECEIVE_TYPES_SEED, PROGRAM_CONFIG_SEED, SHARE_MOVER_SEED},
+    seed::{LZ_RECEIVE_TYPES_SEED, PROGRAM_CONFIG_SEED, SHARE_MOVER_SEED},
     state::{
         lz::LzReceiveTypesAccounts,
         share_mover::{PeerChain, ProgramConfig, ShareMover},

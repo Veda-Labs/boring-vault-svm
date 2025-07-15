@@ -358,7 +358,7 @@ fn read_oracle(
             // Convert slot staleness threshold to seconds using pure math function
             let max_age_sec = math::slots_to_seconds(max_staleness);
             let current_ts = Clock::get()?.unix_timestamp;
-            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts as i64, max_age_sec);
+            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts, max_age_sec);
             let price_data = price_data_opt.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
             // Convert to decimal using pure math function
             let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.expo)?;
