@@ -486,7 +486,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
       .signers([admin])
       .rpc()
       .catch((e) => {
-        expect(e.error.errorMessage).to.include("Vault paused");
+        expect(e.error.errorMessage).to.include("Share Mover paused");
       });
 
     // unpause for subsequent tests

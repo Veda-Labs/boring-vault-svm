@@ -6,7 +6,7 @@ pub enum BoringErrorCode {
     InvalidShareMint,
     #[msg("Invalid associated token account")]
     InvalidAssociatedTokenAccount,
-    #[msg("Vault paused")]
+    #[msg("Share Mover paused")]
     ShareMoverPaused,
     #[msg("Not authorized")]
     NotAuthorized,
