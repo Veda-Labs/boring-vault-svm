@@ -39,13 +39,8 @@ pub fn lz_receive_types(
         &share_mover_key.to_bytes(),
         &params.src_eid.to_be_bytes(),
     ];
-    let (peer, _) = Pubkey::find_program_address(&peer_seeds, &crate::ID);
 
-    // validate peer address
-    let (peer_key, _) = Pubkey::find_program_address(&peer_seeds, &crate::ID);
-    if peer_key != peer {
-        return Err(BoringErrorCode::InvalidPeer.into());
-    }
+    let (peer, _) = Pubkey::find_program_address(&peer_seeds, &crate::ID);
 
     let mut accounts = vec![
         LzAccount {
