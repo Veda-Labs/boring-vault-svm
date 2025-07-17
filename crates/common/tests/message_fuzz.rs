@@ -260,17 +260,22 @@ mod structured_fuzz_tests {
         let original_msg = ShareBridgeMessage::new([0xAB; 32], 42u128);
         let mut encoded = encode_message(&original_msg);
 
-        // Flip every byte one by one and ensure the decoded message differs
+        // Flip every byte one by one and ensure the decoded message differs.
+        // Test both the lowest bit (0x01) and highest bit (0x80) to cover
+        // little- and big-endian edge cases.
         for i in 0..MESSAGE_SIZE {
-            let mut mutated = encoded.clone();
-            mutated[i] ^= 0x01; // toggle lowest bit
+            for &bit in &[0x01u8, 0x80u8] {
+                let mut mutated = encoded.clone();
+                mutated[i] ^= bit; // toggle selected bit
 
-            // Decoding should succeed (size unchanged) but produce a different message
-            let decoded = decode_message(&mutated).unwrap();
-            assert_ne!(
-                decoded, original_msg,
-                "Byte index {i} mutation did not alter message"
-            );
+                // Decoding should succeed (size unchanged) but produce a different message
+                let decoded = decode_message(&mutated).unwrap();
+                assert_ne!(
+                    decoded, original_msg,
+                    "Byte index {i} bitmask {:#04X} mutation did not alter message",
+                    bit
+                );
+            }
         }
     }
 

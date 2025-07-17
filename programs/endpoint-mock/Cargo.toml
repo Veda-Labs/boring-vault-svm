@@ -1,7 +1,7 @@
 [package]
 name = "endpoint"
 version = "0.1.0"
-description = "Created with Anchor"
+description = "Layer Zero Endpoint Mock Program"
 edition = "2021"
 
 [lib]

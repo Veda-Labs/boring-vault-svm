@@ -20,7 +20,6 @@ use rust_decimal::Decimal;
 ///
 /// # Examples
 /// ```
-/// let price = pyth_price_to_decimal(123456789, -8);
 /// // Results in 1.23456789 (123456789 * 10^-8)
 /// ```
 pub fn pyth_price_to_decimal(price: i64, exponent: i32) -> Result<Decimal> {
