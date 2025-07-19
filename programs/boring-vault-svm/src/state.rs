@@ -27,6 +27,7 @@ pub struct VaultState {
     pub share_mint: Pubkey,
     pub deposit_sub_account: u8,
     pub withdraw_sub_account: u8,
+    pub share_mover: Pubkey,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]

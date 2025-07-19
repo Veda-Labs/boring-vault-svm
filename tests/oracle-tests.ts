@@ -27,7 +27,7 @@ function addUniquenessToMethod(method: any) {
   return method.preInstructions([
     ComputeBudgetProgram.setComputeUnitLimit({
       units: 1_400_000 + currentNonce,
-    })
+    }),
   ]);
 }
 
@@ -53,7 +53,10 @@ describe("oracle tests", () => {
   const coder = new anchor.BorshCoder(idl);
 
   // Minimal Token-2022 mint (82-byte layout)
-  const createStubTokenMint = (mintAuthority: anchor.web3.PublicKey, decimals: number): Buffer => {
+  const createStubTokenMint = (
+    mintAuthority: anchor.web3.PublicKey,
+    decimals: number
+  ): Buffer => {
     const buf = Buffer.alloc(82);
     buf.writeUInt32LE(1, 0); // mint_authority option = Some
     mintAuthority.toBuffer().copy(buf, 4); // mint_authority
@@ -73,7 +76,10 @@ describe("oracle tests", () => {
     const decoded = coder.types.decode("OracleSource", buf);
 
     // The first byte represents the variant index (0 for the first variant).
-    expect(buf[0]).to.equal(0, "Unexpected variant discriminant for SwitchboardV2");
+    expect(buf[0]).to.equal(
+      0,
+      "Unexpected variant discriminant for SwitchboardV2"
+    );
     expect(decoded).to.deep.equal(original);
   });
 
@@ -121,7 +127,7 @@ describe("oracle tests", () => {
 
     for (const oracleVariant of variants) {
       const assetData = { ...minimalAssetData, oracle_source: oracleVariant };
-      
+
       // For PythV2, provide a mock feed_id
       if ("PythV2" in oracleVariant) {
         assetData.feed_id = Array.from({ length: 32 }, (_, i) => i); // Mock 32-byte array
@@ -142,9 +148,15 @@ describe("oracle tests", () => {
     const pythBuf = Buffer.from([1]);
     const pythV2Buf = Buffer.from([2]);
 
-    expect(coder.types.decode("OracleSource", switchboardBuf)).to.deep.equal({ SwitchboardV2: {} });
-    expect(coder.types.decode("OracleSource", pythBuf)).to.deep.equal({ Pyth: {} });
-    expect(coder.types.decode("OracleSource", pythV2Buf)).to.deep.equal({ PythV2: {} });
+    expect(coder.types.decode("OracleSource", switchboardBuf)).to.deep.equal({
+      SwitchboardV2: {},
+    });
+    expect(coder.types.decode("OracleSource", pythBuf)).to.deep.equal({
+      Pyth: {},
+    });
+    expect(coder.types.decode("OracleSource", pythV2Buf)).to.deep.equal({
+      PythV2: {},
+    });
   });
 
   it("throws when decoding unknown discriminant", () => {
@@ -163,7 +175,10 @@ describe("oracle tests", () => {
   // -----------------------------------------------------------------------------
   it("performs a SOL deposit that relies on a SwitchboardV2 price feed", async () => {
     const authority = provider.wallet.payer as anchor.web3.Keypair;
-    const program = new anchor.Program(idl, provider as unknown as anchor.Provider) as anchor.Program<any>;
+    const program = new anchor.Program(
+      idl,
+      provider as unknown as anchor.Provider
+    ) as anchor.Program<any>;
 
     // Program setup (reuse existing pattern)
     const programKeypair = anchor.web3.Keypair.fromSecretKey(
@@ -203,7 +218,10 @@ describe("oracle tests", () => {
   // -----------------------------------------------------------------------------
   it("successfully updates asset data with pyth oracle source enum", async () => {
     const authority = provider.wallet.payer as anchor.web3.Keypair;
-    const program = new anchor.Program(idl, provider as unknown as anchor.Provider) as anchor.Program<any>;
+    const program = new anchor.Program(
+      idl,
+      provider as unknown as anchor.Provider
+    ) as anchor.Program<any>;
 
     // Program setup (reuse existing pattern)
     const programKeypair = anchor.web3.Keypair.fromSecretKey(
@@ -221,8 +239,9 @@ describe("oracle tests", () => {
 
     // Initialize if needed (idempotent)
     try {
-      await addUniquenessToMethod(program.methods
-        .initialize(authority.publicKey))
+      await addUniquenessToMethod(
+        program.methods.initialize(authority.publicKey)
+      )
         .accounts({
           signer: authority.publicKey,
           program: programKeypair.publicKey,
@@ -238,9 +257,11 @@ describe("oracle tests", () => {
     }
 
     // Get next vault ID (incremented from current count) to avoid conflicts
-    const programConfig: any = await program.account.programConfig.fetch(configPda);
+    const programConfig: any = await program.account.programConfig.fetch(
+      configPda
+    );
     const vaultId: BN = new BN(programConfig.vaultCount); // Use the proper next vault ID
-    
+
     const vaultIdBytes = Buffer.alloc(8);
     vaultId.toArrayLike(Buffer, "le", 8).copy(vaultIdBytes);
 
@@ -266,10 +287,10 @@ describe("oracle tests", () => {
 
     // Use unique keypair-based name for true uniqueness
     const uniqueId = testMint.publicKey.toString().slice(0, 8);
-    
+
     // Deploy a vault first to create the vault state PDA
-    await addUniquenessToMethod(program.methods
-      .deploy({
+    await addUniquenessToMethod(
+      program.methods.deploy({
         authority: authority.publicKey,
         name: `PYTH_ORACLE_${uniqueId}`,
         symbol: "POT",
@@ -283,7 +304,8 @@ describe("oracle tests", () => {
         performanceFeeBps: 0,
         withdrawAuthority: anchor.web3.PublicKey.default,
         strategist: authority.publicKey,
-      }))
+      })
+    )
       .accounts({
         signer: authority.publicKey,
         config: configPda,
@@ -298,7 +320,11 @@ describe("oracle tests", () => {
 
     // Create asset data with Pyth oracle
     const [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("asset-data"), vaultStatePda.toBuffer(), testMint.publicKey.toBuffer()],
+      [
+        Buffer.from("asset-data"),
+        vaultStatePda.toBuffer(),
+        testMint.publicKey.toBuffer(),
+      ],
       program.programId
     );
 
@@ -306,9 +332,9 @@ describe("oracle tests", () => {
 
     // Test pyth oracle source enum - this is the key test
     const uniqueBps = parseInt(uniqueId.slice(0, 2), 16) % 100; // Use part of unique ID for BPS
-    
-    await addUniquenessToMethod(program.methods
-      .updateAssetData({
+
+    await addUniquenessToMethod(
+      program.methods.updateAssetData({
         vaultId,
         assetData: {
           allowDeposits: true,
@@ -317,12 +343,15 @@ describe("oracle tests", () => {
           isPeggedToBaseAsset: true, // Set to true to bypass oracle validation for this test
           priceFeed: mockPriceFeed,
           inversePriceFeed: false,
-          maxStaleness: new BN(5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000), // Use unique ID
+          maxStaleness: new BN(
+            5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000
+          ), // Use unique ID
           minSamples: 0,
           oracleSource: { pyth: {} }, // Test pyth enum variant
           feedId: null, // Not used for Pyth oracle
         },
-      }))
+      })
+    )
       .accounts({
         signer: authority.publicKey,
         boringVaultState: vaultStatePda,
@@ -334,8 +363,10 @@ describe("oracle tests", () => {
       .rpc();
 
     // Verify the asset data was stored correctly
-    const storedAssetData: any = await program.account.assetData.fetch(assetDataPda);
-    
+    const storedAssetData: any = await program.account.assetData.fetch(
+      assetDataPda
+    );
+
     // Check that pyth oracle source was properly stored
     expect(storedAssetData.oracleSource).to.deep.include({ pyth: {} });
     expect(storedAssetData.allowDeposits).to.be.true;
@@ -347,7 +378,10 @@ describe("oracle tests", () => {
   // -----------------------------------------------------------------------------
   it("can deposit SOL into a vault with pyth oracle source", async () => {
     const authority = provider.wallet.payer as anchor.web3.Keypair;
-    const program = new anchor.Program(idl, provider as unknown as anchor.Provider) as anchor.Program<any>;
+    const program = new anchor.Program(
+      idl,
+      provider as unknown as anchor.Provider
+    ) as anchor.Program<any>;
 
     // Program setup (reuse existing pattern)
     const programKeypair = anchor.web3.Keypair.fromSecretKey(
@@ -382,9 +416,11 @@ describe("oracle tests", () => {
     }
 
     // Get next vault ID (incremented from current count) to avoid conflicts
-    const programConfig: any = await program.account.programConfig.fetch(configPda);
+    const programConfig: any = await program.account.programConfig.fetch(
+      configPda
+    );
     const vaultId: BN = new BN(programConfig.vaultCount); // Use the proper next vault ID
-    
+
     const vaultIdBytes = Buffer.alloc(8);
     vaultId.toArrayLike(Buffer, "le", 8).copy(vaultIdBytes);
 
@@ -410,7 +446,7 @@ describe("oracle tests", () => {
 
     // Use unique keypair-based name for true uniqueness
     const uniqueId = baseAssetMint.publicKey.toString().slice(0, 8);
-    
+
     // Deploy a vault with base asset
     await program.methods
       .deploy({
@@ -441,9 +477,15 @@ describe("oracle tests", () => {
       .rpc();
 
     // Set up asset data for SOL (native SOL) with Pyth oracle
-    const NATIVE_SOL = new anchor.web3.PublicKey("11111111111111111111111111111111");
+    const NATIVE_SOL = new anchor.web3.PublicKey(
+      "11111111111111111111111111111111"
+    );
     const [solAssetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("asset-data"), vaultStatePda.toBuffer(), NATIVE_SOL.toBuffer()],
+      [
+        Buffer.from("asset-data"),
+        vaultStatePda.toBuffer(),
+        NATIVE_SOL.toBuffer(),
+      ],
       program.programId
     );
 
@@ -452,7 +494,7 @@ describe("oracle tests", () => {
 
     // Update asset data for SOL with Pyth oracle source
     const uniqueBps = parseInt(uniqueId.slice(0, 2), 16) % 100; // Use part of unique ID for BPS
-    
+
     await program.methods
       .updateAssetData({
         vaultId,
@@ -463,7 +505,9 @@ describe("oracle tests", () => {
           isPeggedToBaseAsset: true, // Set to true to bypass oracle validation for this test
           priceFeed: mockPythPriceFeed,
           inversePriceFeed: false,
-          maxStaleness: new BN(5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000), // Use unique ID
+          maxStaleness: new BN(
+            5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000
+          ), // Use unique ID
           minSamples: 0,
           oracleSource: { pyth: {} }, // Use Pyth oracle source
           feedId: null, // Not used for Pyth oracle
@@ -480,12 +524,14 @@ describe("oracle tests", () => {
       .rpc();
 
     // Verify asset data was set correctly with Pyth oracle
-    const storedAssetData: any = await program.account.assetData.fetch(solAssetDataPda);
+    const storedAssetData: any = await program.account.assetData.fetch(
+      solAssetDataPda
+    );
     expect(storedAssetData.oracleSource).to.deep.include({ pyth: {} });
 
     // Create user for testing deposit
     const user = anchor.web3.Keypair.generate();
-    
+
     // Fund user with SOL
     const transferTx = new anchor.web3.Transaction().add(
       anchor.web3.SystemProgram.transfer({
@@ -513,8 +559,10 @@ describe("oracle tests", () => {
     );
 
     // Get initial balances
-    const initialUserBalance = await context.banksClient.getBalance(user.publicKey);
-    
+    const initialUserBalance = await context.banksClient.getBalance(
+      user.publicKey
+    );
+
     // Perform SOL deposit
     const depositAmount = new BN(1_000_000_000); // 1 SOL
     const minMintAmount = new BN(900_000_000); // Expect at least 0.9 shares
@@ -544,13 +592,15 @@ describe("oracle tests", () => {
       .rpc();
 
     // Verify deposit worked
-    const finalUserBalance = await context.banksClient.getBalance(user.publicKey);
+    const finalUserBalance = await context.banksClient.getBalance(
+      user.publicKey
+    );
     const userShareBalance = await context.banksClient.getAccount(userShareAta);
-    
+
     // Check that user's SOL balance decreased by approximately the deposit amount
     const balanceChange = Number(initialUserBalance - finalUserBalance);
     expect(balanceChange).to.be.greaterThan(depositAmount.toNumber()); // Should be deposit + transaction fees
-    
+
     // Check that user received share tokens
     expect(userShareBalance).to.not.be.null;
   });
@@ -560,7 +610,10 @@ describe("oracle tests", () => {
   // -----------------------------------------------------------------------------
   it("successfully updates asset data with pythV2 oracle source enum", async () => {
     const authority = provider.wallet.payer as anchor.web3.Keypair;
-    const program = new anchor.Program(idl, provider as unknown as anchor.Provider) as anchor.Program<any>;
+    const program = new anchor.Program(
+      idl,
+      provider as unknown as anchor.Provider
+    ) as anchor.Program<any>;
 
     // Program setup (reuse existing pattern)
     const programKeypair = anchor.web3.Keypair.fromSecretKey(
@@ -595,9 +648,11 @@ describe("oracle tests", () => {
     }
 
     // Get next vault ID (incremented from current count) to avoid conflicts
-    const programConfig: any = await program.account.programConfig.fetch(configPda);
+    const programConfig: any = await program.account.programConfig.fetch(
+      configPda
+    );
     const vaultId: BN = new BN(programConfig.vaultCount); // Use the proper next vault ID
-    
+
     const vaultIdBytes = Buffer.alloc(8);
     vaultId.toArrayLike(Buffer, "le", 8).copy(vaultIdBytes);
 
@@ -623,7 +678,7 @@ describe("oracle tests", () => {
 
     // Use unique keypair-based name for true uniqueness
     const uniqueId = testMint.publicKey.toString().slice(0, 8);
-    
+
     // Deploy a vault first to create the vault state PDA
     await program.methods
       .deploy({
@@ -655,7 +710,11 @@ describe("oracle tests", () => {
 
     // Create asset data with PythV2 oracle
     const [assetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("asset-data"), vaultStatePda.toBuffer(), testMint.publicKey.toBuffer()],
+      [
+        Buffer.from("asset-data"),
+        vaultStatePda.toBuffer(),
+        testMint.publicKey.toBuffer(),
+      ],
       program.programId
     );
 
@@ -663,13 +722,14 @@ describe("oracle tests", () => {
 
     // Test pythV2 oracle source enum - this is the key test for the new oracle type
     const uniqueBps = parseInt(uniqueId.slice(0, 2), 16) % 100; // Use part of unique ID for BPS
-    
+
     // Create test feed_id (32 bytes) for PythV2 - using our working JITOSOL/SOL feed ID
     const feedId = [
-      0x01, 0xd5, 0x77, 0xb0, 0x70, 0x31, 0xe1, 0x26, 0x35, 0xd2, 0xfb, 0x86, 0xaf, 0x6a, 0xe9, 0x38,
-      0xbd, 0xc2, 0xb6, 0xdb, 0xa9, 0x60, 0x2d, 0x8e, 0x8a, 0xf3, 0x4d, 0x44, 0x58, 0x75, 0x66, 0xfc
+      0x01, 0xd5, 0x77, 0xb0, 0x70, 0x31, 0xe1, 0x26, 0x35, 0xd2, 0xfb, 0x86,
+      0xaf, 0x6a, 0xe9, 0x38, 0xbd, 0xc2, 0xb6, 0xdb, 0xa9, 0x60, 0x2d, 0x8e,
+      0x8a, 0xf3, 0x4d, 0x44, 0x58, 0x75, 0x66, 0xfc,
     ];
-    
+
     await program.methods
       .updateAssetData({
         vaultId,
@@ -680,7 +740,9 @@ describe("oracle tests", () => {
           isPeggedToBaseAsset: true, // Set to true to bypass oracle validation for this test
           priceFeed: mockPriceFeed,
           inversePriceFeed: false,
-          maxStaleness: new BN(5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000), // Use unique ID
+          maxStaleness: new BN(
+            5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000
+          ), // Use unique ID
           minSamples: 0,
           oracleSource: { pythV2: {} }, // Test PythV2 enum variant
           feedId: feedId, // Include feed_id for PythV2
@@ -697,13 +759,15 @@ describe("oracle tests", () => {
       .rpc();
 
     // Verify the asset data was stored correctly
-    const storedAssetData: any = await program.account.assetData.fetch(assetDataPda);
-    
+    const storedAssetData: any = await program.account.assetData.fetch(
+      assetDataPda
+    );
+
     // Check that PythV2 oracle source was properly stored
     expect(storedAssetData.oracleSource).to.deep.include({ pythV2: {} });
     expect(storedAssetData.allowDeposits).to.be.true;
     expect(storedAssetData.isPeggedToBaseAsset).to.be.true;
-    
+
     // Verify feed_id was stored correctly
     expect(storedAssetData.feedId).to.not.be.null;
     expect(storedAssetData.feedId).to.deep.equal(feedId);
@@ -714,7 +778,10 @@ describe("oracle tests", () => {
   // -----------------------------------------------------------------------------
   it("can deposit SOL into a vault with pythV2 pull oracle source", async () => {
     const authority = provider.wallet.payer as anchor.web3.Keypair;
-    const program = new anchor.Program(idl, provider as unknown as anchor.Provider) as anchor.Program<any>;
+    const program = new anchor.Program(
+      idl,
+      provider as unknown as anchor.Provider
+    ) as anchor.Program<any>;
 
     // Program setup (reuse existing pattern)
     const programKeypair = anchor.web3.Keypair.fromSecretKey(
@@ -749,9 +816,11 @@ describe("oracle tests", () => {
     }
 
     // Get next vault ID (incremented from current count) to avoid conflicts
-    const programConfig: any = await program.account.programConfig.fetch(configPda);
+    const programConfig: any = await program.account.programConfig.fetch(
+      configPda
+    );
     const vaultId: BN = new BN(programConfig.vaultCount); // Use the proper next vault ID
-    
+
     const vaultIdBytes = Buffer.alloc(8);
     vaultId.toArrayLike(Buffer, "le", 8).copy(vaultIdBytes);
 
@@ -777,7 +846,7 @@ describe("oracle tests", () => {
 
     // Use unique keypair-based name for true uniqueness
     const uniqueId = baseAssetMint.publicKey.toString().slice(0, 8);
-    
+
     // Deploy a vault with base asset
     await program.methods
       .deploy({
@@ -808,9 +877,15 @@ describe("oracle tests", () => {
       .rpc();
 
     // Set up asset data for SOL (native SOL) with PythV2 oracle
-    const NATIVE_SOL = new anchor.web3.PublicKey("11111111111111111111111111111111");
+    const NATIVE_SOL = new anchor.web3.PublicKey(
+      "11111111111111111111111111111111"
+    );
     const [solAssetDataPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("asset-data"), vaultStatePda.toBuffer(), NATIVE_SOL.toBuffer()],
+      [
+        Buffer.from("asset-data"),
+        vaultStatePda.toBuffer(),
+        NATIVE_SOL.toBuffer(),
+      ],
       program.programId
     );
 
@@ -819,13 +894,14 @@ describe("oracle tests", () => {
 
     // Update asset data for SOL with PythV2 oracle source
     const uniqueBps = parseInt(uniqueId.slice(0, 2), 16) % 100; // Use part of unique ID for BPS
-    
+
     // Create test feed_id (32 bytes) for PythV2 - using our working JITOSOL/SOL feed ID
     const feedId = [
-      0x01, 0xd5, 0x77, 0xb0, 0x70, 0x31, 0xe1, 0x26, 0x35, 0xd2, 0xfb, 0x86, 0xaf, 0x6a, 0xe9, 0x38,
-      0xbd, 0xc2, 0xb6, 0xdb, 0xa9, 0x60, 0x2d, 0x8e, 0x8a, 0xf3, 0x4d, 0x44, 0x58, 0x75, 0x66, 0xfc
+      0x01, 0xd5, 0x77, 0xb0, 0x70, 0x31, 0xe1, 0x26, 0x35, 0xd2, 0xfb, 0x86,
+      0xaf, 0x6a, 0xe9, 0x38, 0xbd, 0xc2, 0xb6, 0xdb, 0xa9, 0x60, 0x2d, 0x8e,
+      0x8a, 0xf3, 0x4d, 0x44, 0x58, 0x75, 0x66, 0xfc,
     ];
-    
+
     await program.methods
       .updateAssetData({
         vaultId,
@@ -836,7 +912,9 @@ describe("oracle tests", () => {
           isPeggedToBaseAsset: true, // Set to true to bypass oracle validation for this test
           priceFeed: mockPythV2PriceFeed,
           inversePriceFeed: false,
-          maxStaleness: new BN(5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000), // Use unique ID
+          maxStaleness: new BN(
+            5_000_000_000 + parseInt(uniqueId.slice(2, 4), 16) * 1000
+          ), // Use unique ID
           minSamples: 0,
           oracleSource: { pythV2: {} }, // Use PythV2 oracle source
           feedId: feedId, // Required for PythV2
@@ -853,13 +931,15 @@ describe("oracle tests", () => {
       .rpc();
 
     // Verify asset data was set correctly with PythV2 oracle
-    const storedAssetData: any = await program.account.assetData.fetch(solAssetDataPda);
+    const storedAssetData: any = await program.account.assetData.fetch(
+      solAssetDataPda
+    );
     expect(storedAssetData.oracleSource).to.deep.include({ pythV2: {} });
     expect(storedAssetData.feedId).to.deep.equal(feedId);
 
     // Create user for testing deposit
     const user = anchor.web3.Keypair.generate();
-    
+
     // Fund user with SOL
     const transferTx = new anchor.web3.Transaction().add(
       anchor.web3.SystemProgram.transfer({
@@ -887,8 +967,10 @@ describe("oracle tests", () => {
     );
 
     // Get initial balances
-    const initialUserBalance = await context.banksClient.getBalance(user.publicKey);
-    
+    const initialUserBalance = await context.banksClient.getBalance(
+      user.publicKey
+    );
+
     // Perform SOL deposit with PythV2 oracle
     const depositAmount = new BN(1_000_000_000); // 1 SOL
     const minMintAmount = new BN(900_000_000); // Expect at least 0.9 shares
@@ -918,13 +1000,15 @@ describe("oracle tests", () => {
       .rpc();
 
     // Verify deposit worked
-    const finalUserBalance = await context.banksClient.getBalance(user.publicKey);
+    const finalUserBalance = await context.banksClient.getBalance(
+      user.publicKey
+    );
     const userShareBalance = await context.banksClient.getAccount(userShareAta);
-    
+
     // Check that user's SOL balance decreased by approximately the deposit amount
     const balanceChange = Number(initialUserBalance - finalUserBalance);
     expect(balanceChange).to.be.greaterThan(depositAmount.toNumber()); // Should be deposit + transaction fees
-    
+
     // Check that user received share tokens
     expect(userShareBalance).to.not.be.null;
   });
