@@ -596,6 +596,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "arbitrary",
+ "boring-vault-svm",
  "proptest",
  "quickcheck",
 ]

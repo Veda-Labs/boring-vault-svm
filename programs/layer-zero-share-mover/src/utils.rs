@@ -35,17 +35,11 @@ pub fn get_accounts_for_clear(
 
     let (oapp_registry_account, _) =
         Pubkey::find_program_address(&[OAPP_SEED, &receiver.to_bytes()], &endpoint_program);
-    let (event_authority_account, _) =
-        Pubkey::find_program_address(&[EVENT_SEED], &endpoint_program);
+
     let (endpoint_settings_account, _) =
         Pubkey::find_program_address(&[ENDPOINT_SEED], &endpoint_program);
 
     vec![
-        LzAccount {
-            pubkey: endpoint_program,
-            is_signer: false,
-            is_writable: false,
-        },
         LzAccount {
             pubkey: *receiver,
             is_signer: false,
@@ -70,16 +64,6 @@ pub fn get_accounts_for_clear(
             pubkey: endpoint_settings_account,
             is_signer: false,
             is_writable: true,
-        },
-        LzAccount {
-            pubkey: event_authority_account,
-            is_signer: false,
-            is_writable: false,
-        },
-        LzAccount {
-            pubkey: endpoint_program,
-            is_signer: false,
-            is_writable: false,
         },
     ]
 }

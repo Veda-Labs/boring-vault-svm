@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use std::mem::size_of;
 
 use crate::{seed::PROGRAM_CONFIG_SEED, state::share_mover::ProgramConfig};
 
@@ -13,7 +14,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = signer,
-        space = 8 + std::mem::size_of::<ProgramConfig>(),
+        space = 8 + size_of::<ProgramConfig>(),
         seeds = [PROGRAM_CONFIG_SEED],
         bump
     )]
@@ -23,8 +24,7 @@ pub struct Initialize<'info> {
 }
 
 pub fn initialize(ctx: Context<Initialize>, authority: Pubkey) -> Result<()> {
-    let config = &mut ctx.accounts.config;
-    config.authority = authority;
+    ctx.accounts.config.authority = authority;
 
     Ok(())
 }

@@ -6,7 +6,7 @@ use common::message::decode_message;
 
 use crate::{
     error::BoringErrorCode,
-    seed::{L0_ENDPOINT_PROGRAM_ID, PEER_SEED, SHARE_MOVER_SEED},
+    seed::{PEER_SEED, SHARE_MOVER_SEED},
     state::{
         lz::{LzAccount, LzReceiveParams},
         share_mover::ShareMover,
@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct LzReceiveTypes<'info> {
-    /// CHECK: share mover is validated at runtime
+    /// CHECK: share mover is derived in the instruction
     pub store: UncheckedAccount<'info>,
 }
 
@@ -28,9 +28,9 @@ pub fn lz_receive_types(
     let share_mover = ShareMover::try_from_slice(&ctx.accounts.store.data.borrow())?;
     let mint = share_mover.mint;
 
-    // validate share mover address
-    let (sm_key, _) = Pubkey::find_program_address(&[SHARE_MOVER_SEED, mint.as_ref()], &crate::ID);
-    if share_mover_key != sm_key {
+    let (sm_key, bump) =
+        Pubkey::find_program_address(&[SHARE_MOVER_SEED, mint.as_ref()], &crate::ID);
+    if share_mover_key != sm_key || bump != share_mover.bump {
         return Err(BoringErrorCode::InvalidShareMover.into());
     }
 
@@ -40,7 +40,8 @@ pub fn lz_receive_types(
         &params.src_eid.to_be_bytes(),
     ];
 
-    let (peer, _) = Pubkey::find_program_address(&peer_seeds, &crate::ID);
+    // Note: we are not validating the peer sender here, it is done in lz_receive
+    let peer = Pubkey::find_program_address(&peer_seeds, &crate::ID).0;
 
     let mut accounts = vec![
         LzAccount {
@@ -56,7 +57,7 @@ pub fn lz_receive_types(
     ];
 
     let accounts_for_clear = get_accounts_for_clear(
-        L0_ENDPOINT_PROGRAM_ID,
+        share_mover.endpoint_program,
         &share_mover_key,
         params.src_eid,
         &params.sender,
@@ -64,14 +65,12 @@ pub fn lz_receive_types(
     );
     accounts.extend(accounts_for_clear);
 
-    let vault = share_mover.vault;
-
     let decoded_msg = decode_message(&params.message)?;
-    let recipient = decoded_msg.recipient;
 
     let recipient_ata = get_associated_token_address_with_program_id(
-        &Pubkey::from(recipient),
+        &Pubkey::from(decoded_msg.recipient),
         &mint,
+        // Shares are always a 2022 token
         &TOKEN_2022_ID,
     );
 
@@ -82,7 +81,7 @@ pub fn lz_receive_types(
             is_writable: false,
         },
         LzAccount {
-            pubkey: vault,
+            pubkey: share_mover.vault,
             is_signer: false,
             is_writable: false,
         },

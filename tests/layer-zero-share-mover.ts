@@ -150,7 +150,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
     const [expectedVaultPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
-        Buffer.from("boring_vault"),
+        Buffer.from("boring-vault"),
         new BN(0).toArrayLike(Buffer, "le", 8),
         Buffer.from([0]),
       ],

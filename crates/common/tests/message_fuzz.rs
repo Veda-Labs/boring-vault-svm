@@ -258,7 +258,7 @@ mod structured_fuzz_tests {
     #[test]
     fn fuzz_single_byte_mutation_changes_decoded_message() {
         let original_msg = ShareBridgeMessage::new([0xAB; 32], 42u128);
-        let mut encoded = encode_message(&original_msg);
+        let encoded = encode_message(&original_msg);
 
         // Flip every byte one by one and ensure the decoded message differs.
         // Test both the lowest bit (0x01) and highest bit (0x80) to cover

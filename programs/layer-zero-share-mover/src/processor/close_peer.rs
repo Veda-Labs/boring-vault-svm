@@ -9,13 +9,15 @@ use crate::{
 #[derive(Accounts)]
 #[instruction(remote_eid: u32)]
 pub struct ClosePeer<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = signer.key() == share_mover.admin @ BoringErrorCode::NotAuthorized,
+    )]
     pub signer: Signer<'info>,
 
     #[account(
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
         bump = share_mover.bump,
-        constraint = share_mover.admin == signer.key() @ BoringErrorCode::NotAuthorized,
         constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused,
     )]
     pub share_mover: Account<'info, ShareMover>,

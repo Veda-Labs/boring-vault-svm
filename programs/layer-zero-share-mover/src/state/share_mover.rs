@@ -11,6 +11,7 @@ pub struct ProgramConfig {
 pub enum PeerChain {
     Unknown,
     Evm,
+    Sui,
 }
 
 impl Default for PeerChain {
