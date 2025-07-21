@@ -337,7 +337,10 @@ pub fn send<'info>(
         share_mover_seeds,
         &ctx.accounts.peer.peer_address,
         &params,
-        ctx.accounts.peer.enforced_options.combine_options(&None::<Vec<u8>>, &params.options)?,
+        ctx.accounts
+            .peer
+            .enforced_options
+            .combine_options(&None::<Vec<u8>>, &params.options)?,
         encoded_message,
     )?;
 

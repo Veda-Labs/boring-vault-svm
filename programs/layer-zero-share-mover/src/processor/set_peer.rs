@@ -1,3 +1,4 @@
+use crate::state::lz::assert_type_3;
 use crate::{
     error::BoringErrorCode,
     seed::{PEER_SEED, SHARE_MOVER_SEED},
@@ -6,7 +7,6 @@ use crate::{
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::system_program::ID as SYSTEM_PROGRAM_ID;
 use std::mem::size_of;
-use crate::state::lz::assert_type_3;
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct SetPeerParams {
@@ -17,7 +17,10 @@ pub struct SetPeerParams {
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub enum PeerConfigParam {
     PeerAddress([u8; 32]),
-    EnforcedOptions { send: Vec<u8>, send_and_call: Vec<u8> },
+    EnforcedOptions {
+        send: Vec<u8>,
+        send_and_call: Vec<u8>,
+    },
 }
 
 #[derive(Accounts)]
@@ -54,10 +57,16 @@ pub struct SetPeer<'info> {
 pub fn set_peer(ctx: Context<SetPeer>, params: SetPeerParams) -> Result<()> {
     match params.config {
         PeerConfigParam::PeerAddress(addr) => {
-            require!(addr.iter().any(|&b| b != 0), BoringErrorCode::InvalidPeerAddress);
+            require!(
+                addr.iter().any(|&b| b != 0),
+                BoringErrorCode::InvalidPeerAddress
+            );
             ctx.accounts.peer.peer_address = addr;
         }
-        PeerConfigParam::EnforcedOptions { send, send_and_call } => {
+        PeerConfigParam::EnforcedOptions {
+            send,
+            send_and_call,
+        } => {
             // LayerZero requires any override blob to be type-3 so enforce it here.
             assert_type_3(&send)?;
             assert_type_3(&send_and_call)?;
