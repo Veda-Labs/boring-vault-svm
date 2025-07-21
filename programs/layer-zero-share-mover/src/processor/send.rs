@@ -10,9 +10,10 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke_signed,
+    system_program::ID as SYSTEM_PROGRAM_ID,
 };
 use anchor_spl::{
-    token_2022::Token2022,
+    token_2022::{spl_token_2022::ID as TOKEN_2022_PROGRAM_ID, Token2022},
     token_interface::{Mint, TokenAccount},
 };
 use boring_vault_svm::{BoringVault, BASE_SEED_BORING_VAULT_STATE};
@@ -24,7 +25,7 @@ use common::{
 const SEND_DISCRIMINATOR: [u8; 8] = [102, 251, 20, 187, 65, 75, 12, 69];
 const BURN_SHARES_DISCRIMINATOR: [u8; 8] = [98, 168, 88, 31, 217, 221, 191, 214];
 
-// Number of LayerZero accounts needed for send
+// Mininum number of LayerZero accounts needed for send
 const LAYERZERO_SEND_ACCOUNTS_LEN: usize = 6;
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
@@ -100,7 +101,6 @@ pub struct Send<'info> {
         ],
         bump,
         seeds::program = share_mover.boring_vault_program,
-        constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused
     )]
     pub vault: Account<'info, BoringVault>,
@@ -122,10 +122,14 @@ pub struct Send<'info> {
     )]
     pub source_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    /// Token program for burn operation (Token2022)
+    #[account(
+        address = TOKEN_2022_PROGRAM_ID
+    )]
     pub token_program: Program<'info, Token2022>,
 
-    /// System program for any required transfers
+    #[account(
+        address = SYSTEM_PROGRAM_ID
+    )]
     pub system_program: Program<'info, System>,
 }
 
@@ -139,12 +143,9 @@ impl<'info> Send<'info> {
         share_mover_data: &ShareMoverData,
         amount: u64,
     ) -> Result<()> {
-        // Build burn instruction data
-        let mut burn_data = Vec::with_capacity(24); // discriminator + vault_id + amount
-        burn_data.extend_from_slice(&BURN_SHARES_DISCRIMINATOR);
+        let mut burn_data = BURN_SHARES_DISCRIMINATOR.to_vec();
         burn_data.extend_from_slice(&amount.to_le_bytes());
 
-        // Build burn instruction
         let burn_ix = Instruction {
             program_id: share_mover_data.boring_vault_program,
             accounts: vec![
@@ -208,16 +209,9 @@ impl<'info> Send<'info> {
             AccountMeta::new_readonly(share_mover_data.key, true), // sender (signer)
         ];
 
-        // Add all remaining accounts that were passed in
-        // These should include all the LayerZero-specific accounts in the correct order:
-        // - share mover
-        // - send_library_program
-        // - send_library_config
-        // - default_send_library_config
-        // - send_library_info
-        // - endpoint (already in our accounts, but needs to be in the list)
-        // - nonce (mutable)
-        for account in accounts.iter().take(LAYERZERO_SEND_ACCOUNTS_LEN) {
+        // Add accounts that were passed in. The first six are the mandatory but anything after that
+        // is optional and will be forwarded to the message-library call (e.g. fee-payment, vaults)
+        for account in accounts.iter() {
             account_metas.push(AccountMeta {
                 pubkey: account.key(),
                 is_signer: account.is_signer,
@@ -235,8 +229,9 @@ impl<'info> Send<'info> {
         // Prepare account infos for the CPI call
         let mut account_infos = vec![share_mover.clone()];
 
-        // Add the LayerZero accounts
-        account_infos.extend_from_slice(&accounts[..LAYERZERO_SEND_ACCOUNTS_LEN]);
+        // Add *all* LayerZero / message-library accounts (not just the first six) so the
+        // endpoint program can forward any optional accounts to the library implementation.
+        account_infos.extend_from_slice(accounts);
 
         // Execute the CPI call with ShareMover as signer
         invoke_signed(

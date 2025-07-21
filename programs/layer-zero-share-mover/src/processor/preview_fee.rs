@@ -3,7 +3,7 @@ use crate::{
     seed::{ENDPOINT_SEED, PEER_SEED, SHARE_MOVER_SEED},
     state::{
         lz::{EndpointSettings, MessagingFee, PeerConfig},
-        share_mover::{self, ShareMover},
+        share_mover::ShareMover,
     },
 };
 use anchor_lang::solana_program::{

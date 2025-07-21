@@ -42,12 +42,5 @@ pub fn set_rate_limit(
     share_mover.inbound_rate_limit.limit = inbound_limit;
     share_mover.inbound_rate_limit.window = inbound_window;
 
-    msg!(
-        "Rate limits updated - Outbound: {}/{} seconds, Inbound: {}/{} seconds",
-        outbound_limit,
-        outbound_window,
-        inbound_limit,
-        inbound_window
-    );
     Ok(())
 }

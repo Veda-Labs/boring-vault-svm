@@ -4,6 +4,8 @@ use crate::{
     state::{lz::PeerConfig, share_mover::ShareMover},
 };
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::system_program::ID as SYSTEM_PROGRAM_ID;
+use std::mem::size_of;
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct SetPeerParams {
@@ -14,13 +16,15 @@ pub struct SetPeerParams {
 #[derive(Accounts)]
 #[instruction(params: SetPeerParams)]
 pub struct SetPeer<'info> {
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = signer.key() == share_mover.admin @ BoringErrorCode::NotAuthorized
+    )]
     pub signer: Signer<'info>,
 
     #[account(
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
         bump = share_mover.bump,
-        constraint = share_mover.admin == signer.key() @ BoringErrorCode::NotAuthorized,
         constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused,
     )]
     pub share_mover: Account<'info, ShareMover>,
@@ -28,17 +32,19 @@ pub struct SetPeer<'info> {
     #[account(
         init_if_needed,
         payer = signer,
-        space = 8 + std::mem::size_of::<PeerConfig>(),
+        space = 8 + size_of::<PeerConfig>(),
         seeds = [PEER_SEED, &share_mover.key().to_bytes(), &params.remote_eid.to_be_bytes()],
         bump
     )]
     pub peer: Account<'info, PeerConfig>,
 
+    #[account(
+        address = SYSTEM_PROGRAM_ID
+    )]
     pub system_program: Program<'info, System>,
 }
 
 pub fn set_peer(ctx: Context<SetPeer>, params: SetPeerParams) -> Result<()> {
-    // Reject all-zero peer address
     require!(
         params.peer_address.iter().any(|&b| b != 0),
         BoringErrorCode::InvalidPeerAddress

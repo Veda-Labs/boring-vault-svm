@@ -22,6 +22,5 @@ pub fn transfer_authority(ctx: Context<TransferAuthority>, new_admin: Pubkey) ->
         BoringErrorCode::InvalidNewAdmin
     );
     ctx.accounts.share_mover.admin = new_admin;
-    msg!("ShareMover admin updated to: {}", new_admin);
     Ok(())
 }
