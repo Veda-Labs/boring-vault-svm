@@ -320,6 +320,9 @@ pub fn send<'info>(
                 ShareBridgeCodecError::InvalidEVMRecipientAddress
             );
         }
+        PeerChain::Sui => {
+            // Sui addresses are also 32 bytes; no additional validation needed here.
+        }
         _ => {
             return Err(error!(BoringErrorCode::InvalidPeerChain));
         }
