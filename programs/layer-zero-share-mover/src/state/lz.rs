@@ -33,6 +33,63 @@ pub struct EnforcedOptions {
     #[max_len(ENFORCED_OPTIONS_SEND_AND_CALL_MAX_LEN)]
     pub send_and_call: Vec<u8>,
 }
+// https://github.com/LayerZero-Labs/LayerZero-v2/blob/63bbd31584c588844de33678bf8dd61d879cba14/packages/layerzero-v2/solana/programs/programs/oft/src/state/enforced_options.rs#L16
+impl EnforcedOptions {
+    pub fn combine_options(
+        &self,
+        compose_msg: &Option<Vec<u8>>,
+        extra_options: &Vec<u8>,
+    ) -> Result<Vec<u8>> {
+        let enforced_options = if compose_msg.is_none() {
+            self.send.clone()
+        } else {
+            self.send_and_call.clone()
+        };
+        combine_options(enforced_options, extra_options)
+    }
+}
+
+// https://github.com/LayerZero-Labs/LayerZero-v2/blob/63bbd31584c588844de33678bf8dd61d879cba14/packages/layerzero-v2/solana/programs/libs/oapp/src/options.rs#L3
+pub fn combine_options(mut enforced_options: Vec<u8>, extra_options: &Vec<u8>) -> Result<Vec<u8>> {
+    // No enforced options, pass whatever the caller supplied, even if it's empty or legacy type
+    // 1/2 options.
+    if enforced_options.len() == 0 {
+        return Ok(extra_options.to_vec());
+    }
+
+    // No caller options, return enforced
+    if extra_options.len() == 0 {
+        return Ok(enforced_options);
+    }
+
+    // If caller provided extra_options, must be type 3 as it's the ONLY type that can be
+    // combined.
+    if extra_options.len() >= 2 {
+        assert_type_3(extra_options)?;
+        // Remove the first 2 bytes containing the type from the extra_options and combine with
+        // enforced.
+        enforced_options.extend_from_slice(&extra_options[2..]);
+        return Ok(enforced_options);
+    }
+
+    // No valid set of options was found.
+    Err(ErrorCode::InvalidOptions.into())
+}
+
+fn assert_type_3(options: &Vec<u8>) -> Result<()> {
+    let mut option_type_bytes = [0; 2];
+    option_type_bytes.copy_from_slice(&options[0..2]);
+    require!(
+        u16::from_be_bytes(option_type_bytes) == 3,
+        ErrorCode::InvalidOptions
+    );
+    Ok(())
+}
+
+#[error_code]
+enum ErrorCode {
+    InvalidOptions,
+}
 
 // https://github.com/LayerZero-Labs/LayerZero-v2/blob/88428755be6caa71cb1d2926141d73c8989296b5/packages/layerzero-v2/solana/programs/programs/messagelib-interface/src/lib.rs#L73
 #[derive(Clone, AnchorSerialize, AnchorDeserialize, Default)]

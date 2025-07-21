@@ -1,16 +1,16 @@
 use crate::{
     error::BoringErrorCode,
-    seed::{ENDPOINT_SEED, L0_ENDPOINT_PROGRAM_ID, PEER_SEED, SHARE_MOVER_SEED},
+    seed::{ENDPOINT_SEED, PEER_SEED, SHARE_MOVER_SEED},
     state::{
         lz::{EndpointSettings, MessagingFee, PeerConfig},
-        share_mover::ShareMover,
+        share_mover::{self, ShareMover},
     },
 };
-use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke_signed,
 };
+use anchor_lang::{prelude::*, solana_program::program::get_return_data};
 use common::message::{encode_message, ShareBridgeMessage};
 
 const QUOTE_DISCRIMINATOR: [u8; 8] = [149, 42, 109, 247, 134, 146, 213, 123];
@@ -57,7 +57,7 @@ pub struct PreviewFee<'info> {
     #[account(
         seeds = [ENDPOINT_SEED],
         bump = endpoint.bump,
-        seeds::program = L0_ENDPOINT_PROGRAM_ID
+        seeds::program = share_mover.endpoint_program
     )]
     pub endpoint: Account<'info, EndpointSettings>,
 }
@@ -72,7 +72,12 @@ pub fn preview_fee(ctx: &Context<PreviewFee>, params: PreviewFeeParams) -> Resul
         dst_eid: params.dst_eid,
         receiver: params.recipient,
         message: encoded_message,
-        options: params.options,
+        options: ctx
+            .accounts
+            .peer
+            .enforced_options
+            .combine_options(&None::<Vec<u8>>, &params.options)?,
+
         pay_in_lz_token: params.pay_in_lz_token,
     };
 
@@ -89,7 +94,7 @@ pub fn preview_fee(ctx: &Context<PreviewFee>, params: PreviewFeeParams) -> Resul
 
     // Create the instruction
     let quote_instruction = Instruction {
-        program_id: L0_ENDPOINT_PROGRAM_ID,
+        program_id: ctx.accounts.share_mover.endpoint_program,
         accounts: account_metas,
         data: quote_data,
     };
@@ -101,17 +106,16 @@ pub fn preview_fee(ctx: &Context<PreviewFee>, params: PreviewFeeParams) -> Resul
         &[], // No seeds needed for quote call as it's read-only
     )?;
 
-    // Parse the fee from return data
-    let return_data = anchor_lang::solana_program::program::get_return_data()
-        .ok_or(ProgramError::InvalidInstructionData)?;
+    let (return_pid, return_data) =
+        get_return_data().ok_or(ProgramError::InvalidInstructionData)?;
 
-    // Verify the return data is from LayerZero endpoint
-    if return_data.0 != L0_ENDPOINT_PROGRAM_ID {
-        return Err(ProgramError::InvalidInstructionData.into());
-    }
+    require_keys_eq!(
+        return_pid,
+        ctx.accounts.share_mover.endpoint_program,
+        BoringErrorCode::InvalidEndpointProgram
+    );
 
-    // Deserialize the MessagingFee from return data
-    let fee = MessagingFee::try_from_slice(&return_data.1)
+    let fee = MessagingFee::try_from_slice(&return_data)
         .map_err(|_| ProgramError::InvalidInstructionData)?;
 
     Ok(fee)
