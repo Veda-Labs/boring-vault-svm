@@ -75,6 +75,9 @@ pub fn set_peer(ctx: Context<SetPeer>, params: SetPeerParams) -> Result<()> {
         }
     }
 
-    ctx.accounts.peer.bump = ctx.bumps.peer;
+    if ctx.accounts.peer.bump == 0 {
+        ctx.accounts.peer.bump = ctx.bumps.peer;
+    }
+
     Ok(())
 }

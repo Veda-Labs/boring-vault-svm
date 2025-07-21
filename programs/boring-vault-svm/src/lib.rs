@@ -2139,7 +2139,6 @@ pub struct MintShares<'info> {
 #[derive(Accounts)]
 #[instruction(amount: u64)]
 pub struct BurnShares<'info> {
-    #[account()]
     pub signer: Signer<'info>,
 
     #[account(
