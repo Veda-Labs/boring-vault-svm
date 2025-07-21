@@ -180,6 +180,7 @@ impl<'info> Send<'info> {
         signer_seeds: &[&[u8]],
         peer_address: &[u8; 32],
         params: &SendMessageParams,
+        combined_options: Vec<u8>,
         message: Vec<u8>,
     ) -> Result<()> {
         // Validate we have the right number of accounts
@@ -193,7 +194,7 @@ impl<'info> Send<'info> {
             dst_eid: params.dst_eid,
             receiver: *peer_address,
             message,
-            options: params.options.clone(),
+            options: combined_options,
             native_fee: params.native_fee,
             lz_token_fee: params.lz_token_fee,
         };
@@ -336,6 +337,7 @@ pub fn send<'info>(
         share_mover_seeds,
         &ctx.accounts.peer.peer_address,
         &params,
+        ctx.accounts.peer.enforced_options.combine_options(&None::<Vec<u8>>, &params.options)?,
         encoded_message,
     )?;
 

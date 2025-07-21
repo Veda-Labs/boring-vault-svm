@@ -76,7 +76,7 @@ pub fn combine_options(mut enforced_options: Vec<u8>, extra_options: &Vec<u8>) -
     Err(ErrorCode::InvalidOptions.into())
 }
 
-fn assert_type_3(options: &Vec<u8>) -> Result<()> {
+pub fn assert_type_3(options: &Vec<u8>) -> Result<()> {
     let mut option_type_bytes = [0; 2];
     option_type_bytes.copy_from_slice(&options[0..2]);
     require!(

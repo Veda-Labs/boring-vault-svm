@@ -1,7 +1,7 @@
 use anchor_lang::prelude::Pubkey;
 
 use crate::{
-    seed::{ENDPOINT_SEED, EVENT_SEED, NONCE_SEED, OAPP_SEED, PAYLOAD_HASH_SEED},
+    seed::{ENDPOINT_SEED, NONCE_SEED, OAPP_SEED, PAYLOAD_HASH_SEED},
     state::lz::LzAccount,
 };
 

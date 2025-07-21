@@ -318,7 +318,10 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
     );
 
     await smProgram.methods
-      .setPeer({ remoteEid, peerAddress: [...peerAddress] })
+      .setPeer({
+          remoteEid,
+          config: { peerAddress: { 0: [...peerAddress] } },
+        })
       .accounts({
         signer: admin.publicKey,
         // @ts-ignore
@@ -346,13 +349,82 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
     );
 
     await smProgram.methods
-      .setPeer({ remoteEid, peerAddress: [...zeroAddr] })
+      .setPeer({ remoteEid, config: { peerAddress: { 0: [...zeroAddr] } } })
       // @ts-ignore
       .accounts({ signer: admin.publicKey, shareMover, peer: peerPda })
       .signers([admin])
       .rpc()
       .catch((e) => {
         expect(String(e)).to.include("Invalid peer address");
+      });
+  });
+
+
+  it("sets enforced options on peer config", async () => {
+    const remoteEid = 606;
+
+    // helper to build a type-3 options blob: [0x00, 0x03] + payload bytes
+    const buildType3 = (payload: number[]) => [0, 3, ...payload];
+
+    const sendBlobArr = buildType3([10, 11, 12]);
+    const sendAndCallBlobArr = buildType3([13, 14, 15]);
+    const sendBlob = Buffer.from(sendBlobArr);
+    const sendAndCallBlob = Buffer.from(sendAndCallBlobArr);
+
+    const [peerPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        PEER_SEED,
+        shareMover.toBuffer(),
+        new Uint8Array(new BN(remoteEid).toArray("be", 4)),
+      ],
+      smProgram.programId
+    );
+
+    await smProgram.methods
+      // Cast as any to satisfy Anchor TS generic expectations
+      .setPeer({
+        remoteEid,
+        config: {
+          enforcedOptions: {
+            send: sendBlob,
+            sendAndCall: sendAndCallBlob,
+          },
+        },
+      } as any)
+      .accounts({ signer: admin.publicKey, shareMover, peer: peerPda, systemProgram: anchor.web3.SystemProgram.programId } as any)
+      .signers([admin])
+      .rpc();
+
+    const peer: any = await smProgram.account.peerConfig.fetch(peerPda);
+    expect(Buffer.from(peer.enforcedOptions.send)).to.deep.equal(Uint8Array.from(sendBlobArr));
+    expect(Buffer.from(peer.enforcedOptions.sendAndCall)).to.deep.equal(
+      Uint8Array.from(sendAndCallBlobArr)
+    );
+  });
+
+  it("fails to set enforced options if blob is not type 3", async () => {
+    const remoteEid = 707;
+    const badBlob = Buffer.from([0, 1, 99]); // type 1 – should be rejected
+
+    const [peerPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        PEER_SEED,
+        shareMover.toBuffer(),
+        new Uint8Array(new BN(remoteEid).toArray("be", 4)),
+      ],
+      smProgram.programId
+    );
+
+    await smProgram.methods
+      .setPeer({
+        remoteEid,
+        config: { enforcedOptions: { send: badBlob, sendAndCall: badBlob } },
+      } as any)
+      .accounts({ signer: admin.publicKey, shareMover, peer: peerPda, systemProgram: anchor.web3.SystemProgram.programId } as any)
+      .signers([admin])
+      .rpc()
+      .catch((e) => {
+        expect(e.error.errorCode.code).to.include("InvalidOptions");
       });
   });
 
@@ -372,7 +444,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
     // ensure peer exists
     await smProgram.methods
-      .setPeer({ remoteEid, peerAddress: [...addr] })
+      .setPeer({ remoteEid, config: { peerAddress: { 0: [...addr] } } })
       .accounts({
         signer: admin.publicKey,
         // @ts-ignore
@@ -413,7 +485,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
     // create peer
     await smProgram.methods
-      .setPeer({ remoteEid, peerAddress: [...addr] })
+      .setPeer({ remoteEid, config: { peerAddress: { 0: [...addr] } } })
       .accounts({
         signer: admin.publicKey,
         // @ts-ignore
@@ -457,7 +529,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
     // create peer
     await smProgram.methods
-      .setPeer({ remoteEid, peerAddress: [...addr] })
+      .setPeer({ remoteEid, config: { peerAddress: { 0: [...addr] } } })
       .accounts({
         signer: admin.publicKey,
         // @ts-ignore
