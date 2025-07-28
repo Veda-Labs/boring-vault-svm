@@ -16,6 +16,10 @@ pub struct RegisterOApp<'info> {
     )]
     pub oapp_registry: Account<'info, OAppRegistry>,
     pub system_program: Program<'info, System>,
+    /// CHECK: endpoint mock new onchain accounts from lz
+    pub program: AccountInfo<'info>,
+    /// CHECK: endpoint mock new onchain accounts from lz
+    pub event_authority: AccountInfo<'info>,
 }
 
 impl RegisterOApp<'_> {

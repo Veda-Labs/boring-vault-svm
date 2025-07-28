@@ -8,17 +8,19 @@ use crate::{
 };
 use anchor_lang::{
     prelude::*,
-    solana_program::{
-        instruction::Instruction, program::invoke_signed,
-        sysvar::instructions::get_instruction_relative,
-    },
+    solana_program::{instruction::Instruction, program::invoke_signed},
 };
+use anchor_spl::token_2022::spl_token_2022::ID as TOKEN_2022_PROGRAM_ID;
 use common::message::decode_message;
 
 // min accounts len for clear cpi, found here:
 // https://github.com/LayerZero-Labs/LayerZero-v2/blob/main/packages/layerzero-v2/solana/programs/programs/endpoint/src/instructions/oapp/clear.rs
-pub const CLEAR_MIN_ACCOUNTS_LEN: usize = 5;
-pub const MINT_ACCOUNTS_LEN: usize = 5;
+// 5 original + event_authority + endpoint_program
+pub const CLEAR_MIN_ACCOUNTS_LEN: usize = 7;
+// Accounts passed to execute_mint slice:
+// 0 share_mover (signer), 1 vault_state, 2 share_mint, 3 recipient_ata,
+// 4 token_program_2022, 5 boring_vault_program (program account)
+pub const MINT_ACCOUNTS_LEN: usize = 6;
 
 pub const CLEAR_DISCRIMINATOR: [u8; 8] = [250, 39, 28, 213, 123, 163, 133, 5];
 pub const MINT_SHARES_DISCRIMINATOR: [u8; 8] = [24, 196, 132, 0, 183, 158, 216, 142];
@@ -29,7 +31,6 @@ struct ShareMoverData {
     bump: u8,
     mint: Pubkey,
     endpoint_program: Pubkey,
-    executor_program: Pubkey,
     boring_vault_program: Pubkey,
 }
 
@@ -75,6 +76,18 @@ impl<'info> LzReceive<'info> {
             BoringErrorCode::InvalidClearAccounts
         );
 
+        // Expect the signer and endpoint program to be the correct ones
+        require_eq!(
+            accounts[0].key(),
+            share_mover_data.key,
+            BoringErrorCode::InvalidClearAccounts
+        );
+        require_eq!(
+            accounts[6].key(),
+            share_mover_data.endpoint_program,
+            BoringErrorCode::InvalidClearAccounts
+        );
+
         let clear_data = Self::build_clear_data(share_mover_data.key, params)?;
 
         let clear_ix = Instruction {
@@ -85,6 +98,8 @@ impl<'info> LzReceive<'info> {
                 AccountMeta::new_readonly(accounts[2].key(), false), // nonce
                 AccountMeta::new(accounts[3].key(), false),         // payload_hash (closes)
                 AccountMeta::new(accounts[4].key(), false),         // endpoint
+                AccountMeta::new_readonly(accounts[5].key(), false), // event_authority
+                AccountMeta::new_readonly(accounts[6].key(), false), // endpoint program
             ],
             data: clear_data,
         };
@@ -98,6 +113,7 @@ impl<'info> LzReceive<'info> {
         accounts: &'info [AccountInfo<'info>],
         share_mover_data: &ShareMoverData,
         signer_seeds: &[&[u8]],
+        recipient: &Pubkey,
         amount: u128,
     ) -> Result<()> {
         require_eq!(
@@ -106,21 +122,44 @@ impl<'info> LzReceive<'info> {
             BoringErrorCode::InvalidMintAccounts
         );
 
-        let mint_data = Self::build_mint_data(u64::try_from(amount)?);
+        // Additional sanity checks to ensure the expected accounts are forwarded
+        require_eq!(
+            accounts[0].key(),
+            share_mover_data.key,
+            BoringErrorCode::InvalidMintAccounts
+        );
+        require_eq!(
+            accounts[2].key(),
+            share_mover_data.mint,
+            BoringErrorCode::InvalidMintAccounts
+        );
+        require_eq!(
+            accounts[4].key(),
+            TOKEN_2022_PROGRAM_ID,
+            BoringErrorCode::InvalidMintAccounts
+        );
+        require_eq!(
+            accounts[5].key(),
+            share_mover_data.boring_vault_program,
+            BoringErrorCode::InvalidMintAccounts
+        );
+
+        let mint_data = Self::build_mint_data(recipient, u64::try_from(amount)?)?;
 
         let mint_ix = Instruction {
             program_id: share_mover_data.boring_vault_program,
             accounts: vec![
-                AccountMeta::new_readonly(accounts[0].key(), true), // bridge_authority (signer)
-                AccountMeta::new_readonly(accounts[1].key(), false), // vault
+                AccountMeta::new_readonly(accounts[0].key(), true), // share_mover (signer, read-only suffices)
+                AccountMeta::new_readonly(accounts[1].key(), false), // vault state
                 AccountMeta::new(accounts[2].key(), false),         // share_mint
                 AccountMeta::new(accounts[3].key(), false),         // recipient_ata
                 AccountMeta::new_readonly(accounts[4].key(), false), // token_program
+                AccountMeta::new_readonly(accounts[5].key(), false), // boring_vault_program
             ],
             data: mint_data,
         };
 
-        invoke_signed(&mint_ix, &accounts[..MINT_ACCOUNTS_LEN], &[signer_seeds])?;
+        invoke_signed(&mint_ix, &accounts, &[signer_seeds])?;
 
         Ok(())
     }
@@ -142,10 +181,11 @@ impl<'info> LzReceive<'info> {
         Ok(data)
     }
 
-    fn build_mint_data(amount: u64) -> Vec<u8> {
+    fn build_mint_data(recipient: &Pubkey, amount: u64) -> Result<Vec<u8>> {
         let mut data = MINT_SHARES_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&amount.to_le_bytes());
-        data
+        recipient.serialize(&mut data)?;
+        amount.serialize(&mut data)?;
+        Ok(data)
     }
 }
 
@@ -164,11 +204,6 @@ pub fn lz_receive<'info>(
 
     let decoded_msg = decode_message(&params.message)?;
 
-    let clock = Clock::get()?;
-    ctx.accounts
-        .share_mover
-        .check_inbound_rate_limit(decoded_msg.amount, clock.unix_timestamp)?;
-
     require!(
         decoded_msg.amount > 0,
         BoringErrorCode::InvalidMessageAmount
@@ -178,12 +213,17 @@ pub fn lz_receive<'info>(
         BoringErrorCode::InvalidMessageRecipient
     );
 
+    // Now that all checks have passed, safely update the inbound rate-limit state
+    let clock = Clock::get()?;
+    ctx.accounts
+        .share_mover
+        .check_inbound_rate_limit(decoded_msg.amount, clock.unix_timestamp)?;
+
     let share_mover_data = ShareMoverData {
         key: ctx.accounts.share_mover.key(),
         bump: ctx.accounts.share_mover.bump,
         mint: ctx.accounts.share_mover.mint,
         endpoint_program: ctx.accounts.share_mover.endpoint_program,
-        executor_program: ctx.accounts.share_mover.executor_program,
         boring_vault_program: ctx.accounts.share_mover.boring_vault_program,
     };
 
@@ -197,22 +237,7 @@ pub fn lz_receive<'info>(
     let remaining_accounts = ctx.remaining_accounts;
 
     // Split remaining accounts into two groups with explicit validation
-    let (clear_accounts, remaining) = remaining_accounts.split_at(CLEAR_MIN_ACCOUNTS_LEN);
-    let (mint_accounts, ix_sys_var) = remaining.split_at(MINT_ACCOUNTS_LEN);
-
-    // validate only sysvar account is left over, to do the executor cpi validation
-    require_eq!(
-        ix_sys_var.len(),
-        1,
-        BoringErrorCode::InvalidMessageExtraAccounts
-    );
-
-    // Validate CPI call came from configured executor program
-    let origin_ix = get_instruction_relative(0, &ix_sys_var[0]).unwrap();
-
-    if origin_ix.program_id != share_mover_data.executor_program {
-        return err!(BoringErrorCode::UnauthorizedExecutor);
-    }
+    let (clear_accounts, mint_accounts) = remaining_accounts.split_at(CLEAR_MIN_ACCOUNTS_LEN);
 
     LzReceive::execute_clear(&share_mover_data, clear_accounts, share_mover_seeds, params)?;
 
@@ -220,15 +245,9 @@ pub fn lz_receive<'info>(
         mint_accounts,
         &share_mover_data,
         share_mover_seeds,
+        &Pubkey::from(decoded_msg.recipient),
         decoded_msg.amount,
     )?;
-
-    msg!(
-        "Minted {} shares to {} via LayerZero bridge from chain {}",
-        decoded_msg.amount,
-        Pubkey::from(decoded_msg.recipient),
-        params.src_eid
-    );
 
     Ok(())
 }

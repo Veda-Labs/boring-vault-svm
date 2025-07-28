@@ -2113,14 +2113,16 @@ pub struct MintShares<'info> {
     pub share_mover: Signer<'info>,
 
     #[account(
-        constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault.config.vault_id.to_le_bytes()[..]],
         bump,
     )]
     pub vault: Account<'info, BoringVault>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = share_mint.key() == vault.config.share_mint @ BoringErrorCode::InvalidShareMint,
+    )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     #[account(

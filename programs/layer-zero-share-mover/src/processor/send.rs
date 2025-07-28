@@ -1,8 +1,8 @@
 use crate::{
     error::BoringErrorCode,
-    seed::{ENDPOINT_SEED, PEER_SEED, SHARE_MOVER_SEED},
+    seed::{PEER_SEED, SHARE_MOVER_SEED},
     state::{
-        lz::{EndpointSettings, PeerConfig},
+        lz::PeerConfig,
         share_mover::{PeerChain, ShareMover},
     },
 };
@@ -26,7 +26,16 @@ const SEND_DISCRIMINATOR: [u8; 8] = [102, 251, 20, 187, 65, 75, 12, 69];
 const BURN_SHARES_DISCRIMINATOR: [u8; 8] = [98, 168, 88, 31, 217, 221, 191, 214];
 
 // Mininum number of LayerZero accounts needed for send
-const LAYERZERO_SEND_ACCOUNTS_LEN: usize = 6;
+// Mandatory LayerZero accounts: [endpoint, messaging libs ...] plus event authority and program id (8 total)
+// Adjusted to 8 to include event_authority PDA and the endpoint program id.
+// [0] endpoint_settings (mutable)
+// [1] oapp_registry
+// [2] nonce
+// [3] payload_hash
+// [4] endpoint_program (read-only)
+// [5] event_authority (read-only)
+// plus any additional optional accounts
+const LAYERZERO_SEND_ACCOUNTS_LEN: usize = 8;
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct SendMessageParams {
@@ -83,14 +92,6 @@ pub struct Send<'info> {
         bump = peer.bump
     )]
     pub peer: Account<'info, PeerConfig>,
-
-    #[account(
-        seeds = [ENDPOINT_SEED],
-        bump = endpoint.bump,
-        seeds::program = share_mover.endpoint_program
-    )]
-    pub endpoint: Account<'info, EndpointSettings>,
-
     // ========== BURN SHARES ACCOUNTS ==========
     /// Vault account for burning shares
     /// PDA: [BASE_SEED_BORING_VAULT_STATE, vault_id]
@@ -101,6 +102,7 @@ pub struct Send<'info> {
         ],
         bump,
         seeds::program = share_mover.boring_vault_program,
+        owner = share_mover.boring_vault_program,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused
     )]
     pub vault: Account<'info, BoringVault>,
@@ -131,6 +133,12 @@ pub struct Send<'info> {
         address = SYSTEM_PROGRAM_ID
     )]
     pub system_program: Program<'info, System>,
+
+    #[account(
+        address = share_mover.boring_vault_program
+    )]
+    /// CHECK: This is the boring vault program
+    pub boring_vault_program: AccountInfo<'info>,
 }
 
 impl<'info> Send<'info> {
@@ -140,6 +148,7 @@ impl<'info> Send<'info> {
         share_mint: &AccountInfo<'a>,
         source_token_account: &AccountInfo<'a>,
         token_program: &AccountInfo<'a>,
+        boring_vault_program: &AccountInfo<'a>,
         share_mover_data: &ShareMoverData,
         amount: u64,
     ) -> Result<()> {
@@ -154,6 +163,7 @@ impl<'info> Send<'info> {
                 AccountMeta::new(share_mint.key(), false),     // share_mint (mut)
                 AccountMeta::new(source_token_account.key(), false), // source_token_account (mut)
                 AccountMeta::new_readonly(token_program.key(), false), // token_program
+                AccountMeta::new_readonly(boring_vault_program.key(), false), // boring_vault_program
             ],
             data: burn_data,
         };
@@ -186,6 +196,13 @@ impl<'info> Send<'info> {
         // Validate we have the right number of accounts
         require!(
             accounts.len() >= LAYERZERO_SEND_ACCOUNTS_LEN,
+            BoringErrorCode::InvalidMessage
+        );
+
+        // Basic sanity check – ensure the forwarded endpoint program matches expectation
+        require_eq!(
+            accounts[4].key(),
+            share_mover_data.endpoint_program,
             BoringErrorCode::InvalidMessage
         );
 
@@ -239,11 +256,7 @@ impl<'info> Send<'info> {
             &send_instruction,
             &account_infos,
             &[signer_seeds], // ShareMover PDA signs as the message sender
-        )
-        .map_err(|e| {
-            msg!("LayerZero send CPI failed: {}", e);
-            anchor_lang::error::Error::from(e)
-        })?;
+        )?;
 
         Ok(())
     }
@@ -258,10 +271,9 @@ pub fn send<'info>(
         ctx.accounts.share_mover.allow_to,
         BoringErrorCode::NotAllowedTo
     );
-    let clock = Clock::get()?;
-    ctx.accounts
-        .share_mover
-        .check_outbound_rate_limit(params.amount, clock.unix_timestamp)?;
+
+    // Ensure a positive amount is being bridged
+    require!(params.amount > 0, BoringErrorCode::InvalidMessageAmount);
 
     // Validate we have enough remaining accounts for LayerZero send
     require!(
@@ -284,6 +296,14 @@ pub fn send<'info>(
         ctx.accounts.source_token_account.amount >= params.amount,
         BoringErrorCode::InsufficientBalance
     );
+
+    // At this point we have verified that the user has sufficient balance and the message parameters
+    // are valid for the selected peer-chain. We can now safely consume the outbound rate-limit before
+    // performing any external CPIs.
+    let clock = Clock::get()?;
+    ctx.accounts
+        .share_mover
+        .check_outbound_rate_limit(params.amount, clock.unix_timestamp)?;
 
     // Create data struct to avoid lifetime issues
     let share_mover_data = ShareMoverData {
@@ -308,6 +328,7 @@ pub fn send<'info>(
         &ctx.accounts.share_mint.to_account_info(),
         &ctx.accounts.source_token_account.to_account_info(),
         &ctx.accounts.token_program.to_account_info(),
+        &ctx.accounts.boring_vault_program.to_account_info(),
         &share_mover_data,
         params.amount,
     )?;
@@ -328,11 +349,9 @@ pub fn send<'info>(
         }
     }
 
-    // Step 2: Create and encode the ShareBridgeMessage
     let message = ShareBridgeMessage::new(params.recipient, message_amount);
     let encoded_message = encode_message(&message);
 
-    // Step 3: Send LayerZero message
     Send::execute_layerzero_send(
         &ctx.accounts.share_mover.to_account_info(),
         ctx.remaining_accounts,

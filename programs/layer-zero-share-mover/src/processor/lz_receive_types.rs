@@ -1,4 +1,4 @@
-use anchor_lang::{prelude::*, solana_program::sysvar::instructions::ID as INSTRUCTION_SYSVAR_ID};
+use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::get_associated_token_address_with_program_id, token_2022::ID as TOKEN_2022_ID,
 };
@@ -25,7 +25,8 @@ pub fn lz_receive_types(
     params: &LzReceiveParams,
 ) -> Result<Vec<LzAccount>> {
     let share_mover_key = ctx.accounts.store.key();
-    let share_mover = ShareMover::try_from_slice(&ctx.accounts.store.data.borrow())?;
+    let store_data = ctx.accounts.store.data.borrow();
+    let share_mover = ShareMover::try_deserialize(&mut &store_data[..])?;
     let mint = share_mover.mint;
 
     let (sm_key, bump) =
@@ -77,8 +78,8 @@ pub fn lz_receive_types(
     accounts.extend(vec![
         LzAccount {
             pubkey: share_mover_key,
-            is_signer: false,
-            is_writable: false,
+            is_signer: true,
+            is_writable: true,
         },
         LzAccount {
             pubkey: share_mover.vault,
@@ -100,10 +101,11 @@ pub fn lz_receive_types(
             is_signer: false,
             is_writable: false,
         },
+        // Add the BoringVault program account so the CPI has a Program account-info entry
         LzAccount {
-            pubkey: INSTRUCTION_SYSVAR_ID,
+            pubkey: share_mover.boring_vault_program,
             is_signer: false,
-            is_writable: true,
+            is_writable: false,
         },
     ]);
 

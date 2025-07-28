@@ -111,13 +111,15 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
       L0_ENDPOINT_ID
     );
 
+    const eventAuthority = anchor.web3.Keypair.generate()
+    const eventProgram = anchor.web3.Keypair.generate()
+
     await smProgram.methods
       .deploy({
         admin: admin.publicKey,
         executorProgram: anchor.web3.PublicKey.default,
         boringVaultProgram: anchor.web3.PublicKey.default,
         vaultId: new BN(0),
-        subAccount: 0,
         peerDecimals: 9,
         outboundLimit: new BN(0),
         outboundWindow: new BN(0),
@@ -130,6 +132,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
         mint: mint.publicKey,
         oappRegistry: oappRegistryPda,
         endpointProgram: L0_ENDPOINT_ID,
+        eventAuthority: eventAuthority.publicKey,
       })
       .signers([admin])
       .rpc();
@@ -150,9 +153,8 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
     const [expectedVaultPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
-        Buffer.from("boring-vault"),
+        Buffer.from("boring-vault-state"),
         new BN(0).toArrayLike(Buffer, "le", 8),
-        Buffer.from([0]),
       ],
       anchor.web3.PublicKey.default
     );

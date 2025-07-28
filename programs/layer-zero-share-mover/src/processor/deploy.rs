@@ -11,7 +11,7 @@ use anchor_lang::{
     solana_program::{instruction::Instruction, program::invoke_signed},
 };
 use anchor_spl::token_interface::Mint;
-use common::{pda::get_vault, rate_limit::RateLimitState};
+use common::{pda::get_vault_state, rate_limit::RateLimitState};
 use std::mem::size_of;
 
 const OAPP_REGISTER_DISCRIMINATOR: [u8; 8] = [129, 89, 71, 68, 11, 82, 210, 125];
@@ -27,7 +27,6 @@ pub struct DeployParams {
     pub executor_program: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
-    pub sub_account: u8,
     pub peer_decimals: u8,
     pub outbound_limit: u64,  // Maximum amount allowed in the window
     pub outbound_window: u64, // Window duration in seconds (renamed from capacity)
@@ -78,6 +77,9 @@ pub struct Deploy<'info> {
     /// CHECK: config authority dictates the endpoint program in this instruction
     pub endpoint_program: UncheckedAccount<'info>,
 
+    /// CHECK: event authority is checked in the endpoint program's register_oapp ix
+    pub event_authority: UncheckedAccount<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -90,11 +92,7 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     share_mover.executor_program = params.executor_program;
     share_mover.endpoint_program = ctx.accounts.endpoint_program.key();
     share_mover.boring_vault_program = params.boring_vault_program;
-    share_mover.vault = get_vault(
-        params.vault_id,
-        params.sub_account,
-        &params.boring_vault_program,
-    );
+    share_mover.vault = get_vault_state(params.vault_id, &params.boring_vault_program);
 
     share_mover.mint = mint_key;
     share_mover.is_paused = false;
@@ -125,6 +123,8 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
         AccountMeta::new_readonly(share_mover.key(), true), // oapp (signer)
         AccountMeta::new(ctx.accounts.oapp_registry.key(), false), // oapp_registry
         AccountMeta::new_readonly(ctx.accounts.system_program.key(), false), // system_program
+        AccountMeta::new_readonly(ctx.accounts.event_authority.key(), false), // event_authority
+        AccountMeta::new_readonly(ctx.accounts.endpoint_program.key(), false), // endpoint_program
     ];
 
     let register_params = RegisterOAppParams {
@@ -157,6 +157,8 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
             share_mover.to_account_info(),
             ctx.accounts.oapp_registry.to_account_info(),
             ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.event_authority.to_account_info(),
+            ctx.accounts.endpoint_program.to_account_info(),
         ],
         signer_seeds,
     )?;

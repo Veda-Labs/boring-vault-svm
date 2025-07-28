@@ -72,11 +72,6 @@ impl RateLimitState {
 
         (current_amount_in_flight, amount_can_be_sent)
     }
-
-    /// Get the current state without modifying it (useful for queries)
-    pub fn get_amount_can_be_sent(&self, current_timestamp: i64) -> (u64, u64) {
-        self.calculate_available(current_timestamp)
-    }
 }
 
 pub fn create_test_rate_limit_state(
