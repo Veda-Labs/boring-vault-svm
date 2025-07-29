@@ -13,6 +13,7 @@ use anchor_lang::solana_program::{
     system_program::ID as SYSTEM_PROGRAM_ID,
 };
 use anchor_spl::{
+    associated_token::get_associated_token_address_with_program_id,
     token_2022::{spl_token_2022::ID as TOKEN_2022_PROGRAM_ID, Token2022},
     token_interface::{Mint, TokenAccount},
 };
@@ -71,13 +72,12 @@ struct ShareMoverData {
 #[derive(Accounts)]
 #[instruction(params: SendMessageParams)]
 pub struct Send<'info> {
-    // Share burn authority
     #[account(mut)]
     pub user: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
+        seeds = [SHARE_MOVER_SEED, vault.config.share_mint.as_ref()],
         bump = share_mover.bump,
         constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused
     )]
@@ -102,21 +102,16 @@ pub struct Send<'info> {
         ],
         bump,
         seeds::program = share_mover.boring_vault_program,
-        owner = share_mover.boring_vault_program,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused
     )]
     pub vault: Account<'info, BoringVault>,
 
-    /// Share mint to burn from
-    /// Must match vault's share_mint
     #[account(
         mut,
         constraint = share_mint.key() == vault.config.share_mint @ BoringErrorCode::InvalidShareMint
     )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
-    /// User's token account to burn from
-    /// Must be owned by user and have sufficient balance
     #[account(
         mut,
         constraint = source_token_account.mint == share_mint.key() @ BoringErrorCode::InvalidAssociatedTokenAccount,
@@ -137,7 +132,7 @@ pub struct Send<'info> {
     #[account(
         address = share_mover.boring_vault_program
     )]
-    /// CHECK: This is the boring vault program
+    /// CHECK: Configured by admin, boring vault program
     pub boring_vault_program: AccountInfo<'info>,
 }
 
@@ -193,20 +188,11 @@ impl<'info> Send<'info> {
         combined_options: Vec<u8>,
         message: Vec<u8>,
     ) -> Result<()> {
-        // Validate we have the right number of accounts
         require!(
             accounts.len() >= LAYERZERO_SEND_ACCOUNTS_LEN,
             BoringErrorCode::InvalidMessage
         );
 
-        // Basic sanity check – ensure the forwarded endpoint program matches expectation
-        require_eq!(
-            accounts[4].key(),
-            share_mover_data.endpoint_program,
-            BoringErrorCode::InvalidMessage
-        );
-
-        // Prepare LayerZero send parameters
         let lz_send_params = LayerZeroSendParams {
             dst_eid: params.dst_eid,
             receiver: *peer_address,
@@ -216,13 +202,10 @@ impl<'info> Send<'info> {
             lz_token_fee: params.lz_token_fee,
         };
 
-        // Serialize the send parameters
         let mut send_data = Vec::new();
         send_data.extend_from_slice(&SEND_DISCRIMINATOR);
         lz_send_params.serialize(&mut send_data)?;
 
-        // Build the send instruction
-        // The first account must be the sender (ShareMover PDA)
         let mut account_metas = vec![
             AccountMeta::new_readonly(share_mover_data.key, true), // sender (signer)
         ];
@@ -237,26 +220,17 @@ impl<'info> Send<'info> {
             });
         }
 
-        // Create the instruction
         let send_instruction = Instruction {
             program_id: share_mover_data.endpoint_program,
             accounts: account_metas,
             data: send_data,
         };
 
-        // Prepare account infos for the CPI call
         let mut account_infos = vec![share_mover.clone()];
 
-        // Add *all* LayerZero / message-library accounts (not just the first six) so the
-        // endpoint program can forward any optional accounts to the library implementation.
         account_infos.extend_from_slice(accounts);
 
-        // Execute the CPI call with ShareMover as signer
-        invoke_signed(
-            &send_instruction,
-            &account_infos,
-            &[signer_seeds], // ShareMover PDA signs as the message sender
-        )?;
+        invoke_signed(&send_instruction, &account_infos, &[signer_seeds])?;
 
         Ok(())
     }
@@ -266,16 +240,13 @@ pub fn send<'info>(
     ctx: Context<'_, '_, 'info, 'info, Send<'info>>,
     params: SendMessageParams,
 ) -> Result<()> {
-    // Validate allow to
     require!(
         ctx.accounts.share_mover.allow_to,
         BoringErrorCode::NotAllowedTo
     );
 
-    // Ensure a positive amount is being bridged
     require!(params.amount > 0, BoringErrorCode::InvalidMessageAmount);
 
-    // Validate we have enough remaining accounts for LayerZero send
     require!(
         ctx.remaining_accounts.len() >= LAYERZERO_SEND_ACCOUNTS_LEN,
         BoringErrorCode::InvalidMessage
@@ -291,15 +262,11 @@ pub fn send<'info>(
     )
     .ok_or(BoringErrorCode::SendAmountConversionFailed)?;
 
-    // Validate user has sufficient balance
     require!(
         ctx.accounts.source_token_account.amount >= params.amount,
         BoringErrorCode::InsufficientBalance
     );
 
-    // At this point we have verified that the user has sufficient balance and the message parameters
-    // are valid for the selected peer-chain. We can now safely consume the outbound rate-limit before
-    // performing any external CPIs.
     let clock = Clock::get()?;
     ctx.accounts
         .share_mover

@@ -41,7 +41,6 @@ pub fn lz_receive_types(
         &params.src_eid.to_be_bytes(),
     ];
 
-    // Note: we are not validating the peer sender here, it is done in lz_receive
     let peer = Pubkey::find_program_address(&peer_seeds, &crate::ID).0;
 
     let mut accounts = vec![
@@ -101,7 +100,6 @@ pub fn lz_receive_types(
             is_signer: false,
             is_writable: false,
         },
-        // Add the BoringVault program account so the CPI has a Program account-info entry
         LzAccount {
             pubkey: share_mover.boring_vault_program,
             is_signer: false,

@@ -1,3 +1,4 @@
+use crate::utils::get_accounts_for_clear;
 use crate::{
     error::BoringErrorCode,
     seed::{PEER_SEED, SHARE_MOVER_SEED},
@@ -10,7 +11,10 @@ use anchor_lang::{
     prelude::*,
     solana_program::{instruction::Instruction, program::invoke_signed},
 };
-use anchor_spl::token_2022::spl_token_2022::ID as TOKEN_2022_PROGRAM_ID;
+use anchor_spl::{
+    associated_token::get_associated_token_address_with_program_id,
+    token_2022::spl_token_2022::ID as TOKEN_2022_PROGRAM_ID,
+};
 use common::message::decode_message;
 
 // min accounts len for clear cpi, found here:
@@ -76,17 +80,21 @@ impl<'info> LzReceive<'info> {
             BoringErrorCode::InvalidClearAccounts
         );
 
-        // Expect the signer and endpoint program to be the correct ones
-        require_eq!(
-            accounts[0].key(),
-            share_mover_data.key,
-            BoringErrorCode::InvalidClearAccounts
-        );
-        require_eq!(
-            accounts[6].key(),
+        let expected = get_accounts_for_clear(
             share_mover_data.endpoint_program,
-            BoringErrorCode::InvalidClearAccounts
+            &share_mover_data.key,
+            params.src_eid,
+            &params.sender,
+            params.nonce,
         );
+
+        for (idx, exp) in expected.iter().enumerate() {
+            require_eq!(
+                accounts[idx].key(),
+                exp.pubkey,
+                BoringErrorCode::InvalidClearAccounts
+            );
+        }
 
         let clear_data = Self::build_clear_data(share_mover_data.key, params)?;
 
@@ -122,7 +130,6 @@ impl<'info> LzReceive<'info> {
             BoringErrorCode::InvalidMintAccounts
         );
 
-        // Additional sanity checks to ensure the expected accounts are forwarded
         require_eq!(
             accounts[0].key(),
             share_mover_data.key,
@@ -142,6 +149,18 @@ impl<'info> LzReceive<'info> {
             accounts[5].key(),
             share_mover_data.boring_vault_program,
             BoringErrorCode::InvalidMintAccounts
+        );
+
+        let expected_ata = get_associated_token_address_with_program_id(
+            recipient,
+            &share_mover_data.mint,
+            &TOKEN_2022_PROGRAM_ID,
+        );
+
+        require_eq!(
+            accounts[3].key(),
+            expected_ata,
+            BoringErrorCode::InvalidAssociatedTokenAccount
         );
 
         let mint_data = Self::build_mint_data(recipient, u64::try_from(amount)?)?;
@@ -197,8 +216,11 @@ pub fn lz_receive<'info>(
         ctx.accounts.share_mover.allow_from,
         BoringErrorCode::NotAllowedFrom
     );
+
+    let remaining_accounts = ctx.remaining_accounts;
+
     require!(
-        ctx.remaining_accounts.len() == CLEAR_MIN_ACCOUNTS_LEN + MINT_ACCOUNTS_LEN,
+        remaining_accounts.len() == CLEAR_MIN_ACCOUNTS_LEN + MINT_ACCOUNTS_LEN,
         BoringErrorCode::InvalidLzReceiveRemainingAccounts
     );
 
@@ -233,8 +255,6 @@ pub fn lz_receive<'info>(
         share_mover_data.mint.as_ref(),
         &[share_mover_data.bump],
     ];
-
-    let remaining_accounts = ctx.remaining_accounts;
 
     // Split remaining accounts into two groups with explicit validation
     let (clear_accounts, mint_accounts) = remaining_accounts.split_at(CLEAR_MIN_ACCOUNTS_LEN);
