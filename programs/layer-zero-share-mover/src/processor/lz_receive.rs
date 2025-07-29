@@ -1,3 +1,4 @@
+use crate::seed::EVENT_AUTHORITY_SEED;
 use crate::utils::get_accounts_for_clear;
 use crate::{
     error::BoringErrorCode,
@@ -95,6 +96,24 @@ impl<'info> LzReceive<'info> {
                 BoringErrorCode::InvalidClearAccounts
             );
         }
+
+        // Validate event_authority PDA (index 5)
+        let (event_authority, _) = Pubkey::find_program_address(
+            &[EVENT_AUTHORITY_SEED],
+            &share_mover_data.endpoint_program,
+        );
+        require_eq!(
+            accounts[5].key(),
+            event_authority,
+            BoringErrorCode::InvalidClearAccounts
+        );
+
+        // Validate endpoint program id (index 6)
+        require_eq!(
+            accounts[6].key(),
+            share_mover_data.endpoint_program,
+            BoringErrorCode::InvalidClearAccounts
+        );
 
         let clear_data = Self::build_clear_data(share_mover_data.key, params)?;
 

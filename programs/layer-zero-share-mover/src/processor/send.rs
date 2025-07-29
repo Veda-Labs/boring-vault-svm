@@ -13,7 +13,6 @@ use anchor_lang::solana_program::{
     system_program::ID as SYSTEM_PROGRAM_ID,
 };
 use anchor_spl::{
-    associated_token::get_associated_token_address_with_program_id,
     token_2022::{spl_token_2022::ID as TOKEN_2022_PROGRAM_ID, Token2022},
     token_interface::{Mint, TokenAccount},
 };
