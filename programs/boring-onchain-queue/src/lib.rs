@@ -8,6 +8,8 @@
 //! - Validating and executing withdraw requests
 
 #![allow(unexpected_cfgs)]
+#![allow(clippy::module_inception)]
+#![allow(clippy::too_many_arguments)]
 
 use anchor_lang::prelude::*;
 use anchor_spl::{
@@ -620,7 +622,7 @@ pub struct RequestWithdraw<'info> {
     #[account(
         seeds = [BASE_SEED_QUEUE_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
+        constraint = !queue_state.paused @ QueueErrorCode::QueuePaused,
         constraint = queue_state.share_mint == share_mint.key() @ QueueErrorCode::InvalidShareMint,
     )]
     pub queue_state: Account<'info, QueueState>,
@@ -631,7 +633,7 @@ pub struct RequestWithdraw<'info> {
     #[account(
         seeds = [BASE_SEED_WITHDRAW_ASSET_DATA, &args.vault_id.to_le_bytes()[..], withdraw_mint.key().as_ref()],
         bump,
-        constraint = withdraw_asset_data.allow_withdrawals == true @ QueueErrorCode::WithdrawsNotAllowedForAsset
+        constraint = withdraw_asset_data.allow_withdrawals @ QueueErrorCode::WithdrawsNotAllowedForAsset
     )]
     pub withdraw_asset_data: Account<'info, WithdrawAssetData>,
 
@@ -728,7 +730,7 @@ pub struct FulfillWithdraw<'info> {
     #[account(
         seeds = [BASE_SEED_QUEUE_STATE, &withdraw_request.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = queue_state.paused == false @ QueueErrorCode::QueuePaused,
+        constraint = !queue_state.paused @ QueueErrorCode::QueuePaused,
         constraint = queue_state.solve_authority == Pubkey::default() || solver.key() == queue_state.solve_authority @ QueueErrorCode::NotAuthorized,
         constraint = queue_state.share_mint == share_mint.key() @ QueueErrorCode::InvalidShareMint,
     )]

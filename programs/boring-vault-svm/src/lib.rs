@@ -6,6 +6,7 @@
 //! - Exchange rate updates and fee calculations
 //! - Share token minting and burning
 #![allow(unexpected_cfgs)]
+#![allow(clippy::too_many_arguments)]
 
 use anchor_lang::{
     prelude::*,
@@ -18,7 +19,7 @@ use anchor_lang::{
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::Token,
-    token_2022::Token2022,
+    token_2022::{Token2022, ID as TOKEN_PROGRAM_2022},
     token_interface::{
         self, token_metadata_initialize, Mint, TokenAccount, TokenMetadataInitialize,
     },
@@ -44,6 +45,8 @@ declare_id!("5ZRnXG4GsUMLaN7w2DtJV1cgLgcXHmuHCmJ2MxoorWCE");
 
 #[program]
 pub mod boring_vault_svm {
+    use anchor_spl::token_2022::{burn, mint_to, Burn, MintTo};
+
     use super::*;
 
     // =============================== Program Functions ===============================
@@ -111,6 +114,9 @@ pub mod boring_vault_svm {
             vault.config.authority = args.authority;
             vault.config.share_mint = ctx.accounts.share_mint.key();
             vault.config.paused = false;
+
+            // Share mover default pubkey, must be explicitly set
+            vault.config.share_mover = Pubkey::default();
 
             // Initialize teller state.
             vault.teller.base_asset = ctx.accounts.base_asset.key();
@@ -339,20 +345,20 @@ pub mod boring_vault_svm {
             );
         }
 
-            require!(
-        args.asset_data.share_premium_bps <= MAXIMUM_SHARE_PREMIUM_BPS,
-        BoringErrorCode::MaximumSharePremiumExceeded
-    );
-
-    // Validate that feed_id is provided when oracle_source is PythV2
-    if matches!(args.asset_data.oracle_source, OracleSource::PythV2) {
         require!(
-            args.asset_data.feed_id.is_some(),
-            BoringErrorCode::InvalidPriceFeed
+            args.asset_data.share_premium_bps <= MAXIMUM_SHARE_PREMIUM_BPS,
+            BoringErrorCode::MaximumSharePremiumExceeded
         );
-    }
 
-    let asset_data = &mut ctx.accounts.asset_data;
+        // Validate that feed_id is provided when oracle_source is PythV2
+        if matches!(args.asset_data.oracle_source, OracleSource::PythV2) {
+            require!(
+                args.asset_data.feed_id.is_some(),
+                BoringErrorCode::InvalidPriceFeed
+            );
+        }
+
+        let asset_data = &mut ctx.accounts.asset_data;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
         asset_data.share_premium_bps = args.asset_data.share_premium_bps;
@@ -668,7 +674,7 @@ pub mod boring_vault_svm {
         // Validate ATAs by checking against derived PDAs
         teller::validate_associated_token_accounts(
             &ctx.accounts.base_mint.key(),
-            &token_program_id,
+            token_program_id,
             &ctx.accounts.boring_vault_state.teller.payout_address,
             &ctx.accounts.boring_vault.key(),
             &ctx.accounts.payout_ata.key(),
@@ -918,7 +924,7 @@ pub mod boring_vault_svm {
         // Hash the CPI call down to a digest and confirm it matches the digest in the args.
         let digest = cpi_digest.operators.apply_operators(
             ctx.accounts.ix_program_id.key,
-            &ix_accounts,
+            ix_accounts,
             &args.ix_data,
         )?;
 
@@ -960,7 +966,7 @@ pub mod boring_vault_svm {
         // Create the instruction
         let ix = anchor_lang::solana_program::instruction::Instruction {
             program_id: *ctx.accounts.ix_program_id.key,
-            accounts: accounts,
+            accounts,
             data: args.ix_data,
         };
 
@@ -1059,7 +1065,7 @@ pub mod boring_vault_svm {
         // Validate ATAs by checking against derived PDAs
         teller::validate_associated_token_accounts(
             &ctx.accounts.deposit_mint.key(),
-            &token_program_id,
+            token_program_id,
             &ctx.accounts.signer.key(),
             &ctx.accounts.boring_vault.key(),
             &ctx.accounts.user_ata.key(),
@@ -1130,7 +1136,7 @@ pub mod boring_vault_svm {
         // Validate ATAs by checking against derived PDAs
         teller::validate_associated_token_accounts(
             &ctx.accounts.withdraw_mint.key(),
-            &token_program_id,
+            token_program_id,
             &ctx.accounts.signer.key(),
             &ctx.accounts.boring_vault.key(),
             &ctx.accounts.user_ata.key(),
@@ -1192,6 +1198,71 @@ pub mod boring_vault_svm {
         )?;
 
         Ok(assets_out)
+    }
+
+    // ================================== Bridge Functions ==================================
+
+    pub fn set_share_mover(ctx: Context<SetShareMover>, share_mover: Pubkey) -> Result<()> {
+        require_keys_neq!(
+            share_mover,
+            Pubkey::default(),
+            BoringErrorCode::InvalidBridgeProgram
+        );
+
+        let vault = &mut ctx.accounts.vault;
+        vault.config.share_mover = share_mover;
+
+        Ok(())
+    }
+
+    pub fn mint_shares(ctx: Context<MintShares>, _recipient: Pubkey, amount: u64) -> Result<()> {
+        require!(amount > 0, BoringErrorCode::InvalidAmount);
+        require!(
+            ctx.accounts.vault.config.share_mover != Pubkey::default(),
+            BoringErrorCode::InvalidBridgeProgram
+        );
+
+        let vault_seeds = &[
+            BASE_SEED_BORING_VAULT_STATE,
+            &ctx.accounts.vault.config.vault_id.to_le_bytes()[..],
+            &[ctx.bumps.vault],
+        ];
+        let signer_seeds = &[&vault_seeds[..]];
+
+        let mint_to_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            MintTo {
+                mint: ctx.accounts.share_mint.to_account_info(),
+                to: ctx.accounts.recipient_token_account.to_account_info(),
+                authority: ctx.accounts.vault.to_account_info(),
+            },
+            signer_seeds,
+        );
+
+        mint_to(mint_to_ctx, amount)?;
+
+        Ok(())
+    }
+
+    pub fn burn_shares(ctx: Context<BurnShares>, amount: u64) -> Result<()> {
+        require!(amount > 0, BoringErrorCode::InvalidAmount);
+        require!(
+            ctx.accounts.vault.config.share_mover != Pubkey::default(),
+            BoringErrorCode::InvalidBridgeProgram
+        );
+
+        let burn_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Burn {
+                mint: ctx.accounts.share_mint.to_account_info(),
+                from: ctx.accounts.source_token_account.to_account_info(),
+                authority: ctx.accounts.signer.to_account_info(),
+            },
+        );
+
+        burn(burn_ctx, amount)?;
+
+        Ok(())
     }
 
     // ================================== View Functions ==================================
@@ -1848,7 +1919,7 @@ pub struct ClaimFeesInBase<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = !boring_vault_state.config.paused @ BoringErrorCode::VaultPaused,
         constraint = signer.key() == boring_vault_state.config.authority.key() @ BoringErrorCode::NotAuthorized,
         constraint = base_mint.key() == boring_vault_state.teller.base_asset @ BoringErrorCode::InvalidBaseAsset,
     )]
@@ -1890,7 +1961,7 @@ pub struct UpdateExchangeRate<'info> {
         mut,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = !boring_vault_state.config.paused @ BoringErrorCode::VaultPaused,
         constraint = signer.key() == boring_vault_state.teller.exchange_rate_provider.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
@@ -1911,7 +1982,7 @@ pub struct Manage<'info> {
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &args.vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = !boring_vault_state.config.paused @ BoringErrorCode::VaultPaused,
         constraint = signer.key() == boring_vault_state.manager.strategist.key() @ BoringErrorCode::NotAuthorized
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
@@ -1957,7 +2028,7 @@ pub struct GetRateSafe<'info> {
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = !boring_vault_state.config.paused @ BoringErrorCode::VaultPaused,
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 }
@@ -1998,7 +2069,7 @@ pub struct GetRateInQuoteSafe<'info> {
     #[account(
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault_id.to_le_bytes()[..]],
         bump,
-        constraint = boring_vault_state.config.paused == false @ BoringErrorCode::VaultPaused,
+        constraint = !boring_vault_state.config.paused @ BoringErrorCode::VaultPaused,
     )]
     pub boring_vault_state: Account<'info, BoringVault>,
 
@@ -2021,4 +2092,78 @@ pub struct GetRateInQuoteSafe<'info> {
         )]
     /// CHECK: Checked in the constraint
     pub price_feed: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct SetShareMover<'info> {
+    pub authority: Signer<'info>,
+    #[account(
+        mut,
+        constraint = vault.config.authority == authority.key() @ BoringErrorCode::NotAuthorized,
+    )]
+    pub vault: Account<'info, BoringVault>,
+}
+
+#[derive(Accounts)]
+#[instruction(recipient: Pubkey, amount: u64)]
+pub struct MintShares<'info> {
+    #[account(
+        constraint = vault.config.share_mover == share_mover.key() @ BoringErrorCode::NotAuthorized,
+    )]
+    pub share_mover: Signer<'info>,
+
+    #[account(
+        constraint = !vault.config.paused @ BoringErrorCode::VaultPaused,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault.config.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    pub vault: Account<'info, BoringVault>,
+
+    #[account(
+        mut,
+        constraint = share_mint.key() == vault.config.share_mint @ BoringErrorCode::InvalidShareMint,
+    )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        constraint = recipient_token_account.mint == share_mint.key() @ BoringErrorCode::InvalidAssociatedTokenAccount,
+        constraint = recipient_token_account.owner == recipient @ BoringErrorCode::NotAuthorized,
+    )]
+    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        address =  TOKEN_PROGRAM_2022
+    )]
+    pub token_program: Program<'info, Token2022>,
+}
+
+#[derive(Accounts)]
+#[instruction(amount: u64)]
+pub struct BurnShares<'info> {
+    pub signer: Signer<'info>,
+
+    #[account(
+        constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,
+        constraint = !vault.config.paused @ BoringErrorCode::VaultPaused,
+        seeds = [BASE_SEED_BORING_VAULT_STATE, &vault.config.vault_id.to_le_bytes()[..]],
+        bump,
+    )]
+    pub vault: Account<'info, BoringVault>,
+
+    #[account(mut)]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        constraint = source_token_account.mint == share_mint.key() @ BoringErrorCode::InvalidAssociatedTokenAccount,
+        constraint = source_token_account.owner == signer.key() @ BoringErrorCode::NotAuthorized,
+        constraint = source_token_account.amount >= amount @ BoringErrorCode::InsufficientBalance,
+    )]
+    pub source_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        address = TOKEN_PROGRAM_2022
+    )]
+    pub token_program: Program<'info, Token2022>,
 }

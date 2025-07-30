@@ -91,8 +91,6 @@ describe("state-assert", () => {
       .setupStack()
       .accounts({
         signer: user.publicKey,
-        userStack: userStack,
-        systemProgram: SystemProgram.programId,
       })
       .signers([user])
       .rpc();
@@ -131,7 +129,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -147,7 +144,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -167,7 +163,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -184,7 +179,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -213,7 +207,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -230,7 +223,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -258,7 +250,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -275,7 +266,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -300,7 +290,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -317,7 +306,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -338,7 +326,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -356,7 +343,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -377,7 +363,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -393,7 +378,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -414,7 +398,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -430,7 +413,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -451,7 +433,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -468,7 +449,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -490,7 +470,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -507,7 +486,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -532,7 +510,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -548,7 +525,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -568,7 +544,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -590,7 +565,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -605,7 +579,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -635,7 +608,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -647,7 +619,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: anotherAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -671,7 +642,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -697,7 +667,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -711,7 +680,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -729,28 +697,26 @@ describe("state-assert", () => {
         dataOffset,
         initialValue
       );
-    
+
       await program.methods
         .pushStateAssert(dataOffset, compareTo, { gte: {} }, { any: {} })
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
-    
+
       await program.methods
         .popStateAssert()
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc(); // Should succeed as 0 >= 0
     });
-    
+
     it("Should pass LTE comparison when value does not change", async () => {
       const dataOffset = 8;
       const initialValue = new anchor.BN(5000);
@@ -760,23 +726,21 @@ describe("state-assert", () => {
         dataOffset,
         initialValue
       );
-    
+
       await program.methods
         .pushStateAssert(dataOffset, compareTo, { lte: {} }, { any: {} })
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
-    
+
       await program.methods
         .popStateAssert()
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc(); // Should succeed as 0 <= 0
@@ -796,7 +760,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -818,7 +781,6 @@ describe("state-assert", () => {
           .accounts({
             signer: user.publicKey,
             targetAccount: testDataAccount.publicKey,
-            userStack: userStack,
           })
           .signers([user])
           .rpc();
@@ -843,7 +805,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();
@@ -861,7 +822,6 @@ describe("state-assert", () => {
         .accounts({
           signer: user.publicKey,
           targetAccount: testDataAccount.publicKey,
-          userStack: userStack,
         })
         .signers([user])
         .rpc();

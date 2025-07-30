@@ -6,19 +6,19 @@
 //! - Managing token transfers
 //! - Computing exchange rates
 
+use crate::OracleSource; // enum declared in state.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
-use rust_decimal::Decimal;
-use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
-use crate::OracleSource; // enum declared in state.rs
 use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
+use rust_decimal::Decimal;
+use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
 // Internal modules
-use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
 use super::math;
+use crate::{constants::*, AssetData, BoringErrorCode, BoringVault, DepositArgs, WithdrawArgs};
 
-use math::{to_decimal, from_decimal};
+use math::{from_decimal, to_decimal};
 
 // ================================ Validation Functions ================================
 
@@ -238,9 +238,7 @@ pub fn calculate_assets_out<'a>(
         let assets_out_in_base =
             calculate_assets_out_in_base_asset(args.share_amount, exchange_rate, share_decimals)?;
         let assets_out_in_base = to_decimal(assets_out_in_base, share_decimals)?;
-        let assets_out = from_decimal(assets_out_in_base, asset_decimals)?;
-
-        assets_out
+        from_decimal(assets_out_in_base, asset_decimals)?
     } else {
         // Query price feed.
         let price = read_oracle(
@@ -360,7 +358,7 @@ fn read_oracle(
             // Convert slot staleness threshold to seconds using pure math function
             let max_age_sec = math::slots_to_seconds(max_staleness);
             let current_ts = Clock::get()?.unix_timestamp;
-            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts as i64, max_age_sec);
+            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts, max_age_sec);
             let price_data = price_data_opt.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
             // Convert to decimal using pure math function
             let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.expo)?;
@@ -369,19 +367,20 @@ fn read_oracle(
         OracleSource::PythV2 => {
             // Require feed_id for PythV2
             let feed_id = feed_id.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
-            
+
             // Decode Pyth Pull Oracle price update account
-            let price_update_account = PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
-                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
-            
+            let price_update_account =
+                PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
+                    .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+
             // Convert slot staleness threshold to seconds using pure math function
             let max_age_sec = math::slots_to_seconds(max_staleness);
-            
+
             // Get price with feed_id validation
             let price_data = price_update_account
                 .get_price_no_older_than(&Clock::get()?, max_age_sec, &feed_id)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
-            
+
             // Convert to decimal using pure math function
             let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.exponent)?;
             Ok(decimal_price)
@@ -440,8 +439,6 @@ fn calculate_shares_to_mint_using_deposit_asset(
 
     Ok(shares_to_mint)
 }
-
-
 
 /// Calculates assets to withdraw in base asset
 fn calculate_assets_out_in_base_asset(
