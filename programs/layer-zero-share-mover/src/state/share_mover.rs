@@ -1,5 +1,10 @@
+use crate::error::BoringErrorCode;
 use anchor_lang::{prelude::Pubkey, prelude::*};
-use common::{error::MathError, rate_limit::RateLimitState};
+use common::{
+    error::{MathError, ShareBridgeCodecError},
+    message::ShareBridgeMessage,
+    rate_limit::RateLimitState,
+};
 
 #[derive(InitSpace)]
 #[account]
@@ -20,7 +25,22 @@ impl Default for PeerChain {
     }
 }
 
-// TODO: review immutability
+impl PeerChain {
+    pub fn validate(&self, recipient: &[u8; 32]) -> Result<()> {
+        match self {
+            PeerChain::Evm => {
+                require!(
+                    ShareBridgeMessage::is_valid_padded_evm_address(recipient),
+                    ShareBridgeCodecError::InvalidEVMRecipientAddress
+                );
+                Ok(())
+            }
+            PeerChain::Sui => Ok(()),
+            _ => Err(error!(BoringErrorCode::InvalidPeerChain)),
+        }
+    }
+}
+
 #[derive(InitSpace)]
 #[account]
 pub struct ShareMover {
@@ -43,36 +63,15 @@ pub struct ShareMover {
     pub inbound_rate_limit: RateLimitState,
     // immutable after deployment
     pub peer_chain: PeerChain,
+    pub pending_admin: Pubkey,
 }
 
 impl ShareMover {
-    /// Checks the outbound rate limit for sending shares.
-    /// This function should be called within your `send` instruction.
-    ///
-    /// # Arguments
-    ///
-    /// * `amount` - The number of shares being sent.
-    /// * `current_timestamp` - The current block timestamp from `Clock::get()`.
-    pub fn check_outbound_rate_limit(&mut self, amount: u64, current_timestamp: i64) -> Result<()> {
-        msg!("Checking outbound rate limit...");
-        self.outbound_rate_limit
-            .check_and_consume(amount, current_timestamp)
-    }
-
-    /// Checks the inbound rate limit for receiving shares.
-    /// This function should be called within your `lz_receive` instruction.
-    ///
-    /// # Arguments
-    ///
-    /// * `amount` - The number of shares being received.
-    /// * `current_timestamp` - The current block timestamp from `Clock::get()`.
     pub fn check_inbound_rate_limit(
         &mut self,
         amount: u128, // Amount from message is u128
         current_timestamp: i64,
     ) -> Result<()> {
-        msg!("Checking inbound rate limit...");
-        // Convert amount to u64 for the rate limiter, returning an error if it's too large.
         let amount_u64 = u64::try_from(amount).map_err(|_| MathError::Overflow)?;
 
         self.inbound_rate_limit
@@ -104,6 +103,7 @@ mod tests {
             outbound_rate_limit: Default::default(),
             inbound_rate_limit: Default::default(),
             peer_chain: PeerChain::Unknown,
+            pending_admin: Pubkey::default(),
         }
     }
 
@@ -116,17 +116,23 @@ mod tests {
         share_mover.outbound_rate_limit = create_test_rate_limit_state(1000, 3600, current_time, 0);
 
         // Successful check. Start with 0 in flight, consume 400
-        let result = share_mover.check_outbound_rate_limit(400, current_time);
+        let result = share_mover
+            .outbound_rate_limit
+            .check_and_consume(400, current_time);
         assert!(result.is_ok());
         assert_eq!(share_mover.outbound_rate_limit.amount_in_flight, 400);
 
         // Try to consume 600 more immediately (should succeed, total = 1000)
-        let result = share_mover.check_outbound_rate_limit(600, current_time);
+        let result = share_mover
+            .outbound_rate_limit
+            .check_and_consume(600, current_time);
         assert!(result.is_ok());
         assert_eq!(share_mover.outbound_rate_limit.amount_in_flight, 1000);
 
         // Try to consume 1 more immediately (should fail, at limit)
-        let result_fail = share_mover.check_outbound_rate_limit(1, current_time);
+        let result_fail = share_mover
+            .outbound_rate_limit
+            .check_and_consume(1, current_time);
         assert!(result_fail.is_err());
         assert_eq!(
             result_fail.unwrap_err(),
@@ -135,7 +141,9 @@ mod tests {
 
         // After half the window (1800 seconds), half should have decayed
         // 1000 * 1800/3600 = 500 decayed, so 500 in flight, can send 500 more
-        let result = share_mover.check_outbound_rate_limit(400, current_time + 1800);
+        let result = share_mover
+            .outbound_rate_limit
+            .check_and_consume(400, current_time + 1800);
         assert!(result.is_ok());
         assert_eq!(share_mover.outbound_rate_limit.amount_in_flight, 900); // 500 (after decay) + 400
     }
@@ -176,7 +184,9 @@ mod tests {
             create_test_rate_limit_state(1000, 3600, current_time, 800);
 
         // After full window passes, everything should reset
-        let result = share_mover.check_outbound_rate_limit(1000, current_time + 3600);
+        let result = share_mover
+            .outbound_rate_limit
+            .check_and_consume(1000, current_time + 3600);
         assert!(result.is_ok());
         assert_eq!(share_mover.outbound_rate_limit.amount_in_flight, 1000);
         assert_eq!(
@@ -194,7 +204,9 @@ mod tests {
         share_mover.outbound_rate_limit = create_test_rate_limit_state(0, 3600, current_time, 0);
 
         // Should be able to send any amount when disabled
-        let result = share_mover.check_outbound_rate_limit(u64::MAX, current_time);
+        let result = share_mover
+            .outbound_rate_limit
+            .check_and_consume(u64::MAX, current_time);
         assert!(result.is_ok());
         // When disabled, state shouldn't be updated
         assert_eq!(share_mover.outbound_rate_limit.amount_in_flight, 0);

@@ -1,8 +1,8 @@
-use crate::seed::EVENT_AUTHORITY_SEED;
+use crate::constants::{CLEAR_DISCRIMINATOR, MINT_SHARES_DISCRIMINATOR};
 use crate::utils::get_accounts_for_clear;
 use crate::{
+    constants::{PEER_SEED, SHARE_MOVER_SEED},
     error::BoringErrorCode,
-    seed::{PEER_SEED, SHARE_MOVER_SEED},
     state::{
         lz::{LzReceiveParams, PeerConfig},
         share_mover::ShareMover,
@@ -18,26 +18,25 @@ use anchor_spl::{
 };
 use common::message::decode_message;
 
-// min accounts len for clear cpi, found here:
-// https://github.com/LayerZero-Labs/LayerZero-v2/blob/main/packages/layerzero-v2/solana/programs/programs/endpoint/src/instructions/oapp/clear.rs
-// 5 original + event_authority + endpoint_program
+// Minimum number of LayerZero accounts required for a clear operation.
+// The clear CPI into the LayerZero endpoint expects exactly 7 accounts:
+// [0] share_mover          – signer PDA derived from [SHARE_MOVER_SEED, mint]
+// [1] oapp_registry        – read-only, registry holding OApp configs
+// [2] nonce                – read-only, tracks per-source-chain nonce
+// [3] payload_hash         – mutable, closed by the endpoint once processed
+// [4] endpoint             – mutable, LayerZero endpoint settings account
+// [5] event_authority      – read-only PDA derived from EVENT_AUTHORITY_SEED
+// [6] endpoint_program     – read-only, actual endpoint program id
 pub const CLEAR_MIN_ACCOUNTS_LEN: usize = 7;
-// Accounts passed to execute_mint slice:
-// 0 share_mover (signer), 1 vault_state, 2 share_mint, 3 recipient_ata,
-// 4 token_program_2022, 5 boring_vault_program (program account)
+
+// Accounts slice forwarded to `execute_mint` (boring-vault CPI):
+// [0] share_mover          – signer PDA (read-only is sufficient)
+// [1] vault_state         – vault PDA holding config & balances
+// [2] share_mint          – mutable SPL Token-2022 mint of shares
+// [3] recipient_ata       – mutable ATA that will receive the minted shares
+// [4] token_program_2022  – SPL Token-2022 program id
+// [5] boring_vault_program – read-only, on-chain boring-vault program id
 pub const MINT_ACCOUNTS_LEN: usize = 6;
-
-pub const CLEAR_DISCRIMINATOR: [u8; 8] = [250, 39, 28, 213, 123, 163, 133, 5];
-pub const MINT_SHARES_DISCRIMINATOR: [u8; 8] = [24, 196, 132, 0, 183, 158, 216, 142];
-
-#[derive(Clone, Copy)]
-struct ShareMoverData {
-    key: Pubkey,
-    bump: u8,
-    mint: Pubkey,
-    endpoint_program: Pubkey,
-    boring_vault_program: Pubkey,
-}
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct ClearParams {
@@ -55,14 +54,14 @@ pub struct LzReceive<'info> {
     #[account(
         mut,
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
-        bump = share_mover.bump,
+        bump,
         constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused
     )]
     pub share_mover: Account<'info, ShareMover>,
 
     #[account(
         seeds = [PEER_SEED, &share_mover.key().to_bytes(), &params.src_eid.to_be_bytes()],
-        bump = peer.bump,
+        bump,
         constraint = params.sender == peer.peer_address @ BoringErrorCode::PeerNotAuthorized
     )]
     pub peer: Account<'info, PeerConfig>,
@@ -96,24 +95,6 @@ impl<'info> LzReceive<'info> {
                 BoringErrorCode::InvalidClearAccounts
             );
         }
-
-        // Validate event_authority PDA (index 5)
-        let (event_authority, _) = Pubkey::find_program_address(
-            &[EVENT_AUTHORITY_SEED],
-            &share_mover_data.endpoint_program,
-        );
-        require_eq!(
-            accounts[5].key(),
-            event_authority,
-            BoringErrorCode::InvalidClearAccounts
-        );
-
-        // Validate endpoint program id (index 6)
-        require_eq!(
-            accounts[6].key(),
-            share_mover_data.endpoint_program,
-            BoringErrorCode::InvalidClearAccounts
-        );
 
         let clear_data = Self::build_clear_data(share_mover_data.key, params)?;
 
@@ -197,7 +178,7 @@ impl<'info> LzReceive<'info> {
             data: mint_data,
         };
 
-        invoke_signed(&mint_ix, &accounts, &[signer_seeds])?;
+        invoke_signed(&mint_ix, accounts, &[signer_seeds])?;
 
         Ok(())
     }
@@ -254,6 +235,11 @@ pub fn lz_receive<'info>(
         BoringErrorCode::InvalidMessageRecipient
     );
 
+    ctx.accounts
+        .share_mover
+        .peer_chain
+        .validate(&decoded_msg.recipient)?;
+
     // Now that all checks have passed, safely update the inbound rate-limit state
     let clock = Clock::get()?;
     ctx.accounts
@@ -289,4 +275,13 @@ pub fn lz_receive<'info>(
     )?;
 
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct ShareMoverData {
+    key: Pubkey,
+    bump: u8,
+    mint: Pubkey,
+    endpoint_program: Pubkey,
+    boring_vault_program: Pubkey,
 }

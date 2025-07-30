@@ -104,11 +104,7 @@ pub mod state_assert {
         }
 
         // Calculate the difference
-        let difference = if current_value >= state_assert.initial_value {
-            current_value - state_assert.initial_value
-        } else {
-            state_assert.initial_value - current_value
-        };
+        let difference = current_value.abs_diff(state_assert.initial_value);
 
         // Perform the assertion
         match state_assert.comparison_method {

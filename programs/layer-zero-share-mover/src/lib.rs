@@ -1,9 +1,9 @@
 #![allow(unexpected_cfgs)]
 #![allow(clippy::too_many_arguments)]
 
+mod constants;
 mod error;
 mod processor;
-mod seed;
 mod state;
 mod utils;
 
@@ -93,5 +93,9 @@ pub mod layer_zero_share_mover {
 
     pub fn transfer_authority(ctx: Context<TransferAuthority>, new_admin: Pubkey) -> Result<()> {
         processor::transfer_authority(ctx, new_admin)
+    }
+
+    pub fn accept_authority(ctx: Context<AcceptAuthority>) -> Result<()> {
+        processor::accept_authority(ctx)
     }
 }

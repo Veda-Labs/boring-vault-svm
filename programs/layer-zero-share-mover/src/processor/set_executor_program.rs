@@ -1,4 +1,4 @@
-use crate::{error::BoringErrorCode, seed::SHARE_MOVER_SEED, state::share_mover::ShareMover};
+use crate::{constants::SHARE_MOVER_SEED, error::BoringErrorCode, state::share_mover::ShareMover};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
@@ -11,7 +11,7 @@ pub struct SetExecutorProgram<'info> {
     #[account(
         mut,
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
-        bump = share_mover.bump,
+        bump,
     )]
     pub share_mover: Account<'info, ShareMover>,
 }

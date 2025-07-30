@@ -5,8 +5,8 @@ use anchor_spl::{
 use common::message::decode_message;
 
 use crate::{
+    constants::{PEER_SEED, SHARE_MOVER_SEED},
     error::BoringErrorCode,
-    seed::{EVENT_AUTHORITY_SEED, PEER_SEED, SHARE_MOVER_SEED},
     state::{
         lz::{LzAccount, LzReceiveParams},
         share_mover::ShareMover,
@@ -64,23 +64,6 @@ pub fn lz_receive_types(
         params.nonce,
     );
     accounts.extend(accounts_for_clear);
-
-    // Include the mandatory event_authority PDA and the endpoint program ID so
-    // the clear CPI receives the expected 7 accounts.
-    let (event_authority, _) =
-        Pubkey::find_program_address(&[EVENT_AUTHORITY_SEED], &share_mover.endpoint_program);
-    accounts.extend([
-        LzAccount {
-            pubkey: event_authority,
-            is_signer: false,
-            is_writable: false,
-        },
-        LzAccount {
-            pubkey: share_mover.endpoint_program,
-            is_signer: false,
-            is_writable: false,
-        },
-    ]);
 
     let decoded_msg = decode_message(&params.message)?;
 

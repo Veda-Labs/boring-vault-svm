@@ -1,7 +1,7 @@
 use crate::state::lz::assert_type_3;
 use crate::{
+    constants::{PEER_SEED, SHARE_MOVER_SEED},
     error::BoringErrorCode,
-    seed::{PEER_SEED, SHARE_MOVER_SEED},
     state::{lz::PeerConfig, share_mover::ShareMover},
 };
 use anchor_lang::prelude::*;
@@ -34,7 +34,7 @@ pub struct SetPeer<'info> {
 
     #[account(
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
-        bump = share_mover.bump,
+        bump,
         constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused,
     )]
     pub share_mover: Account<'info, ShareMover>,
@@ -61,6 +61,9 @@ pub fn set_peer(ctx: Context<SetPeer>, params: SetPeerParams) -> Result<()> {
                 addr.iter().any(|&b| b != 0),
                 BoringErrorCode::InvalidPeerAddress
             );
+
+            ctx.accounts.share_mover.peer_chain.validate(&addr)?;
+
             ctx.accounts.peer.peer_address = addr;
         }
         PeerConfigParam::EnforcedOptions {

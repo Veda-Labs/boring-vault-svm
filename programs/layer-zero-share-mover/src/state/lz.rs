@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 
+use crate::constants::{ENFORCED_OPTIONS_SEND_AND_CALL_MAX_LEN, ENFORCED_OPTIONS_SEND_MAX_LEN};
+
 #[account]
 #[derive(InitSpace)]
 pub struct LzReceiveTypesAccounts {
-    pub store: Pubkey, // This is required and should be consistent.
+    pub store: Pubkey,
 }
 
-// https://github.com/LayerZero-Labs/LayerZero-v2/blob/88428755be6caa71cb1d2926141d73c8989296b5/packages/layerzero-v2/solana/programs/libs/oapp/src/endpoint_cpi.rs#L227
-// same as anchor_lang::prelude::AccountMeta
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct LzAccount {
     pub pubkey: Pubkey,
@@ -15,16 +15,12 @@ pub struct LzAccount {
     pub is_writable: bool,
 }
 
-// https://github.com/LayerZero-Labs/devtools/blob/main/examples/oapp-solana/programs/my_oapp/src/state/peer_config.rs#L7
 #[account]
 pub struct PeerConfig {
     pub peer_address: [u8; 32],
     pub enforced_options: EnforcedOptions,
     pub bump: u8,
 }
-
-pub const ENFORCED_OPTIONS_SEND_MAX_LEN: usize = 512;
-pub const ENFORCED_OPTIONS_SEND_AND_CALL_MAX_LEN: usize = 1024;
 
 #[derive(Clone, Default, AnchorSerialize, AnchorDeserialize, InitSpace)]
 pub struct EnforcedOptions {
@@ -38,7 +34,7 @@ impl EnforcedOptions {
     pub fn combine_options(
         &self,
         compose_msg: &Option<Vec<u8>>,
-        extra_options: &Vec<u8>,
+        extra_options: &[u8],
     ) -> Result<Vec<u8>> {
         let enforced_options = if compose_msg.is_none() {
             self.send.clone()
@@ -50,15 +46,15 @@ impl EnforcedOptions {
 }
 
 // https://github.com/LayerZero-Labs/LayerZero-v2/blob/63bbd31584c588844de33678bf8dd61d879cba14/packages/layerzero-v2/solana/programs/libs/oapp/src/options.rs#L3
-pub fn combine_options(mut enforced_options: Vec<u8>, extra_options: &Vec<u8>) -> Result<Vec<u8>> {
+pub fn combine_options(mut enforced_options: Vec<u8>, extra_options: &[u8]) -> Result<Vec<u8>> {
     // No enforced options, pass whatever the caller supplied, even if it's empty or legacy type
     // 1/2 options.
-    if enforced_options.len() == 0 {
+    if enforced_options.is_empty() {
         return Ok(extra_options.to_vec());
     }
 
     // No caller options, return enforced
-    if extra_options.len() == 0 {
+    if extra_options.is_empty() {
         return Ok(enforced_options);
     }
 
@@ -76,7 +72,7 @@ pub fn combine_options(mut enforced_options: Vec<u8>, extra_options: &Vec<u8>) -
     Err(ErrorCode::InvalidOptions.into())
 }
 
-pub fn assert_type_3(options: &Vec<u8>) -> Result<()> {
+pub fn assert_type_3(options: &[u8]) -> Result<()> {
     let mut option_type_bytes = [0; 2];
     option_type_bytes.copy_from_slice(&options[0..2]);
     require!(

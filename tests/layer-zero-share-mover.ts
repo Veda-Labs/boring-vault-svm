@@ -125,7 +125,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
         outboundWindow: new BN(0),
         inboundLimit: new BN(0),
         inboundWindow: new BN(0),
-        peerChain: { unknown: {} },
+        peerChain: { evm: {} },
       })
       .accounts({
         signer: admin.publicKey,
@@ -307,8 +307,12 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
   it("sets peer successfully and fails when paused", async () => {
     const remoteEid = 101;
-    const peerAddress = new Uint8Array(32);
-    peerAddress.set([1, 2, 3]);
+    const peerAddress = Uint8Array.from(
+      Buffer.from(
+        "000000000000000000000000c1caf4915849cd5fe21efaa4ae14e4eafa7a3431",
+        "hex"
+      )
+    );
 
     const [peerPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
@@ -432,8 +436,12 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
   it("closes peer successfully", async () => {
     const remoteEid = 202;
-    const addr = new Uint8Array(32);
-    addr.set([9, 9, 9]);
+    const addr = Uint8Array.from(
+      Buffer.from(
+        "000000000000000000000000c1caf4915849cd5fe21efaa4ae14e4eafa7a3431",
+        "hex"
+      )
+    );
 
     const [peerPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
@@ -474,8 +482,12 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
   it("fails to close peer if signer is not admin", async () => {
     const remoteEid = 303;
-    const addr = new Uint8Array(32);
-    addr.set([1, 2, 3]);
+    const addr = Uint8Array.from(
+      Buffer.from(
+        "000000000000000000000000c1caf4915849cd5fe21efaa4ae14e4eafa7a3431",
+        "hex"
+      )
+    );
     const [peerPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
         PEER_SEED,
@@ -517,8 +529,12 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
   it("fails to close peer when ShareMover is paused", async () => {
     const remoteEid = 404;
-    const addr = new Uint8Array(32);
-    addr.set([1, 2, 3]);
+    const addr = Uint8Array.from(
+      Buffer.from(
+        "000000000000000000000000c1caf4915849cd5fe21efaa4ae14e4eafa7a3431",
+        "hex"
+      )
+    );
 
     const [peerPda] = anchor.web3.PublicKey.findProgramAddressSync(
       [
@@ -669,27 +685,48 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
       });
   });
 
-  it("transfers authority successfully", async () => {
+  it("performs two-step authority transfer", async () => {
     const newAdmin = anchor.web3.Keypair.generate();
     await fundAccount(context, newAdmin, 1_000_000_000);
 
+    // Keep reference to the current admin so we can test revocation afterwards
+    const oldAdmin = admin;
+
+    // Step 1: current admin sets pendingAdmin via transferAuthority
     await smProgram.methods
       .transferAuthority(newAdmin.publicKey)
       // @ts-ignore
-      .accounts({ signer: admin.publicKey, shareMover })
-      .signers([admin])
+      .accounts({ signer: oldAdmin.publicKey, shareMover })
+      .signers([oldAdmin])
       .rpc();
 
     let sm: any = await smProgram.account.shareMover.fetch(shareMover);
-    expect(sm.admin.toBase58()).to.equal(newAdmin.publicKey.toBase58());
-  });
+    expect(sm.pendingAdmin.toBase58()).to.equal(newAdmin.publicKey.toBase58());
+    // Admin should still be oldAdmin until acceptance
+    expect(sm.admin.toBase58()).to.equal(oldAdmin.publicKey.toBase58());
 
-  it("prevents old admin actions after authority transfer", async () => {
+    // Step 2: newAdmin accepts authority
+    await smProgram.methods
+      // @ts-ignore – generated after building program IDL
+      .acceptAuthority()
+      // @ts-ignore
+      .accounts({ signer: newAdmin.publicKey, shareMover })
+      .signers([newAdmin])
+      .rpc();
+
+    sm = await smProgram.account.shareMover.fetch(shareMover);
+    expect(sm.admin.toBase58()).to.equal(newAdmin.publicKey.toBase58());
+    expect(sm.pendingAdmin.toBase58()).to.equal(anchor.web3.PublicKey.default.toBase58());
+
+    // Update global admin for subsequent tests
+    admin = newAdmin;
+
+    // Old admin should now be unauthorized
     await smProgram.methods
       .setPause(true)
       // @ts-ignore
-      .accounts({ signer: admin.publicKey, shareMover })
-      .signers([admin])
+      .accounts({ signer: oldAdmin.publicKey, shareMover })
+      .signers([oldAdmin])
       .rpc()
       .catch((e) => {
         expect(String(e)).to.include("Not authorized");

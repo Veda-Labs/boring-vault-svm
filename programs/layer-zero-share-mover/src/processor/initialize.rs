@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use std::mem::size_of;
 
-use crate::{seed::PROGRAM_CONFIG_SEED, state::share_mover::ProgramConfig};
+use crate::{constants::PROGRAM_CONFIG_SEED, state::share_mover::ProgramConfig};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {

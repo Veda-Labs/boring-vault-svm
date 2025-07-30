@@ -1,6 +1,6 @@
 use crate::{
+    constants::{ENDPOINT_SEED, PEER_SEED, QUOTE_DISCRIMINATOR, SHARE_MOVER_SEED},
     error::BoringErrorCode,
-    seed::{ENDPOINT_SEED, PEER_SEED, SHARE_MOVER_SEED},
     state::{
         lz::{EndpointSettings, MessagingFee, PeerConfig},
         share_mover::ShareMover,
@@ -8,12 +8,10 @@ use crate::{
 };
 use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
-    program::invoke_signed,
+    program::invoke,
 };
 use anchor_lang::{prelude::*, solana_program::program::get_return_data};
 use common::message::{encode_message, ShareBridgeMessage};
-
-const QUOTE_DISCRIMINATOR: [u8; 8] = [149, 42, 109, 247, 134, 146, 213, 123];
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct PreviewFeeParams {
@@ -39,7 +37,7 @@ pub struct LzQuoteParams {
 pub struct PreviewFee<'info> {
     #[account(
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
-        bump = share_mover.bump,
+        bump,
         constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused
     )]
     pub share_mover: Account<'info, ShareMover>,
@@ -50,13 +48,13 @@ pub struct PreviewFee<'info> {
             share_mover.key().as_ref(),
             &params.dst_eid.to_be_bytes()
         ],
-        bump = peer.bump
+        bump
     )]
     pub peer: Account<'info, PeerConfig>,
 
     #[account(
         seeds = [ENDPOINT_SEED],
-        bump = endpoint.bump,
+        bump,
         seeds::program = share_mover.endpoint_program
     )]
     pub endpoint: Account<'info, EndpointSettings>,
@@ -92,19 +90,13 @@ pub fn preview_fee(ctx: &Context<PreviewFee>, params: PreviewFeeParams) -> Resul
         account_metas.push(AccountMeta::new_readonly(account.key(), account.is_signer));
     }
 
-    // Create the instruction
     let quote_instruction = Instruction {
         program_id: ctx.accounts.share_mover.endpoint_program,
         accounts: account_metas,
         data: quote_data,
     };
 
-    // Execute the CPI call
-    invoke_signed(
-        &quote_instruction,
-        ctx.remaining_accounts,
-        &[], // No seeds needed for quote call as it's read-only
-    )?;
+    invoke(&quote_instruction, ctx.remaining_accounts)?;
 
     let (return_pid, return_data) =
         get_return_data().ok_or(ProgramError::InvalidInstructionData)?;

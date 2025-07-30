@@ -1,3 +1,4 @@
+pub mod accept_authority;
 pub mod close_peer;
 pub mod deploy;
 pub mod initialize;
@@ -13,6 +14,7 @@ pub mod set_peer;
 pub mod set_rate_limit;
 pub mod transfer_authority;
 
+pub use accept_authority::*;
 pub use close_peer::*;
 pub use deploy::*;
 pub use initialize::*;

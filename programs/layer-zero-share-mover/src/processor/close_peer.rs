@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
 use crate::{
+    constants::{PEER_SEED, SHARE_MOVER_SEED},
     error::BoringErrorCode,
-    seed::{PEER_SEED, SHARE_MOVER_SEED},
     state::{lz::PeerConfig, share_mover::ShareMover},
 };
 
@@ -17,7 +17,7 @@ pub struct ClosePeer<'info> {
 
     #[account(
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
-        bump = share_mover.bump,
+        bump,
         constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused,
     )]
     pub share_mover: Account<'info, ShareMover>,
@@ -26,7 +26,7 @@ pub struct ClosePeer<'info> {
         mut,
         close = signer,
         seeds = [PEER_SEED, &share_mover.key().to_bytes(), &remote_eid.to_be_bytes()],
-        bump = peer.bump,
+        bump,
     )]
     pub peer: Account<'info, PeerConfig>,
 }

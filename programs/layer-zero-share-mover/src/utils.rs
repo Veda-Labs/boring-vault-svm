@@ -1,7 +1,7 @@
 use anchor_lang::prelude::Pubkey;
 
 use crate::{
-    seed::{ENDPOINT_SEED, NONCE_SEED, OAPP_SEED, PAYLOAD_HASH_SEED},
+    constants::{ENDPOINT_SEED, EVENT_AUTHORITY_SEED, NONCE_SEED, OAPP_SEED, PAYLOAD_HASH_SEED},
     state::lz::LzAccount,
 };
 
@@ -39,6 +39,9 @@ pub fn get_accounts_for_clear(
     let (endpoint_settings_account, _) =
         Pubkey::find_program_address(&[ENDPOINT_SEED], &endpoint_program);
 
+    let (event_authority, _) =
+        Pubkey::find_program_address(&[EVENT_AUTHORITY_SEED], &endpoint_program);
+
     vec![
         LzAccount {
             pubkey: *receiver,
@@ -64,6 +67,16 @@ pub fn get_accounts_for_clear(
             pubkey: endpoint_settings_account,
             is_signer: false,
             is_writable: true,
+        },
+        LzAccount {
+            pubkey: event_authority,
+            is_signer: false,
+            is_writable: false,
+        },
+        LzAccount {
+            pubkey: endpoint_program,
+            is_signer: false,
+            is_writable: false,
         },
     ]
 }

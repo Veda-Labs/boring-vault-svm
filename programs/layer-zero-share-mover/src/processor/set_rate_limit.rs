@@ -1,4 +1,4 @@
-use crate::{error::BoringErrorCode, seed::SHARE_MOVER_SEED, state::share_mover::ShareMover};
+use crate::{constants::SHARE_MOVER_SEED, error::BoringErrorCode, state::share_mover::ShareMover};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
@@ -11,7 +11,7 @@ pub struct SetRateLimit<'info> {
     #[account(
         mut,
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
-        bump = share_mover.bump,
+        bump,
     )]
     pub share_mover: Account<'info, ShareMover>,
 }
@@ -26,7 +26,7 @@ pub fn set_rate_limit(
     let share_mover = &mut ctx.accounts.share_mover;
     let clock = Clock::get()?;
 
-    // First checkpoint the existing rate limits (consume 0 to update decay)
+    // checkpoint the existing rate limits (consume 0 to update decay)
     let _ = share_mover
         .outbound_rate_limit
         .check_and_consume(0, clock.unix_timestamp);
@@ -34,8 +34,6 @@ pub fn set_rate_limit(
         .inbound_rate_limit
         .check_and_consume(0, clock.unix_timestamp);
 
-    // Update the limits and windows
-    // Note: This doesn't reset amount_in_flight or last_updated, matching EVM behavior
     share_mover.outbound_rate_limit.limit = outbound_limit;
     share_mover.outbound_rate_limit.window = outbound_window;
 

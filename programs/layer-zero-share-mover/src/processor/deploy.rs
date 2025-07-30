@@ -1,6 +1,8 @@
 use crate::{
+    constants::{
+        LZ_RECEIVE_TYPES_SEED, OAPP_REGISTER_DISCRIMINATOR, PROGRAM_CONFIG_SEED, SHARE_MOVER_SEED,
+    },
     error::BoringErrorCode,
-    seed::{LZ_RECEIVE_TYPES_SEED, PROGRAM_CONFIG_SEED, SHARE_MOVER_SEED},
     state::{
         lz::LzReceiveTypesAccounts,
         share_mover::{PeerChain, ProgramConfig, ShareMover},
@@ -13,8 +15,6 @@ use anchor_lang::{
 use anchor_spl::token_interface::Mint;
 use common::{pda::get_vault_state, rate_limit::RateLimitState};
 use std::mem::size_of;
-
-const OAPP_REGISTER_DISCRIMINATOR: [u8; 8] = [129, 89, 71, 68, 11, 82, 210, 125];
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct RegisterOAppParams {

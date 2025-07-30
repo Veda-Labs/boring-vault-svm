@@ -1,29 +1,20 @@
 use crate::{
+    constants::{BURN_SHARES_DISCRIMINATOR, PEER_SEED, SEND_DISCRIMINATOR, SHARE_MOVER_SEED},
     error::BoringErrorCode,
-    seed::{PEER_SEED, SHARE_MOVER_SEED},
-    state::{
-        lz::PeerConfig,
-        share_mover::{PeerChain, ShareMover},
-    },
+    state::{lz::PeerConfig, share_mover::ShareMover},
 };
-use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke_signed,
     system_program::ID as SYSTEM_PROGRAM_ID,
 };
+use anchor_lang::{prelude::*, solana_program::program::invoke};
 use anchor_spl::{
     token_2022::{spl_token_2022::ID as TOKEN_2022_PROGRAM_ID, Token2022},
     token_interface::{Mint, TokenAccount},
 };
 use boring_vault_svm::{BoringVault, BASE_SEED_BORING_VAULT_STATE};
-use common::{
-    error::ShareBridgeCodecError,
-    message::{encode_message, ShareBridgeMessage},
-};
-
-const SEND_DISCRIMINATOR: [u8; 8] = [102, 251, 20, 187, 65, 75, 12, 69];
-const BURN_SHARES_DISCRIMINATOR: [u8; 8] = [98, 168, 88, 31, 217, 221, 191, 214];
+use common::message::{encode_message, ShareBridgeMessage};
 
 // Mininum number of LayerZero accounts needed for send
 // Mandatory LayerZero accounts: [endpoint, messaging libs ...] plus event authority and program id (8 total)
@@ -58,16 +49,6 @@ pub struct LayerZeroSendParams {
     pub lz_token_fee: u64,
 }
 
-// Data struct to avoid lifetime issues
-#[derive(Clone, Copy)]
-struct ShareMoverData {
-    key: Pubkey,
-    bump: u8,
-    mint: Pubkey,
-    endpoint_program: Pubkey,
-    boring_vault_program: Pubkey,
-}
-
 #[derive(Accounts)]
 #[instruction(params: SendMessageParams)]
 pub struct Send<'info> {
@@ -77,8 +58,9 @@ pub struct Send<'info> {
     #[account(
         mut,
         seeds = [SHARE_MOVER_SEED, vault.config.share_mint.as_ref()],
-        bump = share_mover.bump,
-        constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused
+        constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused,
+        bump,
+
     )]
     pub share_mover: Account<'info, ShareMover>,
 
@@ -88,7 +70,7 @@ pub struct Send<'info> {
             share_mover.key().as_ref(),
             &params.dst_eid.to_be_bytes()
         ],
-        bump = peer.bump
+        bump
     )]
     pub peer: Account<'info, PeerConfig>,
     // ========== BURN SHARES ACCOUNTS ==========
@@ -172,7 +154,7 @@ impl<'info> Send<'info> {
         ];
 
         // Execute burn CPI (user signs, no PDA needed)
-        invoke_signed(&burn_ix, &burn_accounts, &[])?;
+        invoke(&burn_ix, &burn_accounts)?;
 
         Ok(())
     }
@@ -247,31 +229,33 @@ pub fn send<'info>(
     require!(params.amount > 0, BoringErrorCode::InvalidMessageAmount);
 
     require!(
-        ctx.remaining_accounts.len() >= LAYERZERO_SEND_ACCOUNTS_LEN,
-        BoringErrorCode::InvalidMessage
-    );
-
-    let share_mint_decimals = ctx.accounts.share_mint.decimals;
-    let peer_decimals = ctx.accounts.share_mover.peer_decimals;
-
-    let message_amount = ShareBridgeMessage::convert_amount_decimals(
-        params.amount as u128,
-        share_mint_decimals,
-        peer_decimals,
-    )
-    .ok_or(BoringErrorCode::SendAmountConversionFailed)?;
-
-    require!(
         ctx.accounts.source_token_account.amount >= params.amount,
         BoringErrorCode::InsufficientBalance
     );
 
+    require!(
+        ctx.remaining_accounts.len() >= LAYERZERO_SEND_ACCOUNTS_LEN,
+        BoringErrorCode::InvalidMessage
+    );
+
+    ctx.accounts
+        .share_mover
+        .peer_chain
+        .validate(&params.recipient)?;
+
     let clock = Clock::get()?;
     ctx.accounts
         .share_mover
-        .check_outbound_rate_limit(params.amount, clock.unix_timestamp)?;
+        .outbound_rate_limit
+        .check_and_consume(params.amount, clock.unix_timestamp)?;
 
-    // Create data struct to avoid lifetime issues
+    let message_amount = ShareBridgeMessage::convert_amount_decimals(
+        params.amount as u128,
+        ctx.accounts.share_mint.decimals,
+        ctx.accounts.share_mover.peer_decimals,
+    )
+    .ok_or(BoringErrorCode::SendAmountConversionFailed)?;
+
     let share_mover_data = ShareMoverData {
         key: ctx.accounts.share_mover.key(),
         bump: ctx.accounts.share_mover.bump,
@@ -280,14 +264,12 @@ pub fn send<'info>(
         boring_vault_program: ctx.accounts.share_mover.boring_vault_program,
     };
 
-    // ShareMover PDA seeds
     let share_mover_seeds = &[
         SHARE_MOVER_SEED,
         share_mover_data.mint.as_ref(),
         &[share_mover_data.bump],
     ];
 
-    // Step 1: Burn shares before sending cross-chain message
     Send::execute_burn_shares(
         &ctx.accounts.user,
         &ctx.accounts.vault.to_account_info(),
@@ -299,24 +281,8 @@ pub fn send<'info>(
         params.amount,
     )?;
 
-    match ctx.accounts.share_mover.peer_chain {
-        PeerChain::Evm => {
-            // Check if the recipient is a valid EVM address
-            require!(
-                ShareBridgeMessage::is_valid_padded_evm_address(&params.recipient),
-                ShareBridgeCodecError::InvalidEVMRecipientAddress
-            );
-        }
-        PeerChain::Sui => {
-            // Sui addresses are also 32 bytes; no additional validation needed here.
-        }
-        _ => {
-            return Err(error!(BoringErrorCode::InvalidPeerChain));
-        }
-    }
-
-    let message = ShareBridgeMessage::new(params.recipient, message_amount);
-    let encoded_message = encode_message(&message);
+    let encoded_message =
+        encode_message(&ShareBridgeMessage::new(params.recipient, message_amount));
 
     Send::execute_layerzero_send(
         &ctx.accounts.share_mover.to_account_info(),
@@ -333,4 +299,13 @@ pub fn send<'info>(
     )?;
 
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct ShareMoverData {
+    key: Pubkey,
+    bump: u8,
+    mint: Pubkey,
+    endpoint_program: Pubkey,
+    boring_vault_program: Pubkey,
 }
