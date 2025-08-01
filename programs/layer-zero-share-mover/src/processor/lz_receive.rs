@@ -54,15 +54,15 @@ pub struct LzReceive<'info> {
     #[account(
         mut,
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
-        bump,
-        constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused
+        constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused,
+        bump
     )]
     pub share_mover: Account<'info, ShareMover>,
 
     #[account(
         seeds = [PEER_SEED, &share_mover.key().to_bytes(), &params.src_eid.to_be_bytes()],
-        bump,
-        constraint = params.sender == peer.peer_address @ BoringErrorCode::PeerNotAuthorized
+        constraint = params.sender == peer.peer_address @ BoringErrorCode::PeerNotAuthorized,
+        bump
     )]
     pub peer: Account<'info, PeerConfig>,
 }
@@ -140,6 +140,17 @@ impl<'info> LzReceive<'info> {
             share_mover_data.mint,
             BoringErrorCode::InvalidMintAccounts
         );
+
+        require_eq!(
+            accounts[3].key(),
+            get_associated_token_address_with_program_id(
+                recipient,
+                &share_mover_data.mint,
+                &TOKEN_2022_PROGRAM_ID,
+            ),
+            BoringErrorCode::InvalidAssociatedTokenAccount
+        );
+
         require_eq!(
             accounts[4].key(),
             TOKEN_2022_PROGRAM_ID,
@@ -149,18 +160,6 @@ impl<'info> LzReceive<'info> {
             accounts[5].key(),
             share_mover_data.boring_vault_program,
             BoringErrorCode::InvalidMintAccounts
-        );
-
-        let expected_ata = get_associated_token_address_with_program_id(
-            recipient,
-            &share_mover_data.mint,
-            &TOKEN_2022_PROGRAM_ID,
-        );
-
-        require_eq!(
-            accounts[3].key(),
-            expected_ata,
-            BoringErrorCode::InvalidAssociatedTokenAccount
         );
 
         let mint_data = Self::build_mint_data(recipient, u64::try_from(amount)?)?;
@@ -230,6 +229,7 @@ pub fn lz_receive<'info>(
         decoded_msg.amount > 0,
         BoringErrorCode::InvalidMessageAmount
     );
+
     require!(
         Pubkey::from(decoded_msg.recipient) != Pubkey::default(),
         BoringErrorCode::InvalidMessageRecipient

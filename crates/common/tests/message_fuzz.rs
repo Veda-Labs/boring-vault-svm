@@ -92,7 +92,7 @@ mod quickcheck_tests {
                 return TestResult::discard();
             }
 
-            match ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals) {
+            match ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals).ok() {
                 Some(converted) => {
                     // If conversion succeeded, it should be non-zero if original was non-zero
                     if amount > 0 && converted == 0 {
@@ -116,7 +116,7 @@ mod quickcheck_tests {
                 return TestResult::discard();
             }
 
-            let result = ShareBridgeMessage::convert_amount_decimals(amount, decimals, decimals);
+            let result = ShareBridgeMessage::convert_amount_decimals(amount, decimals, decimals).ok();
             TestResult::from_bool(result == Some(amount))
         }
 
@@ -168,7 +168,7 @@ mod proptest_tests {
             from_decimals in 0u8..=18,
             to_decimals   in 0u8..=18
         ) {
-            let result = ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals);
+            let result = ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals).ok();
 
             if let Some(converted) = result {
                 if from_decimals == to_decimals {
@@ -318,7 +318,7 @@ mod structured_fuzz_tests {
 
         for (amount, from_decimals, to_decimals, expected) in test_cases {
             let result =
-                ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals);
+                ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals).ok();
             assert_eq!(
                 result, expected,
                 "Failed for amount={amount}, from={from_decimals}, to={to_decimals}"
@@ -343,7 +343,7 @@ mod codec_invariant_tests {
             from_decimals in 0u8..=18,
             to_decimals   in 0u8..=18
         ) {
-            if let Some(converted) = ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals) {
+            if let Some(converted) = ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals).ok() {
                 // Scaling down should never increase value.
                 if from_decimals > to_decimals {
                     prop_assert!(converted <= amount, "Scaling down created value: {amount} -> {converted}");
@@ -363,8 +363,8 @@ mod codec_invariant_tests {
             from_decimals in 6u8..=18,
             to_decimals   in 0u8..6
         ) {
-            if let Some(converted) = ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals) {
-                if let Some(back_converted) = ShareBridgeMessage::convert_amount_decimals(converted, to_decimals, from_decimals) {
+            if let Some(converted) = ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals).ok() {
+                if let Some(back_converted) = ShareBridgeMessage::convert_amount_decimals(converted, to_decimals, from_decimals).ok() {
                     let precision_loss = amount - back_converted;
                     let max_loss = 10u128.pow((from_decimals - to_decimals) as u32) - 1;
                     prop_assert!(precision_loss <= max_loss, "Precision loss {precision_loss} exceeds maximum {max_loss}");

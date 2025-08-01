@@ -15,7 +15,6 @@
 // |------|-------|
 
 use anchor_lang::prelude::*;
-
 use crate::error::ShareBridgeCodecError;
 
 pub const RECIPIENT_OFFSET: usize = 0;
@@ -34,35 +33,42 @@ impl ShareBridgeMessage {
     }
 
     /// Helper to convert amount between different decimal representations
-    /// Returns None if:
+    /// Returns an error if:
     /// - Arithmetic overflow would occur
     /// - The resulting amount would be zero (dust protection)
-    #[must_use]
     pub fn convert_amount_decimals(
         amount: u128,
         from_decimals: u8,
         to_decimals: u8,
-    ) -> Option<u128> {
+    ) -> Result<u128> {
         if from_decimals == to_decimals {
-            return Some(amount);
+            return Ok(amount);
         }
 
         let result = if from_decimals > to_decimals {
             // Scale down
-            let divisor = 10u128.checked_pow((from_decimals - to_decimals) as u32)?;
-            amount.checked_div(divisor)?
+            let divisor = 10u128
+                .checked_pow((from_decimals - to_decimals) as u32)
+                .ok_or(ShareBridgeCodecError::AmountTooLarge)?;
+            amount
+                .checked_div(divisor)
+                .ok_or(ShareBridgeCodecError::AmountTooLarge)?
         } else {
             // Scale up
-            let multiplier = 10u128.checked_pow((to_decimals - from_decimals) as u32)?;
-            amount.checked_mul(multiplier)?
+            let multiplier = 10u128
+                .checked_pow((to_decimals - from_decimals) as u32)
+                .ok_or(ShareBridgeCodecError::AmountTooLarge)?;
+            amount
+                .checked_mul(multiplier)
+                .ok_or(ShareBridgeCodecError::AmountTooLarge)?
         };
 
         // Dust protection: don't allow zero amounts after conversion
         if result == 0 && amount > 0 {
-            return None;
+            return Err(ShareBridgeCodecError::InvalidMessage.into());
         }
 
-        Some(result)
+        Ok(result)
     }
 
     /// Validates if a 32-byte address is a correctly padded 20-byte EVM address.
@@ -192,8 +198,8 @@ mod tests {
     fn test_decimal_conversion_same_decimals() {
         let amount = 123_456_789u128;
         assert_eq!(
-            ShareBridgeMessage::convert_amount_decimals(amount, 9, 9),
-            Some(amount)
+            ShareBridgeMessage::convert_amount_decimals(amount, 9, 9).unwrap(),
+            amount
         );
     }
 
@@ -236,12 +242,12 @@ mod tests {
         // Amount too small to convert (would become 0)
         let dust_18 = 999_999_999_999u128; // Less than 0.000001 token
         let result = ShareBridgeMessage::convert_amount_decimals(dust_18, 18, 6);
-        assert_eq!(result, None); // Rejected as dust
+        assert!(result.is_err()); // Rejected as dust
 
         // Zero amount always converts to zero
         assert_eq!(
-            ShareBridgeMessage::convert_amount_decimals(0, 18, 6),
-            Some(0)
+            ShareBridgeMessage::convert_amount_decimals(0, 18, 6).unwrap(),
+            0
         );
     }
 
@@ -249,11 +255,11 @@ mod tests {
     fn test_decimal_conversion_overflow_protection() {
         // Test overflow when scaling up
         let large_amount = u128::MAX / 10;
-        assert!(ShareBridgeMessage::convert_amount_decimals(large_amount, 6, 18).is_none());
+        assert!(ShareBridgeMessage::convert_amount_decimals(large_amount, 6, 18).is_err());
 
         // Test maximum safe conversion
         let max_safe = u128::MAX / 10u128.pow(12); // Safe for 6->18 conversion
-        assert!(ShareBridgeMessage::convert_amount_decimals(max_safe, 6, 18).is_some());
+        assert!(ShareBridgeMessage::convert_amount_decimals(max_safe, 6, 18).is_ok());
     }
 
     #[test]

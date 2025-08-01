@@ -10,6 +10,7 @@ use anchor_lang::solana_program::{
 };
 use anchor_lang::{prelude::*, solana_program::program::invoke};
 use anchor_spl::{
+    associated_token::get_associated_token_address_with_program_id,
     token_2022::{spl_token_2022::ID as TOKEN_2022_PROGRAM_ID, Token2022},
     token_interface::{Mint, TokenAccount},
 };
@@ -38,7 +39,6 @@ pub struct SendMessageParams {
     pub lz_token_fee: u64,   // LZ token fee amount (from quote)
 }
 
-// LayerZero SendParams structure matching their interface
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct LayerZeroSendParams {
     pub dst_eid: u32,
@@ -73,9 +73,7 @@ pub struct Send<'info> {
         bump
     )]
     pub peer: Account<'info, PeerConfig>,
-    // ========== BURN SHARES ACCOUNTS ==========
-    /// Vault account for burning shares
-    /// PDA: [BASE_SEED_BORING_VAULT_STATE, vault_id]
+
     #[account(
         seeds = [
             BASE_SEED_BORING_VAULT_STATE,
@@ -95,25 +93,18 @@ pub struct Send<'info> {
 
     #[account(
         mut,
-        constraint = source_token_account.mint == share_mint.key() @ BoringErrorCode::InvalidAssociatedTokenAccount,
-        constraint = source_token_account.owner == user.key() @ BoringErrorCode::NotAuthorized
+        constraint = source_token_account.amount >= params.amount @ BoringErrorCode::InsufficientBalance,
+        address = get_associated_token_address_with_program_id(&user.key(), &share_mint.key(), &TOKEN_2022_PROGRAM_ID)
     )]
     pub source_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    #[account(
-        address = TOKEN_2022_PROGRAM_ID
-    )]
+    #[account(address = TOKEN_2022_PROGRAM_ID)]
     pub token_program: Program<'info, Token2022>,
 
-    #[account(
-        address = SYSTEM_PROGRAM_ID
-    )]
+    #[account(address = SYSTEM_PROGRAM_ID)]
     pub system_program: Program<'info, System>,
 
-    #[account(
-        address = share_mover.boring_vault_program
-    )]
-    /// CHECK: Configured by admin, boring vault program
+    #[account(address = share_mover.boring_vault_program)]
     pub boring_vault_program: AccountInfo<'info>,
 }
 
@@ -144,7 +135,6 @@ impl<'info> Send<'info> {
             data: burn_data,
         };
 
-        // Prepare account infos for burn CPI
         let burn_accounts = vec![
             user.clone(),
             vault.clone(),
@@ -153,7 +143,6 @@ impl<'info> Send<'info> {
             token_program.clone(),
         ];
 
-        // Execute burn CPI (user signs, no PDA needed)
         invoke(&burn_ix, &burn_accounts)?;
 
         Ok(())
@@ -191,6 +180,7 @@ impl<'info> Send<'info> {
             AccountMeta::new_readonly(share_mover_data.key, true), // sender (signer)
         ];
 
+        // TODO: account validation, this is too opaque
         // Add accounts that were passed in. The first six are the mandatory but anything after that
         // is optional and will be forwarded to the message-library call (e.g. fee-payment, vaults)
         for account in accounts.iter() {
@@ -207,6 +197,7 @@ impl<'info> Send<'info> {
             data: send_data,
         };
 
+        // TODO: remove, rely on the sender to pass in the right accounts and then validate them
         let mut account_infos = vec![share_mover.clone()];
 
         account_infos.extend_from_slice(accounts);
@@ -229,11 +220,6 @@ pub fn send<'info>(
     require!(params.amount > 0, BoringErrorCode::InvalidMessageAmount);
 
     require!(
-        ctx.accounts.source_token_account.amount >= params.amount,
-        BoringErrorCode::InsufficientBalance
-    );
-
-    require!(
         ctx.remaining_accounts.len() >= LAYERZERO_SEND_ACCOUNTS_LEN,
         BoringErrorCode::InvalidMessage
     );
@@ -253,8 +239,7 @@ pub fn send<'info>(
         params.amount as u128,
         ctx.accounts.share_mint.decimals,
         ctx.accounts.share_mover.peer_decimals,
-    )
-    .ok_or(BoringErrorCode::SendAmountConversionFailed)?;
+    )?;
 
     let share_mover_data = ShareMoverData {
         key: ctx.accounts.share_mover.key(),
