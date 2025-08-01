@@ -1243,6 +1243,7 @@ pub mod boring_vault_svm {
     }
 
     pub fn burn_shares(ctx: Context<BurnShares>, amount: u64) -> Result<()> {
+        require!(amount > 0, BoringErrorCode::InvalidAmount);
         require!(
             ctx.accounts.vault.config.share_mover != Pubkey::default(),
             BoringErrorCode::InvalidShareMover

@@ -105,6 +105,7 @@ pub struct Send<'info> {
     pub system_program: Program<'info, System>,
 
     #[account(address = share_mover.boring_vault_program)]
+    /// CHECK: Configured by admin, known boring vault program
     pub boring_vault_program: AccountInfo<'info>,
 }
 
