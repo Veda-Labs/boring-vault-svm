@@ -117,6 +117,7 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
     await smProgram.methods
       .deploy({
         admin: admin.publicKey,
+        delegate: admin.publicKey,
         executorProgram: anchor.web3.PublicKey.default,
         boringVaultProgram: anchor.web3.PublicKey.default,
         vaultId: new BN(0),

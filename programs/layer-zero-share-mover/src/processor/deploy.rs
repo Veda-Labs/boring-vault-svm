@@ -26,6 +26,7 @@ pub struct RegisterOAppParams {
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct DeployParams {
     pub admin: Pubkey,
+    pub delegate: Pubkey,
     pub executor_program: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
@@ -93,17 +94,18 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     let clock = Clock::get()?;
     let mint_key = ctx.accounts.mint.key();
     let endpoint_program = ctx.accounts.endpoint_program.key();
+    let boring_vault_program = params.boring_vault_program;
 
     share_mover.admin = params.admin;
     share_mover.executor_program = params.executor_program;
-    share_mover.boring_vault_program = params.boring_vault_program;
+    share_mover.boring_vault_program = boring_vault_program;
     share_mover.peer_decimals = params.peer_decimals;
     share_mover.peer_chain = params.peer_chain;
     share_mover.mint = mint_key;
     share_mover.endpoint_program = endpoint_program;
     share_mover.bump = ctx.bumps.share_mover;
 
-    share_mover.vault = get_vault_state(params.vault_id, &params.boring_vault_program);
+    share_mover.vault = get_vault_state(params.vault_id, &boring_vault_program);
 
     // eg if they want 1000 tokens per hour, they set limit=1000, window=3600
     share_mover.outbound_rate_limit = RateLimitState {
@@ -121,7 +123,6 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     };
 
     ctx.accounts.lz_receive_types_accounts.store = share_mover_key;
-
     let accounts = vec![
         AccountMeta::new(ctx.accounts.signer.key(), true), // payer (signer)
         AccountMeta::new_readonly(share_mover_key, true),  // oapp (signer)
@@ -132,7 +133,7 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     ];
 
     let register_params = RegisterOAppParams {
-        delegate: params.admin,
+        delegate: params.delegate,
     };
     let instruction_data = {
         let mut data = Vec::new();
@@ -147,11 +148,7 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
         data: instruction_data,
     };
 
-    let seeds = [
-        SHARE_MOVER_SEED,
-        mint_key.as_ref(),
-        &[ctx.bumps.share_mover],
-    ];
+    let seeds = [SHARE_MOVER_SEED, mint_key.as_ref(), &[share_mover.bump]];
     let signer_seeds = &[&seeds[..]];
 
     invoke_signed(
@@ -168,10 +165,11 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     )?;
 
     msg!(
-        "ShareMover deployed for mint {} with vault {} and admin {}",
+        "ShareMover deployed for mint {} with vault {} admin {} delegate {}",
         share_mover.mint,
         share_mover.vault,
-        share_mover.admin
+        share_mover.admin,
+        params.delegate
     );
 
     Ok(())
