@@ -35,7 +35,6 @@ pub struct SetPeer<'info> {
     #[account(
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
         bump,
-        constraint = !share_mover.is_paused @ BoringErrorCode::ShareMoverPaused,
     )]
     pub share_mover: Account<'info, ShareMover>,
 
