@@ -48,8 +48,8 @@ pub enum BoringErrorCode {
     InvalidAmount,
     #[msg("Insufficient balance")]
     InsufficientBalance,
-    #[msg("Invalid bridge program")]
-    InvalidBridgeProgram,
+    #[msg("Invalid share mover")]
+    InvalidShareMover,
     #[msg("Invalid vault")]
     InvalidVault,
 }

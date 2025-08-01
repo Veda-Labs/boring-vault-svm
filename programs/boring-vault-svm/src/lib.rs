@@ -1208,7 +1208,7 @@ pub mod boring_vault_svm {
         require_keys_neq!(
             share_mover,
             Pubkey::default(),
-            BoringErrorCode::InvalidBridgeProgram
+            BoringErrorCode::InvalidShareMover
         );
 
         let vault = &mut ctx.accounts.vault;
@@ -1219,10 +1219,6 @@ pub mod boring_vault_svm {
 
     pub fn mint_shares(ctx: Context<MintShares>, _recipient: Pubkey, amount: u64) -> Result<()> {
         require!(amount > 0, BoringErrorCode::InvalidAmount);
-        require!(
-            ctx.accounts.vault.config.share_mover != Pubkey::default(),
-            BoringErrorCode::InvalidBridgeProgram
-        );
 
         let vault_seeds = &[
             BASE_SEED_BORING_VAULT_STATE,
@@ -1247,10 +1243,9 @@ pub mod boring_vault_svm {
     }
 
     pub fn burn_shares(ctx: Context<BurnShares>, amount: u64) -> Result<()> {
-        require!(amount > 0, BoringErrorCode::InvalidAmount);
         require!(
             ctx.accounts.vault.config.share_mover != Pubkey::default(),
-            BoringErrorCode::InvalidBridgeProgram
+            BoringErrorCode::InvalidShareMover
         );
 
         let burn_ctx = CpiContext::new(
@@ -2133,9 +2128,7 @@ pub struct MintShares<'info> {
     )]
     pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    #[account(
-        address =  TOKEN_PROGRAM_2022
-    )]
+    #[account(address =  TOKEN_PROGRAM_2022)]
     pub token_program: Program<'info, Token2022>,
 }
 
@@ -2145,14 +2138,16 @@ pub struct BurnShares<'info> {
     pub signer: Signer<'info>,
 
     #[account(
-        constraint = vault.config.share_mint == share_mint.key() @ BoringErrorCode::InvalidShareMint,
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused,
         seeds = [BASE_SEED_BORING_VAULT_STATE, &vault.config.vault_id.to_le_bytes()[..]],
         bump,
     )]
     pub vault: Account<'info, BoringVault>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = share_mint.key() == vault.config.share_mint @ BoringErrorCode::InvalidShareMint,
+    )]
     pub share_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
@@ -2162,8 +2157,6 @@ pub struct BurnShares<'info> {
     )]
     pub source_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    #[account(
-        address = TOKEN_PROGRAM_2022
-    )]
+    #[account(address = TOKEN_PROGRAM_2022)]
     pub token_program: Program<'info, Token2022>,
 }
