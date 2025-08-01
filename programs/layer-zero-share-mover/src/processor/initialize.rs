@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::system_program::ID as SYSTEM_PROGRAM_ID;
 use std::mem::size_of;
 
 use crate::{constants::PROGRAM_CONFIG_SEED, state::share_mover::ProgramConfig};
@@ -20,6 +21,7 @@ pub struct Initialize<'info> {
     )]
     pub config: Account<'info, ProgramConfig>,
 
+    #[account(address = SYSTEM_PROGRAM_ID)]
     pub system_program: Program<'info, System>,
 }
 

@@ -8,10 +8,12 @@ use crate::{
         share_mover::{PeerChain, ProgramConfig, ShareMover},
     },
 };
+use anchor_lang::solana_program::system_program::ID as SYSTEM_PROGRAM_ID;
 use anchor_lang::{
     prelude::*,
     solana_program::{instruction::Instruction, program::invoke_signed},
 };
+use anchor_spl::token_2022::spl_token_2022::ID as TOKEN_2022_PROGRAM_ID;
 use anchor_spl::token_interface::Mint;
 use common::{pda::get_vault_state, rate_limit::RateLimitState};
 use std::mem::size_of;
@@ -29,9 +31,9 @@ pub struct DeployParams {
     pub vault_id: u64,
     pub peer_decimals: u8,
     pub outbound_limit: u64,  // Maximum amount allowed in the window
-    pub outbound_window: u64, // Window duration in seconds (renamed from capacity)
+    pub outbound_window: u64, // Window duration in seconds
     pub inbound_limit: u64,   // Maximum amount allowed in the window
-    pub inbound_window: u64,  // Window duration in seconds (renamed from capacity)
+    pub inbound_window: u64,  // Window duration in seconds
     pub peer_chain: PeerChain,
 }
 
@@ -68,6 +70,7 @@ pub struct Deploy<'info> {
     )]
     pub config: Account<'info, ProgramConfig>,
 
+    #[account(owner = TOKEN_2022_PROGRAM_ID)]
     pub mint: InterfaceAccount<'info, Mint>,
 
     /// CHECK: oapp registry is initialized in LZ CPI call
@@ -80,27 +83,28 @@ pub struct Deploy<'info> {
     /// CHECK: event authority is checked in the endpoint program's register_oapp ix
     pub event_authority: UncheckedAccount<'info>,
 
+    #[account(address = SYSTEM_PROGRAM_ID)]
     pub system_program: Program<'info, System>,
 }
 
 pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     let share_mover = &mut ctx.accounts.share_mover;
+    let share_mover_key = share_mover.key();
     let clock = Clock::get()?;
     let mint_key = ctx.accounts.mint.key();
+    let endpoint_program = ctx.accounts.endpoint_program.key();
 
     share_mover.admin = params.admin;
     share_mover.executor_program = params.executor_program;
-    share_mover.endpoint_program = ctx.accounts.endpoint_program.key();
     share_mover.boring_vault_program = params.boring_vault_program;
+    share_mover.peer_decimals = params.peer_decimals;
+    share_mover.peer_chain = params.peer_chain;
+    share_mover.mint = mint_key;
+    share_mover.endpoint_program = endpoint_program;
+    share_mover.bump = ctx.bumps.share_mover;
+
     share_mover.vault = get_vault_state(params.vault_id, &params.boring_vault_program);
 
-    share_mover.mint = mint_key;
-    share_mover.is_paused = false;
-    share_mover.peer_decimals = params.peer_decimals;
-    share_mover.bump = ctx.bumps.share_mover;
-    share_mover.peer_chain = params.peer_chain;
-
-    // Initialize rate limiters
     // eg if they want 1000 tokens per hour, they set limit=1000, window=3600
     share_mover.outbound_rate_limit = RateLimitState {
         amount_in_flight: 0,
@@ -116,15 +120,15 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
         window: params.inbound_window,
     };
 
-    ctx.accounts.lz_receive_types_accounts.store = share_mover.key();
+    ctx.accounts.lz_receive_types_accounts.store = share_mover_key;
 
     let accounts = vec![
         AccountMeta::new(ctx.accounts.signer.key(), true), // payer (signer)
-        AccountMeta::new_readonly(share_mover.key(), true), // oapp (signer)
+        AccountMeta::new_readonly(share_mover_key, true),  // oapp (signer)
         AccountMeta::new(ctx.accounts.oapp_registry.key(), false), // oapp_registry
         AccountMeta::new_readonly(ctx.accounts.system_program.key(), false), // system_program
         AccountMeta::new_readonly(ctx.accounts.event_authority.key(), false), // event_authority
-        AccountMeta::new_readonly(ctx.accounts.endpoint_program.key(), false), // endpoint_program
+        AccountMeta::new_readonly(endpoint_program, false), // endpoint_program
     ];
 
     let register_params = RegisterOAppParams {

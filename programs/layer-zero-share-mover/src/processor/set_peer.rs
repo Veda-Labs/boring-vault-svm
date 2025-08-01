@@ -47,9 +47,7 @@ pub struct SetPeer<'info> {
     )]
     pub peer: Account<'info, PeerConfig>,
 
-    #[account(
-        address = SYSTEM_PROGRAM_ID
-    )]
+    #[account(address = SYSTEM_PROGRAM_ID)]
     pub system_program: Program<'info, System>,
 }
 
@@ -75,6 +73,10 @@ pub fn set_peer(ctx: Context<SetPeer>, params: SetPeerParams) -> Result<()> {
             ctx.accounts.peer.enforced_options.send = send;
             ctx.accounts.peer.enforced_options.send_and_call = send_and_call;
         }
+    }
+
+    if ctx.accounts.peer.bump == 0 {
+        ctx.accounts.peer.bump = ctx.bumps.peer;
     }
 
     Ok(())
