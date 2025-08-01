@@ -24,4 +24,6 @@ pub enum ShareBridgeCodecError {
     InvalidMessage,
     #[msg("Invalid EVM recipient address")]
     InvalidEVMRecipientAddress,
+    #[msg("Invalid Sui recipient address")]
+    InvalidSuiRecipientAddress,
 }

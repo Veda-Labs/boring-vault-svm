@@ -26,16 +26,31 @@ impl Default for PeerChain {
 }
 
 impl PeerChain {
-    pub fn validate(&self, recipient: &[u8; 32]) -> Result<()> {
+    pub fn validate(&self, address: &[u8; 32]) -> Result<()> {
+        msg!("Validating address: {:?}", address);
+
+        require!(
+            address.iter().any(|&byte| byte != 0),
+            ShareBridgeCodecError::InvalidSuiRecipientAddress
+        );
+
+        let is_evm_address = ShareBridgeMessage::is_valid_padded_evm_address(address);
+
         match self {
             PeerChain::Evm => {
                 require!(
-                    ShareBridgeMessage::is_valid_padded_evm_address(recipient),
+                    is_evm_address,
                     ShareBridgeCodecError::InvalidEVMRecipientAddress
                 );
                 Ok(())
             }
-            PeerChain::Sui => Ok(()),
+            PeerChain::Sui => {
+                require!(
+                    !is_evm_address,
+                    ShareBridgeCodecError::InvalidSuiRecipientAddress
+                );
+                Ok(())
+            }
             _ => Err(error!(BoringErrorCode::InvalidPeerChain)),
         }
     }
