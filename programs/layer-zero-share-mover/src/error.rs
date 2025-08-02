@@ -54,6 +54,4 @@ pub enum BoringErrorCode {
     InvalidMintAccounts,
     #[msg("Invalid LzReceive remaining accounts")]
     InvalidLzReceiveRemainingAccounts,
-    #[msg("Invalid send library")]
-    InvalidSendLibrary,
 }
