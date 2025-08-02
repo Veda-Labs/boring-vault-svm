@@ -92,7 +92,9 @@ mod quickcheck_tests {
                 return TestResult::discard();
             }
 
-            match ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals).ok() {
+            match ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals)
+                .ok()
+            {
                 Some(converted) => {
                     // If conversion succeeded, it should be non-zero if original was non-zero
                     if amount > 0 && converted == 0 {
@@ -116,7 +118,8 @@ mod quickcheck_tests {
                 return TestResult::discard();
             }
 
-            let result = ShareBridgeMessage::convert_amount_decimals(amount, decimals, decimals).ok();
+            let result =
+                ShareBridgeMessage::convert_amount_decimals(amount, decimals, decimals).ok();
             TestResult::from_bool(result == Some(amount))
         }
 
@@ -318,7 +321,8 @@ mod structured_fuzz_tests {
 
         for (amount, from_decimals, to_decimals, expected) in test_cases {
             let result =
-                ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals).ok();
+                ShareBridgeMessage::convert_amount_decimals(amount, from_decimals, to_decimals)
+                    .ok();
             assert_eq!(
                 result, expected,
                 "Failed for amount={amount}, from={from_decimals}, to={to_decimals}"

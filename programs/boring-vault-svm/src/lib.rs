@@ -17,9 +17,7 @@ use anchor_lang::{
     system_program,
 };
 use anchor_spl::{
-    associated_token::{
-        get_associated_token_address, get_associated_token_address_with_program_id, AssociatedToken,
-    },
+    associated_token::AssociatedToken,
     token::Token,
     token_2022::{Token2022, ID as TOKEN_PROGRAM_2022},
     token_interface::{
@@ -2125,7 +2123,9 @@ pub struct MintShares<'info> {
 
     #[account(
         mut,
-        address = get_associated_token_address_with_program_id(&recipient, &share_mint.key(), &TOKEN_PROGRAM_2022),
+        associated_token::mint = share_mint,
+        associated_token::authority = recipient,
+        associated_token::token_program = token_program,
     )]
     pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
 
@@ -2154,7 +2154,9 @@ pub struct BurnShares<'info> {
     #[account(
         mut,
         constraint = source_token_account.amount >= amount @ BoringErrorCode::InsufficientBalance,
-        address = get_associated_token_address_with_program_id(&signer.key(), &share_mint.key(), &TOKEN_PROGRAM_2022),
+        associated_token::mint = share_mint,
+        associated_token::authority = signer,
+        associated_token::token_program = token_program
     )]
     pub source_token_account: InterfaceAccount<'info, TokenAccount>,
 

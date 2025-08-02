@@ -14,8 +14,8 @@
 // |      |(u128) |
 // |------|-------|
 
-use anchor_lang::prelude::*;
 use crate::error::ShareBridgeCodecError;
+use anchor_lang::prelude::*;
 
 pub const RECIPIENT_OFFSET: usize = 0;
 pub const AMOUNT_OFFSET: usize = 32;

@@ -1,4 +1,4 @@
-use anchor_lang::prelude::Pubkey;
+use anchor_lang::prelude::*;
 
 use crate::{
     constants::{ENDPOINT_SEED, EVENT_AUTHORITY_SEED, NONCE_SEED, OAPP_SEED, PAYLOAD_HASH_SEED},

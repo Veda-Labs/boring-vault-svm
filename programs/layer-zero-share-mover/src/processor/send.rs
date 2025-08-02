@@ -10,24 +10,24 @@ use anchor_lang::solana_program::{
 };
 use anchor_lang::{prelude::*, solana_program::program::invoke};
 use anchor_spl::{
-    associated_token::get_associated_token_address_with_program_id,
     token_2022::{spl_token_2022::ID as TOKEN_2022_PROGRAM_ID, Token2022},
     token_interface::{Mint, TokenAccount},
 };
 use boring_vault_svm::{BoringVault, BASE_SEED_BORING_VAULT_STATE};
 use common::message::{encode_message, ShareBridgeMessage};
 
-// Mininum number of LayerZero accounts needed for send
-// Mandatory LayerZero accounts: [endpoint, messaging libs ...] plus event authority and program id (8 total)
-// Adjusted to 8 to include event_authority PDA and the endpoint program id.
-// [0] endpoint_settings (mutable)
-// [1] oapp_registry
-// [2] nonce
-// [3] payload_hash
-// [4] endpoint_program (read-only)
-// [5] event_authority (read-only)
-// plus any additional optional accounts
-const LAYERZERO_SEND_ACCOUNTS_LEN: usize = 8;
+// top level cpi (endpoint::send) accounts:
+
+// [0] sender (signer)
+// [1] send_library_program
+// [2] send_library_config
+// [3] default_send_library_config
+// [4] send_library_info
+// [5] endpoint_settings
+// [6] nonce
+// [7] event_authority
+// [8] endpoint_program
+const LAYERZERO_SEND_ACCOUNTS_LEN: usize = 9;
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct SendMessageParams {
@@ -94,7 +94,9 @@ pub struct Send<'info> {
     #[account(
         mut,
         constraint = source_token_account.amount >= params.amount @ BoringErrorCode::InsufficientBalance,
-        address = get_associated_token_address_with_program_id(&user.key(), &share_mint.key(), &TOKEN_2022_PROGRAM_ID)
+        associated_token::mint = share_mint,
+        associated_token::authority = user,
+        associated_token::token_program = token_program
     )]
     pub source_token_account: InterfaceAccount<'info, TokenAccount>,
 
@@ -150,7 +152,6 @@ impl<'info> Send<'info> {
     }
 
     fn execute_layerzero_send(
-        share_mover: &AccountInfo<'info>,
         accounts: &[AccountInfo<'info>],
         share_mover_data: &ShareMoverData,
         signer_seeds: &[&[u8]],
@@ -177,13 +178,33 @@ impl<'info> Send<'info> {
         send_data.extend_from_slice(&SEND_DISCRIMINATOR);
         lz_send_params.serialize(&mut send_data)?;
 
-        let mut account_metas = vec![
-            AccountMeta::new_readonly(share_mover_data.key, true), // sender (signer)
-        ];
+        // if native fee, cpi (unl::send) to dvn accounts:
+        // [0] signer (endpoint)
+        // [1] unl
+        // [2] send config
+        // [3] default send config
+        // [4] payer (signer)
+        // [5] treasury (native)
+        // [6] system_program
 
-        // TODO: account validation, this is too opaque
-        // Add accounts that were passed in. The first six are the mandatory but anything after that
-        // is optional and will be forwarded to the message-library call (e.g. fee-payment, vaults)
+        // if lz token fee, cpi (unl::send_with_lz_token) to lz token program:
+        // [0] signer (endpoint)
+        // [1] unl
+        // [2] send config
+        // [3] default send config
+        // [4] payer (signer)
+        // [5] treasury (native)
+        // [6] system_program
+        // [7] lz_token_source
+        // [8] lz_token_treasury
+        // [9] lz_token_mint
+        // [10] token_program
+
+        // should we be validating the accounts here? on the one hand, its redundant,
+        // and we should trust LZ contracts, frontend has responsiblity to pass the correct state
+        // on the other hand, paranoia
+
+        let mut account_metas = vec![];
         for account in accounts.iter() {
             account_metas.push(AccountMeta {
                 pubkey: account.key(),
@@ -198,12 +219,7 @@ impl<'info> Send<'info> {
             data: send_data,
         };
 
-        // TODO: remove, rely on the sender to pass in the right accounts and then validate them
-        let mut account_infos = vec![share_mover.clone()];
-
-        account_infos.extend_from_slice(accounts);
-
-        invoke_signed(&send_instruction, &account_infos, &[signer_seeds])?;
+        invoke_signed(&send_instruction, accounts, &[signer_seeds])?;
 
         Ok(())
     }
@@ -219,11 +235,6 @@ pub fn send<'info>(
     );
 
     require!(params.amount > 0, BoringErrorCode::InvalidMessageAmount);
-
-    require!(
-        ctx.remaining_accounts.len() >= LAYERZERO_SEND_ACCOUNTS_LEN,
-        BoringErrorCode::InvalidMessage
-    );
 
     ctx.accounts
         .share_mover
@@ -243,7 +254,6 @@ pub fn send<'info>(
     )?;
 
     let share_mover_data = ShareMoverData {
-        key: ctx.accounts.share_mover.key(),
         bump: ctx.accounts.share_mover.bump,
         mint: ctx.accounts.share_mover.mint,
         endpoint_program: ctx.accounts.share_mover.endpoint_program,
@@ -271,7 +281,6 @@ pub fn send<'info>(
         encode_message(&ShareBridgeMessage::new(params.recipient, message_amount));
 
     Send::execute_layerzero_send(
-        &ctx.accounts.share_mover.to_account_info(),
         ctx.remaining_accounts,
         &share_mover_data,
         share_mover_seeds,
@@ -289,7 +298,6 @@ pub fn send<'info>(
 
 #[derive(Clone, Copy)]
 struct ShareMoverData {
-    key: Pubkey,
     bump: u8,
     mint: Pubkey,
     endpoint_program: Pubkey,

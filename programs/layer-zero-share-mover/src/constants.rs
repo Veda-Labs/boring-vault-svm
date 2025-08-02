@@ -15,7 +15,7 @@ pub const CLEAR_DISCRIMINATOR: [u8; 8] = [250, 39, 28, 213, 123, 163, 133, 5];
 pub const QUOTE_DISCRIMINATOR: [u8; 8] = [149, 42, 109, 247, 134, 146, 213, 123];
 pub const SEND_DISCRIMINATOR: [u8; 8] = [102, 251, 20, 187, 65, 75, 12, 69];
 
-// LayerZero send options constants
+// LayerZero send constants
 pub const ENFORCED_OPTIONS_SEND_MAX_LEN: usize = 512;
 pub const ENFORCED_OPTIONS_SEND_AND_CALL_MAX_LEN: usize = 1024;
 
