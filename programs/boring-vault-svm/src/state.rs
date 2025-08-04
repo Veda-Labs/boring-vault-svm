@@ -100,28 +100,37 @@ pub struct AssetData {
     pub allow_withdrawals: bool,
     pub share_premium_bps: u16,
     pub is_pegged_to_base_asset: bool,
-    pub price_feed: Pubkey,
     pub inverse_price_feed: bool,
     pub max_staleness: u64,
-    pub min_samples: u32,
-    /// Identifies which oracle implementation is used for `price_feed`.
+    /// Oracle implementation with encapsulated parameters and addresses
     pub oracle_source: OracleSource,
-    /// Feed ID for PythV2 oracle source (32 bytes). Optional for backward compatibility.
-    /// Required when oracle_source = PythV2. Format: 0x1234...
-    pub feed_id: Option<[u8; 32]>,
 }
 
 // ================================ Oracle Source ================================
 
-/// Enumerates the supported on-chain oracle adapters.
+/// Enumerates the supported on-chain oracle adapters with their addresses and parameters.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq)]
 pub enum OracleSource {
-    /// Switchboard on-demand PullFeed
-    SwitchboardV2,
-    /// Pyth price account (traditional, continuously updated)
-    Pyth,
-    /// Pyth Pull Oracle (newer, requires price update submission)
-    PythV2,
+    /// Switchboard on-demand PullFeed with feed address and minimum samples requirement
+    SwitchboardV2 { 
+        feed_address: Pubkey,
+        min_samples: u32 
+    },
+    /// Pyth Pull Oracle with feed ID and confidence validation
+    PythV2 { 
+        feed_id: [u8; 32],
+        /// Maximum allowed confidence as basis points of price (e.g., 500 = 5%)
+        max_conf_width_bps: u16,
+    },
+}
+
+impl Default for OracleSource {
+    fn default() -> Self {
+        OracleSource::SwitchboardV2 { 
+            feed_address: Pubkey::default(),
+            min_samples: 1 
+        }
+    }
 }
 
 // =============================== Withdraw =============================

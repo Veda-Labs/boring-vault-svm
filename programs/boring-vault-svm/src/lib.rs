@@ -336,13 +336,29 @@ pub mod boring_vault_svm {
         ctx: Context<UpdateAssetData>,
         args: UpdateAssetDataArgs,
     ) -> Result<()> {
-        if args.asset_data.price_feed == Pubkey::default() {
-            require!(
-                args.asset_data.is_pegged_to_base_asset
-                    || ctx.accounts.asset.key()
-                        == ctx.accounts.boring_vault_state.teller.base_asset,
-                BoringErrorCode::InvalidPriceFeed
-            );
+        // Validate oracle configuration - addresses must be valid unless asset is pegged
+        match &args.asset_data.oracle_source {
+            OracleSource::SwitchboardV2 { feed_address, .. } => {
+                if *feed_address == Pubkey::default() {
+                    require!(
+                        args.asset_data.is_pegged_to_base_asset
+                            || ctx.accounts.asset.key()
+                                == ctx.accounts.boring_vault_state.teller.base_asset,
+                        BoringErrorCode::InvalidPriceFeed
+                    );
+                }
+            }
+            OracleSource::PythV2 { feed_id, .. } => {
+                // For PythV2, feed_id of all zeros indicates no feed configured
+                if *feed_id == [0u8; 32] {
+                    require!(
+                        args.asset_data.is_pegged_to_base_asset
+                            || ctx.accounts.asset.key()
+                                == ctx.accounts.boring_vault_state.teller.base_asset,
+                        BoringErrorCode::InvalidPriceFeed
+                    );
+                }
+            }
         }
 
         require!(
@@ -350,25 +366,15 @@ pub mod boring_vault_svm {
             BoringErrorCode::MaximumSharePremiumExceeded
         );
 
-        // Validate that feed_id is provided when oracle_source is PythV2
-        if matches!(args.asset_data.oracle_source, OracleSource::PythV2) {
-            require!(
-                args.asset_data.feed_id.is_some(),
-                BoringErrorCode::InvalidPriceFeed
-            );
-        }
-
+        // No manual validation needed - type system ensures correctness!
         let asset_data = &mut ctx.accounts.asset_data;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
         asset_data.share_premium_bps = args.asset_data.share_premium_bps;
         asset_data.is_pegged_to_base_asset = args.asset_data.is_pegged_to_base_asset;
-        asset_data.price_feed = args.asset_data.price_feed;
         asset_data.inverse_price_feed = args.asset_data.inverse_price_feed;
         asset_data.max_staleness = args.asset_data.max_staleness;
-        asset_data.min_samples = args.asset_data.min_samples;
-        asset_data.oracle_source = args.asset_data.oracle_source;
-        asset_data.feed_id = args.asset_data.feed_id; // Save the feed_id for PythV2 oracle
+        asset_data.oracle_source = args.asset_data.oracle_source; // Contains all addresses and params
         Ok(())
     }
 
@@ -1571,10 +1577,7 @@ pub struct DepositSol<'info> {
     pub user_shares: InterfaceAccount<'info, TokenAccount>,
 
     // Pricing
-    #[account(
-            constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
-        )]
-    /// CHECK: Checked in the constraint
+    /// CHECK: Validated against oracle source in read_oracle function
     pub price_feed: AccountInfo<'info>,
 }
 
@@ -1652,10 +1655,7 @@ pub struct Deposit<'info> {
     pub user_shares: InterfaceAccount<'info, TokenAccount>,
 
     // Pricing
-    #[account(
-        constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
-    )]
-    /// CHECK: Checked in the constraint
+    /// CHECK: Validated against oracle source in read_oracle function
     pub price_feed: AccountInfo<'info>,
 }
 
@@ -1730,10 +1730,7 @@ pub struct Withdraw<'info> {
     pub user_shares: InterfaceAccount<'info, TokenAccount>,
 
     // Pricing
-    #[account(
-        constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
-    )]
-    /// CHECK: Checked in the constraint
+    /// CHECK: Validated against oracle source in read_oracle function
     pub price_feed: AccountInfo<'info>,
 }
 
@@ -2052,10 +2049,7 @@ pub struct GetRateInQuote<'info> {
     pub asset_data: Account<'info, AssetData>,
 
     // Pricing
-    #[account(
-            constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
-        )]
-    /// CHECK: Checked in the constraint
+    /// CHECK: Validated against oracle source in read_oracle function
     pub price_feed: AccountInfo<'info>,
 }
 
@@ -2083,10 +2077,7 @@ pub struct GetRateInQuoteSafe<'info> {
     pub asset_data: Account<'info, AssetData>,
 
     // Pricing
-    #[account(
-            constraint = price_feed.key() == asset_data.price_feed @ BoringErrorCode::InvalidPriceFeed
-        )]
-    /// CHECK: Checked in the constraint
+    /// CHECK: Validated against oracle source in read_oracle function
     pub price_feed: AccountInfo<'info>,
 }
 
