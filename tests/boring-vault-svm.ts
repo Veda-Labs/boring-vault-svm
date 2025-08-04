@@ -693,6 +693,7 @@ describe("boring-vault-svm", () => {
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -738,6 +739,7 @@ describe("boring-vault-svm", () => {
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -3318,11 +3320,11 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: false,
-          priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -3382,11 +3384,11 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: false,
-          priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -3639,6 +3641,7 @@ describe("boring-vault-svm", () => {
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -3705,6 +3708,7 @@ describe("boring-vault-svm", () => {
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -3966,6 +3970,7 @@ describe("boring-vault-svm", () => {
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -4032,6 +4037,7 @@ describe("boring-vault-svm", () => {
                       maxStaleness: new anchor.BN(1),
             oracleSource: { 
               switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
                 minSamples: 1 
               } 
             }
@@ -5601,7 +5607,6 @@ describe("boring-vault-svm", () => {
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           shareMint: boringVaultShareMint,
           userShares: userShareAta,
-          priceFeed: JITOSOL_SOL_ORACLE,
         })
         .instruction();
 

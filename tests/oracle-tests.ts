@@ -160,10 +160,43 @@ describe("oracle tests", () => {
   });
 
   it("decodes raw discriminant bytes", function() {
-    // Note: This test now fails because raw discriminant bytes don't include the parameter data
-    // The enum now requires parameters, so we can't decode just the discriminant
-    // Skip this test for now as it's not compatible with the new parameterized enum structure
-    this.skip();
+    // Test decoding valid enum data with discriminants
+    // SwitchboardV2 should have discriminant 0, PythV2 should have discriminant 1
+    
+    // Create valid SwitchboardV2 enum data
+    const switchboardV2Data = {
+      SwitchboardV2: {
+        feed_address: new anchor.web3.PublicKey("11111111111111111111111111111111"),
+        min_samples: 1
+      }
+    };
+    
+    // Create valid PythV2 enum data
+    const pythV2Data = {
+      PythV2: {
+        feed_id: [
+          0x01, 0xd5, 0x77, 0xb0, 0x70, 0x31, 0xe1, 0x26, 0x35, 0xd2, 0xfb, 0x86,
+          0xaf, 0x6a, 0xe9, 0x38, 0xbd, 0xc2, 0xb6, 0xdb, 0xa9, 0x60, 0x2d, 0x8e,
+          0x8a, 0xf3, 0x4d, 0x44, 0x58, 0x75, 0x66, 0xfc,
+        ],
+        max_conf_width_bps: 500
+      }
+    };
+    
+    // Encode and decode to verify discriminants work
+    const encodedSwitchboard = coder.types.encode("OracleSource", switchboardV2Data);
+    const encodedPyth = coder.types.encode("OracleSource", pythV2Data);
+    
+    // Check that discriminants are as expected (0 for SwitchboardV2, 1 for PythV2)
+    expect(encodedSwitchboard[0]).to.equal(0); // SwitchboardV2 discriminant
+    expect(encodedPyth[0]).to.equal(1); // PythV2 discriminant
+    
+    // Verify we can decode back
+    const decodedSwitchboard = coder.types.decode("OracleSource", encodedSwitchboard);
+    const decodedPyth = coder.types.decode("OracleSource", encodedPyth);
+    
+    expect(decodedSwitchboard).to.have.property('SwitchboardV2');
+    expect(decodedPyth).to.have.property('PythV2');
   });
 
   it("throws when decoding unknown discriminant", () => {
