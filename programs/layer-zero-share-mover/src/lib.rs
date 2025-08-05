@@ -79,10 +79,6 @@ pub mod layer_zero_share_mover {
         processor::set_pause(ctx, paused)
     }
 
-    pub fn set_executor_program(ctx: Context<SetExecutorProgram>, executor: Pubkey) -> Result<()> {
-        processor::set_executor_program(ctx, executor)
-    }
-
     pub fn set_endpoint_program(ctx: Context<SetEndpointProgram>, endpoint: Pubkey) -> Result<()> {
         processor::set_endpoint_program(ctx, endpoint)
     }

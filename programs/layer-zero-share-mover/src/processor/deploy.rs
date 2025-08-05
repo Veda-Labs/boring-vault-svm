@@ -27,7 +27,6 @@ pub struct RegisterOAppParams {
 pub struct DeployParams {
     pub admin: Pubkey,
     pub delegate: Pubkey,
-    pub executor_program: Pubkey,
     pub boring_vault_program: Pubkey,
     pub vault_id: u64,
     pub peer_decimals: u8,
@@ -97,7 +96,6 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     let boring_vault_program = params.boring_vault_program;
 
     share_mover.admin = params.admin;
-    share_mover.executor_program = params.executor_program;
     share_mover.boring_vault_program = boring_vault_program;
     share_mover.peer_decimals = params.peer_decimals;
     share_mover.peer_chain = params.peer_chain;
@@ -108,19 +106,17 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     share_mover.vault = get_vault_state(params.vault_id, &boring_vault_program);
 
     // eg if they want 1000 tokens per hour, they set limit=1000, window=3600
-    share_mover.outbound_rate_limit = RateLimitState {
-        amount_in_flight: 0,
-        last_updated: clock.unix_timestamp,
-        limit: params.outbound_limit,
-        window: params.outbound_window,
-    };
+    share_mover.outbound_rate_limit = RateLimitState::new(
+        params.outbound_limit,
+        params.outbound_window,
+        clock.unix_timestamp,
+    )?;
 
-    share_mover.inbound_rate_limit = RateLimitState {
-        amount_in_flight: 0,
-        last_updated: clock.unix_timestamp,
-        limit: params.inbound_limit,
-        window: params.inbound_window,
-    };
+    share_mover.inbound_rate_limit = RateLimitState::new(
+        params.inbound_limit,
+        params.inbound_window,
+        clock.unix_timestamp,
+    )?;
 
     ctx.accounts.lz_receive_types_accounts.store = share_mover_key;
     let accounts = vec![

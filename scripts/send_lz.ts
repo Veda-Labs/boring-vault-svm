@@ -58,8 +58,6 @@ const BORING_VAULT_PROGRAM_ID = new PublicKey(
 const VAULT_ID = 14n; // vault backing this share mint
 const SEND_LIBRARY_PROGRAM_ID = new PublicKey("7a4WjyR8VZ7yZz5XJAKm39BUGn5iT9CKcv2pmG9tdXVH");
 
-// ─── Worker programs (executor + one DVN) ────────────────────────────────
-const EXECUTOR_PROGRAM_ID = new PublicKey("AwrbHeCyniXaQhiJZkLhgWdUCteeWSGaSN1sTfLiY7xK");
 const DVN_PROGRAM_ID      = new PublicKey("4VDjp6XQaxoZf5RGwiPU9NR1EXSZn2TP4ATMmiSzLfhb");
 
 // PDA seeds (confirmed from LayerZero source)
