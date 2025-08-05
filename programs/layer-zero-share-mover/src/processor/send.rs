@@ -130,10 +130,10 @@ impl<'info> Send<'info> {
         let burn_ix = Instruction {
             program_id: share_mover_data.boring_vault_program,
             accounts: vec![
-                AccountMeta::new_readonly(user.key(), true), // signer
-                AccountMeta::new_readonly(share_mover.key(), true), // share_mover (signer)
+                AccountMeta::new_readonly(user.key(), true),   // signer
+                AccountMeta::new(share_mover.key(), true),     // share_mover (signer)
                 AccountMeta::new_readonly(vault.key(), false), // vault
-                AccountMeta::new(share_mint.key(), false),   // share_mint (mut)
+                AccountMeta::new(share_mint.key(), false),     // share_mint (mut)
                 AccountMeta::new(source_token_account.key(), false), // source_token_account (mut)
                 AccountMeta::new_readonly(token_program.key(), false), // token_program
                 AccountMeta::new_readonly(boring_vault_program.key(), false), // boring_vault_program
