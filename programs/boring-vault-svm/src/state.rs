@@ -126,9 +126,9 @@ pub enum OracleSource {
 
 impl Default for OracleSource {
     fn default() -> Self {
-        OracleSource::SwitchboardV2 { 
-            feed_address: Pubkey::default(),
-            min_samples: 1 
+        OracleSource::PythV2 { 
+            feed_id: [0; 32],
+            max_conf_width_bps: 500  // 5% default confidence width
         }
     }
 }

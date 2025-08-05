@@ -12,8 +12,7 @@ use anchor_spl::token_interface::{self, Mint};
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 use rust_decimal::Decimal;
 
-// Basis points constant for confidence validation
-const BASIS_POINTS: u64 = 10_000;
+
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
 // Internal modules
@@ -352,12 +351,16 @@ fn read_oracle(
             Ok(price)
         }
         OracleSource::PythV2 { feed_id, max_conf_width_bps } => {
-            // Note: For PythV2, we don't validate the price_feed address against feed_id
-            // because feed_id is the data identifier, not the account address
             // Decode Pyth Pull Oracle price update account
             let price_update_account =
                 PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
                     .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+
+            // Validate that the provided account contains the expected feed_id
+            require!(
+                price_update_account.price_message.feed_id == feed_id,
+                BoringErrorCode::InvalidPriceFeed
+            );
 
             // Convert slot staleness threshold to seconds using pure math function
             let max_age_sec = math::slots_to_seconds(max_staleness);
@@ -367,7 +370,6 @@ fn read_oracle(
                 .get_price_no_older_than(&Clock::get()?, max_age_sec, &feed_id)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
 
-            // ✨ Confidence interval validation (like your Solidity example)
             if price_data.price <= 0 {
                 return Err(error!(BoringErrorCode::InvalidPriceFeed));
             }
@@ -376,7 +378,7 @@ fn read_oracle(
             let max_allowed_conf = (price_data.price as u64)
                 .checked_mul(max_conf_width_bps as u64)
                 .ok_or(error!(BoringErrorCode::InvalidPriceFeed))?
-                .checked_div(BASIS_POINTS)
+                .checked_div(BPS_SCALE as u64)
                 .ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
 
             if price_data.conf as u64 > max_allowed_conf {

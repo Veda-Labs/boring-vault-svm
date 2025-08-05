@@ -48,7 +48,7 @@ pub fn pyth_price_to_decimal(price: i64, exponent: i32) -> Result<Decimal> {
 /// # Note
 /// Uses saturating multiplication to prevent overflow
 pub fn slots_to_seconds(max_staleness_slots: u64) -> u64 {
-    max_staleness_slots.saturating_mul(400) / 1000
+    max_staleness_slots.saturating_mul(4) / 10
 }
 
 // ================================ Decimal Conversion Math ================================
@@ -87,9 +87,6 @@ pub fn from_decimal<T: TryFrom<Decimal>>(decimal: Decimal, decimals: u8) -> Resu
 /// * `Result<Decimal>` - Potentially inverted price
 pub fn apply_price_inversion(price: Decimal, is_inverse: bool) -> Result<Decimal> {
     if is_inverse {
-        if price.is_zero() {
-            return Err(error!(BoringErrorCode::MathError));
-        }
         Decimal::from(1)
             .checked_div(price)
             .ok_or(error!(BoringErrorCode::MathError))
