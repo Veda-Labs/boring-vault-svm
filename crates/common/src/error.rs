@@ -10,8 +10,8 @@ pub enum MathError {
 pub enum RateLimitError {
     #[msg("Rate limit exceeded")]
     RateLimitExceeded,
-    #[msg("Overflow")]
-    Overflow,
+    #[msg("Math Overflow")]
+    MathOverflow,
     #[msg("Amount must be greater than zero")]
     ZeroAmount,
     #[msg("Invalid window configuration")]

@@ -60,7 +60,7 @@ impl RateLimitState {
         // Update the storage with new amount and current timestamp
         self.amount_in_flight = current_amount_in_flight
             .checked_add(amount)
-            .ok_or(RateLimitError::Overflow)?;
+            .ok_or(RateLimitError::MathOverflow)?;
         self.last_updated = current_timestamp;
 
         Ok(())
@@ -86,7 +86,7 @@ impl RateLimitState {
                     .limit
                     .checked_mul(time_since_last_update)
                     .and_then(|v| v.checked_div(self.window))
-                    .ok_or(RateLimitError::Overflow)?;
+                    .ok_or(RateLimitError::MathOverflow)?;
 
                 // Current amount in flight after decay
                 let current_amount = self.amount_in_flight.saturating_sub(decay);
@@ -213,14 +213,14 @@ mod rate_limit_tests {
         // limit * time_since_last_update overflows while time_since < window
         let state = create_test_rate_limit_state(u64::MAX, u64::MAX, 0, 0);
         let err = state.calculate_available(2).unwrap_err();
-        assert_eq!(err, error!(RateLimitError::Overflow));
+        assert_eq!(err, error!(RateLimitError::MathOverflow));
     }
 
     #[test]
     fn test_overflow_in_add() {
         let mut state = create_test_rate_limit_state(u64::MAX, 60, 0, u64::MAX - 1);
         let err = state.check_and_consume(10, 10).unwrap_err();
-        assert_eq!(err, error!(RateLimitError::Overflow));
+        assert_eq!(err, error!(RateLimitError::MathOverflow));
     }
 
     #[test]

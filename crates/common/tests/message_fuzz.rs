@@ -28,7 +28,7 @@ struct FuzzShareBridgeMessage {
 impl From<FuzzShareBridgeMessage> for ShareBridgeMessage {
     fn from(fuzz_msg: FuzzShareBridgeMessage) -> Self {
         // Generate only valid messages; if invalid, substitute minimal valid amount 1
-        ShareBridgeMessage::new(fuzz_msg.recipient, fuzz_msg.amount.max(1)).unwrap()
+        ShareBridgeMessage::new(fuzz_msg.recipient, fuzz_msg.amount).unwrap()
     }
 }
 
