@@ -12,7 +12,7 @@ use processor::*;
 
 use crate::state::lz::{LzAccount, LzReceiveParams, MessagingFee};
 
-declare_id!("EJzDuvRobhor9roYSZLp48id5e6fj5YurB3ThxjKwRFw");
+declare_id!("CU9XermEoiawu8eYwSyXBHgMESRwWEycDU9jjk9MHSgN");
 
 #[program]
 pub mod layer_zero_share_mover {

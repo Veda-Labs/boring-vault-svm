@@ -11,8 +11,6 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 use rust_decimal::Decimal;
-
-
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
 // Internal modules

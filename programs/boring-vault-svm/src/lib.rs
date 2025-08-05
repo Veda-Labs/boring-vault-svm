@@ -366,7 +366,6 @@ pub mod boring_vault_svm {
             BoringErrorCode::MaximumSharePremiumExceeded
         );
 
-        // No manual validation needed - type system ensures correctness!
         let asset_data = &mut ctx.accounts.asset_data;
         asset_data.allow_deposits = args.asset_data.allow_deposits;
         asset_data.allow_withdrawals = args.asset_data.allow_withdrawals;
