@@ -1,7 +1,13 @@
 use crate::error::RateLimitError;
 use anchor_lang::prelude::*;
 
-/// Rate limit state matching the EVM implementation's linear decay model
+/// Rate limit state implementing a linear decay model.
+///
+/// # Example
+/// With a limit of 1000 tokens per hour:
+/// - At t=0: Use 600 tokens (400 remaining)
+/// - At t=30min: 300 tokens have decayed, so 700 available
+/// - At t=60min: All tokens have decayed, full 1000 available
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, InitSpace)]
 pub struct RateLimitState {
     /// The amount currently in flight (being tracked in the window)
@@ -102,6 +108,9 @@ impl RateLimitState {
     }
 }
 
+/// TEST ONLY: constructs a `RateLimitState` with raw values, bypassing the
+/// public `new` validation.  This lets unit‐tests fabricate otherwise-invalid
+/// scenarios (e.g. limit > 0 with window = 0) to assert failure paths.
 pub fn create_test_rate_limit_state(
     limit: u64,
     window: u64,

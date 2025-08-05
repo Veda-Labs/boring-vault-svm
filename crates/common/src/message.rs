@@ -23,8 +23,8 @@ pub const MESSAGE_SIZE: usize = 48;
 
 // Pre-computed powers of 10 (10^0..10^18).
 // 0–18 is the only decimal range permitted by the codec (matches Ethereum tokens).
-pub const fn build_scale() -> [u128; 19] {
-    let mut arr = [1u128; 19];
+pub const fn build_scale() -> [u64; 19] {
+    let mut arr = [1u64; 19];
     let mut i = 1;
     while i < 19 {
         arr[i] = arr[i - 1] * 10;
@@ -32,7 +32,7 @@ pub const fn build_scale() -> [u128; 19] {
     }
     arr
 }
-pub const DECIMAL_SCALE: [u128; 19] = build_scale();
+pub const DECIMAL_SCALE: [u64; 19] = build_scale();
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShareBridgeMessage {
@@ -73,14 +73,14 @@ impl ShareBridgeMessage {
             // Scale down
             let divisor = DECIMAL_SCALE[scale_down as usize];
             amount
-                .checked_div(divisor)
+                .checked_div(divisor.into())
                 .ok_or(ShareBridgeCodecError::AmountTooLarge)?
         } else {
             let scale_up = to_decimals - from_decimals;
             // Scale up
             let multiplier = DECIMAL_SCALE[scale_up as usize];
             amount
-                .checked_mul(multiplier)
+                .checked_mul(multiplier.into())
                 .ok_or(ShareBridgeCodecError::AmountTooLarge)?
         };
 
@@ -92,7 +92,7 @@ impl ShareBridgeMessage {
         Ok(result)
     }
 
-    /// Validates if a 32-byte address is a correctly a big endian padded 20-byte EVM address.
+    /// Validates if a 32-byte address is a correctly left-padded 20-byte EVM address.
     pub fn is_valid_padded_evm_address(address: &[u8; 32]) -> bool {
         if !address[..12].iter().all(|&b| b == 0) {
             return false;
