@@ -9,7 +9,6 @@
 use crate::OracleSource; // enum declared in state.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
-use pyth_sdk_solana::{state::SolanaPriceAccount, PriceFeed as PythFeed};
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
@@ -179,8 +178,6 @@ pub fn calculate_shares_and_mint<'a>(
             asset_data.oracle_source.clone(),
             price_feed,
             asset_data.max_staleness,
-            asset_data.min_samples,
-            asset_data.feed_id,
         )?;
 
         calculate_shares_to_mint_using_deposit_asset(
@@ -245,8 +242,6 @@ pub fn calculate_assets_out<'a>(
             asset_data.oracle_source.clone(),
             price_feed,
             asset_data.max_staleness,
-            asset_data.min_samples,
-            asset_data.feed_id,
         )?;
 
         calculate_assets_out_using_withdraw_asset(
@@ -305,8 +300,6 @@ pub fn get_rate_in_quote(
             asset_data.oracle_source.clone(),
             price_feed,
             asset_data.max_staleness,
-            asset_data.min_samples,
-            asset_data.feed_id,
         )?;
 
         // price[base/asset]
@@ -332,16 +325,20 @@ pub fn get_rate_in_quote(
 
 // ================================ Internal Helper Functions ================================
 
-/// Reads the oracle and checks for staleness, and accuracy
+/// Reads the oracle with parameter extraction, address validation, and confidence validation
 fn read_oracle(
     oracle_source: OracleSource,
     price_feed: AccountInfo,
     max_staleness: u64,
-    min_samples: u32,
-    feed_id: Option<[u8; 32]>,
 ) -> Result<Decimal> {
     match oracle_source {
-        OracleSource::SwitchboardV2 => {
+        OracleSource::SwitchboardV2 { feed_address, min_samples } => {
+            // Validate that the provided account matches the expected feed address
+            require!(
+                price_feed.key() == feed_address,
+                BoringErrorCode::InvalidPriceFeed
+            );
+
             let feed_account = price_feed.data.borrow();
             let feed = PullFeedAccountData::parse(feed_account)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
@@ -351,27 +348,17 @@ fn read_oracle(
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
             Ok(price)
         }
-        OracleSource::Pyth => {
-            // Decode Pyth price account (traditional)
-            let pyth_feed: PythFeed = SolanaPriceAccount::account_info_to_feed(&price_feed)
-                .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
-            // Convert slot staleness threshold to seconds using pure math function
-            let max_age_sec = math::slots_to_seconds(max_staleness);
-            let current_ts = Clock::get()?.unix_timestamp;
-            let price_data_opt = pyth_feed.get_price_no_older_than(current_ts, max_age_sec);
-            let price_data = price_data_opt.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
-            // Convert to decimal using pure math function
-            let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.expo)?;
-            Ok(decimal_price)
-        }
-        OracleSource::PythV2 => {
-            // Require feed_id for PythV2
-            let feed_id = feed_id.ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
-
+        OracleSource::PythV2 { feed_id, max_conf_width_bps } => {
             // Decode Pyth Pull Oracle price update account
             let price_update_account =
                 PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
                     .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+
+            // Validate that the provided account contains the expected feed_id
+            require!(
+                price_update_account.price_message.feed_id == feed_id,
+                BoringErrorCode::InvalidPriceFeed
+            );
 
             // Convert slot staleness threshold to seconds using pure math function
             let max_age_sec = math::slots_to_seconds(max_staleness);
@@ -380,6 +367,21 @@ fn read_oracle(
             let price_data = price_update_account
                 .get_price_no_older_than(&Clock::get()?, max_age_sec, &feed_id)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
+
+            if price_data.price <= 0 {
+                return Err(error!(BoringErrorCode::InvalidPriceFeed));
+            }
+
+            // Verify confidence is within acceptable bounds
+            let max_allowed_conf = (price_data.price as u64)
+                .checked_mul(max_conf_width_bps as u64)
+                .ok_or(error!(BoringErrorCode::InvalidPriceFeed))?
+                .checked_div(BPS_SCALE as u64)
+                .ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
+
+            if price_data.conf as u64 > max_allowed_conf {
+                return Err(error!(BoringErrorCode::InvalidPriceFeed));
+            }
 
             // Convert to decimal using pure math function
             let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.exponent)?;
