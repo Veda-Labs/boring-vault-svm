@@ -118,7 +118,6 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
       .deploy({
         admin: admin.publicKey,
         delegate: admin.publicKey,
-        executorProgram: anchor.web3.PublicKey.default,
         boringVaultProgram: anchor.web3.PublicKey.default,
         vaultId: new BN(0),
         peerDecimals: 9,
@@ -145,9 +144,6 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
 
     expect(sm.endpointProgram.toBase58()).to.equal(L0_ENDPOINT_ID.toBase58());
 
-    expect(sm.executorProgram.toBase58()).to.equal(
-      anchor.web3.PublicKey.default.toBase58()
-    );
     expect(sm.boringVaultProgram.toBase58()).to.equal(
       anchor.web3.PublicKey.default.toBase58()
     );
@@ -271,35 +267,6 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
       // @ts-ignore
       .accounts({ signer: outsider.publicKey, shareMover })
       .signers([outsider])
-      .rpc()
-      .catch((e) => {
-        expect(String(e)).to.include("Not authorized");
-      });
-  });
-
-  it("sets executor program successfully", async () => {
-    const newExec = anchor.web3.Keypair.generate().publicKey;
-
-    await smProgram.methods
-      .setExecutorProgram(newExec)
-      // @ts-ignore
-      .accounts({ signer: admin.publicKey, shareMover })
-      .signers([admin])
-      .rpc();
-
-    let sm: any = await smProgram.account.shareMover.fetch(shareMover);
-    expect(sm.executorProgram.toBase58()).to.equal(newExec.toBase58());
-  });
-
-  it("fails to set executor program if signer is not admin", async () => {
-    const bad = anchor.web3.Keypair.generate();
-    await fundAccount(context, bad, 1_000_000_000);
-
-    await smProgram.methods
-      .setExecutorProgram(anchor.web3.PublicKey.default)
-      // @ts-ignore
-      .accounts({ signer: bad.publicKey, shareMover })
-      .signers([bad])
       .rpc()
       .catch((e) => {
         expect(String(e)).to.include("Not authorized");
@@ -609,33 +576,6 @@ describe("layer-zero-share-mover <> endpoint integration", () => {
     expect(sm.endpointProgram.toBase58()).to.equal(newEndpoint.toBase58());
 
     // unpause
-    await smProgram.methods
-      .setPause(false)
-      // @ts-ignore
-      .accounts({ signer: admin.publicKey, shareMover })
-      .signers([admin])
-      .rpc();
-  });
-
-  it("allows changing executor program while paused", async () => {
-    await smProgram.methods
-      .setPause(true)
-      // @ts-ignore
-      .accounts({ signer: admin.publicKey, shareMover })
-      .signers([admin])
-      .rpc();
-
-    const newExec = anchor.web3.Keypair.generate().publicKey;
-    await smProgram.methods
-      .setExecutorProgram(newExec)
-      // @ts-ignore
-      .accounts({ signer: admin.publicKey, shareMover })
-      .signers([admin])
-      .rpc();
-
-    const sm: any = await smProgram.account.shareMover.fetch(shareMover);
-    expect(sm.executorProgram.toBase58()).to.equal(newExec.toBase58());
-
     await smProgram.methods
       .setPause(false)
       // @ts-ignore
