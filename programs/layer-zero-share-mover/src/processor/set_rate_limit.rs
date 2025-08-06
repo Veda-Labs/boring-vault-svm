@@ -1,5 +1,6 @@
 use crate::{constants::SHARE_MOVER_SEED, error::BoringErrorCode, state::share_mover::ShareMover};
 use anchor_lang::prelude::*;
+use common::rate_limit::RateLimitState;
 
 #[derive(Accounts)]
 pub struct SetRateLimit<'info> {
@@ -24,21 +25,20 @@ pub fn set_rate_limit(
     inbound_window: u64,
 ) -> Result<()> {
     let share_mover = &mut ctx.accounts.share_mover;
-    let clock = Clock::get()?;
+    let ts = Clock::get()?.unix_timestamp;
 
-    // checkpoint the existing rate limits (consume 0 to update decay)
-    let _ = share_mover
-        .outbound_rate_limit
-        .check_and_consume(0, clock.unix_timestamp);
-    let _ = share_mover
-        .inbound_rate_limit
-        .check_and_consume(0, clock.unix_timestamp);
+    // carry over decayed in-flight amounts
+    let (out_in_flight, _) = share_mover.outbound_rate_limit.calculate_available(ts)?;
+    share_mover.outbound_rate_limit = RateLimitState {
+        amount_in_flight: out_in_flight,
+        ..RateLimitState::new(outbound_limit, outbound_window, ts)?
+    };
 
-    share_mover.outbound_rate_limit.limit = outbound_limit;
-    share_mover.outbound_rate_limit.window = outbound_window;
-
-    share_mover.inbound_rate_limit.limit = inbound_limit;
-    share_mover.inbound_rate_limit.window = inbound_window;
+    let (in_in_flight, _) = share_mover.inbound_rate_limit.calculate_available(ts)?;
+    share_mover.inbound_rate_limit = RateLimitState {
+        amount_in_flight: in_in_flight,
+        ..RateLimitState::new(inbound_limit, inbound_window, ts)?
+    };
 
     Ok(())
 }

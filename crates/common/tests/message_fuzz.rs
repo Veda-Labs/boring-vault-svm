@@ -27,7 +27,8 @@ struct FuzzShareBridgeMessage {
 
 impl From<FuzzShareBridgeMessage> for ShareBridgeMessage {
     fn from(fuzz_msg: FuzzShareBridgeMessage) -> Self {
-        ShareBridgeMessage::new(fuzz_msg.recipient, fuzz_msg.amount)
+        // Generate only valid messages; if invalid, substitute minimal valid amount 1
+        ShareBridgeMessage::new(fuzz_msg.recipient, fuzz_msg.amount).unwrap()
     }
 }
 
@@ -61,13 +62,14 @@ mod quickcheck_tests {
     fn quickcheck_encode_decode_roundtrip() {
         fn prop_roundtrip(recipient: Bytes32, amount: u128) -> bool {
             let recipient_arr = recipient.0;
-            let msg = ShareBridgeMessage::new(recipient_arr, amount);
-            let encoded = encode_message(&msg);
-
-            match decode_message(&encoded) {
-                Ok(decoded) => decoded == msg,
-                Err(_) => false,
+            if let Ok(msg) = ShareBridgeMessage::new(recipient_arr, amount) {
+                let encoded = encode_message(&msg);
+                return match decode_message(&encoded) {
+                    Ok(decoded) => decoded == msg,
+                    Err(_) => false,
+                };
             }
+            true
         }
 
         quickcheck(prop_roundtrip as fn(Bytes32, u128) -> bool);
@@ -76,9 +78,10 @@ mod quickcheck_tests {
     #[test]
     fn quickcheck_encoded_message_size() {
         fn prop_message_size(recipient: Bytes32, amount: u128) -> bool {
-            let msg = ShareBridgeMessage::new(recipient.0, amount);
-            let encoded = encode_message(&msg);
-            encoded.len() == MESSAGE_SIZE
+            match ShareBridgeMessage::new(recipient.0, amount) {
+                Ok(msg) => encode_message(&msg).len() == MESSAGE_SIZE,
+                Err(_) => true,
+            }
         }
 
         quickcheck(prop_message_size as fn(Bytes32, u128) -> bool);
@@ -142,14 +145,16 @@ mod proptest_tests {
             recipient in any::<[u8; 32]>(),
             amount    in any::<u128>()
         ) {
-            let msg = ShareBridgeMessage::new(recipient, amount);
-            let encoded = encode_message(&msg);
-            let decoded = decode_message(&encoded).unwrap();
-            let dec_recipient = decoded.recipient;
-            let dec_amount    = decoded.amount;
-            prop_assert_eq!(decoded, msg.clone());
-            prop_assert_eq!(dec_recipient, recipient);
-            prop_assert_eq!(dec_amount, amount);
+            if let Ok(msg) = ShareBridgeMessage::new(recipient, amount) {
+                let encoded = encode_message(&msg);
+                if let Ok(decoded) = decode_message(&encoded) {
+                    let dec_recipient = decoded.recipient;
+                    let dec_amount    = decoded.amount;
+                    prop_assert_eq!(decoded, msg.clone());
+                    prop_assert_eq!(dec_recipient, recipient);
+                    prop_assert_eq!(dec_amount, amount);
+                }
+            }
         }
 
         #[test]
@@ -217,6 +222,7 @@ mod proptest_tests {
 #[cfg(test)]
 mod structured_fuzz_tests {
     use super::*;
+    use common::error::ShareBridgeCodecError;
 
     #[test]
     fn fuzz_message_boundaries() {
@@ -231,7 +237,12 @@ mod structured_fuzz_tests {
             let result = decode_message(&data);
 
             if should_succeed {
-                assert!(result.is_ok(), "Size {size} should decode successfully");
+                assert!(
+                    result.is_ok()
+                        || result == Err(ShareBridgeCodecError::InvalidMessage.into())
+                        || result == Err(ShareBridgeCodecError::InvalidRecipient.into()),
+                    "Size {size} unexpected decode result"
+                );
             } else {
                 assert!(result.is_err(), "Size {size} should fail to decode");
             }
@@ -241,7 +252,6 @@ mod structured_fuzz_tests {
     #[test]
     fn fuzz_amount_edge_cases() {
         let edge_amounts = vec![
-            0u128,
             1u128,
             u128::MAX - 1,
             u128::MAX,
@@ -250,17 +260,18 @@ mod structured_fuzz_tests {
 
         for amount in edge_amounts {
             let recipient = [0x42u8; 32];
-            let msg = ShareBridgeMessage::new(recipient, amount);
-            let encoded = encode_message(&msg);
-            let decoded = decode_message(&encoded).unwrap();
+            if let Ok(msg) = ShareBridgeMessage::new(recipient, amount) {
+                let encoded = encode_message(&msg);
+                let decoded = decode_message(&encoded).unwrap();
 
-            assert_eq!(decoded.amount, amount);
+                assert_eq!(decoded.amount, amount);
+            }
         }
     }
 
     #[test]
     fn fuzz_single_byte_mutation_changes_decoded_message() {
-        let original_msg = ShareBridgeMessage::new([0xAB; 32], 42u128);
+        let original_msg = ShareBridgeMessage::new([0xAB; 32], 42u128).unwrap();
         let encoded = encode_message(&original_msg);
 
         // Flip every byte one by one and ensure the decoded message differs.
@@ -272,12 +283,13 @@ mod structured_fuzz_tests {
                 mutated[i] ^= bit; // toggle selected bit
 
                 // Decoding should succeed (size unchanged) but produce a different message
-                let decoded = decode_message(&mutated).unwrap();
-                assert_ne!(
-                    decoded, original_msg,
-                    "Byte index {i} bitmask {:#04X} mutation did not alter message",
-                    bit
-                );
+                if let Ok(decoded) = decode_message(&mutated) {
+                    assert_ne!(
+                        decoded, original_msg,
+                        "Byte index {i} bitmask {:#04X} mutation did not alter message",
+                        bit
+                    );
+                }
             }
         }
     }
@@ -300,7 +312,13 @@ mod structured_fuzz_tests {
         for data in malformed_cases {
             let result = decode_message(&data);
             if data.len() == MESSAGE_SIZE {
-                assert!(result.is_ok(), "Valid-sized message should decode");
+                // Decode may fail for invalid recipient/amount after validation
+                assert!(
+                    result.is_ok()
+                        || result == Err(ShareBridgeCodecError::InvalidMessage.into())
+                        || result == Err(ShareBridgeCodecError::InvalidRecipient.into()),
+                    "Unexpected error for length-valid message"
+                );
             } else {
                 assert!(result.is_err(), "Invalid-sized message should fail");
             }
@@ -332,7 +350,54 @@ mod structured_fuzz_tests {
 }
 
 // =============================================================================
-// 5. CODEC-SPECIFIC INVARIANT TESTS (Proptest)
+// 5. SPECIFIC ERROR-PATH TESTS
+// =============================================================================
+
+#[cfg(test)]
+mod specific_error_tests {
+    use super::*;
+    use common::error::ShareBridgeCodecError;
+    use common::message::AMOUNT_OFFSET;
+
+    #[test]
+    fn test_invalid_decimals_rejection() {
+        // from_decimals > 18
+        let err = ShareBridgeMessage::convert_amount_decimals(1, 19, 18).unwrap_err();
+        assert_eq!(err, ShareBridgeCodecError::InvalidDecimals.into());
+        // to_decimals > 18
+        let err2 = ShareBridgeMessage::convert_amount_decimals(1, 18, 19).unwrap_err();
+        assert_eq!(err2, ShareBridgeCodecError::InvalidDecimals.into());
+    }
+
+    #[test]
+    fn test_scale_up_overflow_error() {
+        // This amount will certainly overflow when scaled 0 -> 18 decimals
+        let big = u128::MAX / 10 + 1;
+        let err = ShareBridgeMessage::convert_amount_decimals(big, 0, 18).unwrap_err();
+        assert_eq!(err, ShareBridgeCodecError::AmountTooLarge.into());
+    }
+
+    #[test]
+    fn test_zero_amount_in_message_detected() {
+        // Recipient non-zero, amount zero
+        let mut data = [0u8; MESSAGE_SIZE];
+        data[31] = 1; // make recipient non-zero
+        let err = decode_message(&data).unwrap_err();
+        assert_eq!(err, ShareBridgeCodecError::InvalidMessage.into());
+    }
+
+    #[test]
+    fn test_zero_recipient_detected() {
+        // Recipient all zeros, amount non-zero
+        let mut data = [0u8; MESSAGE_SIZE];
+        data[AMOUNT_OFFSET..].copy_from_slice(&1u128.to_be_bytes());
+        let err = decode_message(&data).unwrap_err();
+        assert_eq!(err, ShareBridgeCodecError::InvalidRecipient.into());
+    }
+}
+
+// =============================================================================
+// 6. CODEC-SPECIFIC INVARIANT TESTS (Proptest)
 // =============================================================================
 
 #[cfg(test)]

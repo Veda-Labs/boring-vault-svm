@@ -10,6 +10,14 @@ pub enum MathError {
 pub enum RateLimitError {
     #[msg("Rate limit exceeded")]
     RateLimitExceeded,
+    #[msg("Math Overflow")]
+    MathOverflow,
+    #[msg("Amount must be greater than zero")]
+    ZeroAmount,
+    #[msg("Invalid window configuration")]
+    InvalidWindow,
+    #[msg("Timestamp moved backwards")]
+    InvalidTimestamp,
 }
 
 #[error_code]
@@ -26,4 +34,8 @@ pub enum ShareBridgeCodecError {
     InvalidEVMRecipientAddress,
     #[msg("Invalid Sui recipient address")]
     InvalidSuiRecipientAddress,
+    #[msg("Invalid decimals")]
+    InvalidDecimals,
+    #[msg("Invalid recipient")]
+    InvalidRecipient,
 }

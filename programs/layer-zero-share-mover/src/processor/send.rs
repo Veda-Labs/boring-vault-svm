@@ -3,12 +3,12 @@ use crate::{
     error::BoringErrorCode,
     state::{lz::PeerConfig, share_mover::ShareMover},
 };
+use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke_signed,
     system_program::ID as SYSTEM_PROGRAM_ID,
 };
-use anchor_lang::{prelude::*, solana_program::program::invoke};
 use anchor_spl::{
     token_2022::{spl_token_2022::ID as TOKEN_2022_PROGRAM_ID, Token2022},
     token_interface::{Mint, TokenAccount},
@@ -114,12 +114,14 @@ pub struct Send<'info> {
 impl<'info> Send<'info> {
     fn execute_burn_shares<'a>(
         user: &AccountInfo<'a>,
+        share_mover: &AccountInfo<'a>,
         vault: &AccountInfo<'a>,
         share_mint: &AccountInfo<'a>,
         source_token_account: &AccountInfo<'a>,
         token_program: &AccountInfo<'a>,
         boring_vault_program: &AccountInfo<'a>,
         share_mover_data: &ShareMoverData,
+        share_mover_seeds: &[&[u8]],
         amount: u64,
     ) -> Result<()> {
         let mut burn_data = BURN_SHARES_DISCRIMINATOR.to_vec();
@@ -129,6 +131,7 @@ impl<'info> Send<'info> {
             program_id: share_mover_data.boring_vault_program,
             accounts: vec![
                 AccountMeta::new_readonly(user.key(), true),   // signer
+                AccountMeta::new(share_mover.key(), true),     // share_mover (signer)
                 AccountMeta::new_readonly(vault.key(), false), // vault
                 AccountMeta::new(share_mint.key(), false),     // share_mint (mut)
                 AccountMeta::new(source_token_account.key(), false), // source_token_account (mut)
@@ -140,13 +143,15 @@ impl<'info> Send<'info> {
 
         let burn_accounts = vec![
             user.clone(),
+            share_mover.clone(),
             vault.clone(),
             share_mint.clone(),
             source_token_account.clone(),
             token_program.clone(),
+            boring_vault_program.clone(),
         ];
 
-        invoke(&burn_ix, &burn_accounts)?;
+        invoke_signed(&burn_ix, &burn_accounts, &[share_mover_seeds])?;
 
         Ok(())
     }
@@ -268,17 +273,19 @@ pub fn send<'info>(
 
     Send::execute_burn_shares(
         &ctx.accounts.user,
+        &ctx.accounts.share_mover.to_account_info(),
         &ctx.accounts.vault.to_account_info(),
         &ctx.accounts.share_mint.to_account_info(),
         &ctx.accounts.source_token_account.to_account_info(),
         &ctx.accounts.token_program.to_account_info(),
         &ctx.accounts.boring_vault_program.to_account_info(),
         &share_mover_data,
+        share_mover_seeds,
         params.amount,
     )?;
 
-    let encoded_message =
-        encode_message(&ShareBridgeMessage::new(params.recipient, message_amount));
+    let message = ShareBridgeMessage::new(params.recipient, message_amount)?;
+    let encoded_message = encode_message(&message);
 
     Send::execute_layerzero_send(
         ctx.remaining_accounts,

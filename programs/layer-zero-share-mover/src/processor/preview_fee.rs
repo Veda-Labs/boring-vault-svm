@@ -61,7 +61,7 @@ pub struct PreviewFee<'info> {
 }
 
 pub fn preview_fee(ctx: &Context<PreviewFee>, params: PreviewFeeParams) -> Result<MessagingFee> {
-    let message = ShareBridgeMessage::new(params.recipient, params.amount);
+    let message = ShareBridgeMessage::new(params.recipient, params.amount)?;
     let encoded_message = encode_message(&message);
 
     // Prepare LayerZero quote parameters

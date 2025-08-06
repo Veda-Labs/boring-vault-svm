@@ -1,7 +1,13 @@
 use crate::error::RateLimitError;
 use anchor_lang::prelude::*;
 
-/// Rate limit state matching the EVM implementation's linear decay model
+/// Rate limit state implementing a linear decay model.
+///
+/// # Example
+/// With a limit of 1000 tokens per hour:
+/// - At t=0: Use 600 tokens (400 remaining)
+/// - At t=30min: 300 tokens have decayed, so 700 available
+/// - At t=60min: All tokens have decayed, full 1000 available
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, InitSpace)]
 pub struct RateLimitState {
     /// The amount currently in flight (being tracked in the window)
@@ -15,35 +21,62 @@ pub struct RateLimitState {
 }
 
 impl RateLimitState {
+    /// Constructs a new rate-limit state, validating parameters.
+    pub fn new(limit: u64, window: u64, last_updated: i64) -> Result<Self> {
+        if limit > 0 {
+            require!(window > 0, RateLimitError::InvalidWindow);
+        }
+        Ok(Self {
+            amount_in_flight: 0,
+            last_updated,
+            limit,
+            window,
+        })
+    }
     /// Checks if the amount can be sent/received within rate limits and updates state if allowed
     pub fn check_and_consume(&mut self, amount: u64, current_timestamp: i64) -> Result<()> {
-        // If the limit is zero, rate limiting is disabled
+        if amount == 0 {
+            return Err(RateLimitError::ZeroAmount.into());
+        }
+
+        // Reject time going backwards
+        require!(
+            current_timestamp >= self.last_updated,
+            RateLimitError::InvalidTimestamp
+        );
+
+        // If the limit is zero, rate limiting is disabled completely
         if self.limit == 0 {
             return Ok(());
         }
 
         // Calculate the current amount in flight and amount that can be sent
         let (current_amount_in_flight, amount_can_be_sent) =
-            self.calculate_available(current_timestamp);
+            self.calculate_available(current_timestamp)?;
 
-        // Check if the requested amount exceeds what can be sent
-        require!(
-            amount <= amount_can_be_sent,
-            RateLimitError::RateLimitExceeded
-        );
+        if amount > amount_can_be_sent {
+            msg!(
+                "RateLimitExceeded: requested={}, available={}",
+                amount,
+                amount_can_be_sent
+            );
+            return Err(RateLimitError::RateLimitExceeded.into());
+        }
 
         // Update the storage with new amount and current timestamp
-        self.amount_in_flight = current_amount_in_flight + amount;
+        self.amount_in_flight = current_amount_in_flight
+            .checked_add(amount)
+            .ok_or(RateLimitError::MathOverflow)?;
         self.last_updated = current_timestamp;
 
         Ok(())
     }
 
     /// Calculates the current amount in flight and how much can be sent
-    pub fn calculate_available(&self, current_timestamp: i64) -> (u64, u64) {
+    pub fn calculate_available(&self, current_timestamp: i64) -> Result<(u64, u64)> {
         // If window is 0, rate limiting is effectively disabled
         if self.window == 0 {
-            return (0, u64::MAX);
+            return Ok((0, u64::MAX));
         }
 
         let time_since_last_update = current_timestamp.saturating_sub(self.last_updated) as u64;
@@ -57,8 +90,9 @@ impl RateLimitState {
                 // decay = (limit * timeSinceLastUpdate) / window
                 let decay = self
                     .limit
-                    .saturating_mul(time_since_last_update)
-                    .saturating_div(self.window);
+                    .checked_mul(time_since_last_update)
+                    .and_then(|v| v.checked_div(self.window))
+                    .ok_or(RateLimitError::MathOverflow)?;
 
                 // Current amount in flight after decay
                 let current_amount = self.amount_in_flight.saturating_sub(decay);
@@ -70,10 +104,13 @@ impl RateLimitState {
                 (current_amount, available)
             };
 
-        (current_amount_in_flight, amount_can_be_sent)
+        Ok((current_amount_in_flight, amount_can_be_sent))
     }
 }
 
+/// TEST ONLY: constructs a `RateLimitState` with raw values, bypassing the
+/// public `new` validation.  This lets unit‐tests fabricate otherwise-invalid
+/// scenarios (e.g. limit > 0 with window = 0) to assert failure paths.
 pub fn create_test_rate_limit_state(
     limit: u64,
     window: u64,
@@ -136,7 +173,7 @@ mod rate_limit_tests {
         let state = create_test_rate_limit_state(1000, 3600, 0, 800); // 1000 per hour, 800 in flight
 
         // After 1800 seconds (half window), half should have decayed
-        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(1800);
+        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(1800).unwrap();
         assert_eq!(amount_in_flight, 300); // 800 - (1000 * 1800/3600) = 800 - 500 = 300
         assert_eq!(amount_can_be_sent, 700); // 1000 - 300 = 700
     }
@@ -146,7 +183,7 @@ mod rate_limit_tests {
         let state = create_test_rate_limit_state(1000, 3600, 0, 800);
 
         // After full window, everything should be reset
-        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(3600);
+        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(3600).unwrap();
         assert_eq!(amount_in_flight, 0);
         assert_eq!(amount_can_be_sent, 1000);
     }
@@ -168,16 +205,38 @@ mod rate_limit_tests {
         let state = create_test_rate_limit_state(500, 3600, 0, 800); // limit < amount_in_flight
 
         // Should not be able to send anything
-        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(100);
+        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(100).unwrap();
         assert!(amount_in_flight > 500); // Some decay, but still over limit
         assert_eq!(amount_can_be_sent, 0); // Cannot send when over new limit
+    }
+
+    #[test]
+    fn test_zero_amount_rejected() {
+        let mut state = create_test_rate_limit_state(100, 60, 0, 0);
+        let err = state.check_and_consume(0, 1).unwrap_err();
+        assert_eq!(err, error!(RateLimitError::ZeroAmount));
+    }
+
+    #[test]
+    fn test_overflow_in_decay() {
+        // limit * time_since_last_update overflows while time_since < window
+        let state = create_test_rate_limit_state(u64::MAX, u64::MAX, 0, 0);
+        let err = state.calculate_available(2).unwrap_err();
+        assert_eq!(err, error!(RateLimitError::MathOverflow));
+    }
+
+    #[test]
+    fn test_overflow_in_add() {
+        let mut state = create_test_rate_limit_state(u64::MAX, 60, 0, u64::MAX - 1);
+        let err = state.check_and_consume(10, 10).unwrap_err();
+        assert_eq!(err, error!(RateLimitError::MathOverflow));
     }
 
     #[test]
     fn test_window_zero_disabled() {
         let state = create_test_rate_limit_state(1000, 0, 0, 0); // window = 0
 
-        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(100);
+        let (amount_in_flight, amount_can_be_sent) = state.calculate_available(100).unwrap();
         assert_eq!(amount_in_flight, 0);
         assert_eq!(amount_can_be_sent, u64::MAX); // Effectively unlimited
     }

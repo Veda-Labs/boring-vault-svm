@@ -1257,7 +1257,7 @@ pub mod boring_vault_svm {
             Burn {
                 mint: ctx.accounts.share_mint.to_account_info(),
                 from: ctx.accounts.source_token_account.to_account_info(),
-                authority: ctx.accounts.signer.to_account_info(),
+                authority: ctx.accounts.source.to_account_info(),
             },
         );
 
@@ -2126,7 +2126,12 @@ pub struct MintShares<'info> {
 #[derive(Accounts)]
 #[instruction(amount: u64)]
 pub struct BurnShares<'info> {
-    pub signer: Signer<'info>,
+    pub source: Signer<'info>,
+
+    #[account(
+        constraint = vault.config.share_mover == share_mover.key() @ BoringErrorCode::NotAuthorized,
+    )]
+    pub share_mover: Signer<'info>,
 
     #[account(
         constraint = !vault.config.paused @ BoringErrorCode::VaultPaused,
@@ -2145,7 +2150,7 @@ pub struct BurnShares<'info> {
         mut,
         constraint = source_token_account.amount >= amount @ BoringErrorCode::InsufficientBalance,
         associated_token::mint = share_mint,
-        associated_token::authority = signer,
+        associated_token::authority = source,
         associated_token::token_program = token_program
     )]
     pub source_token_account: InterfaceAccount<'info, TokenAccount>,

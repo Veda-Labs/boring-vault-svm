@@ -21,6 +21,19 @@ pub const RECIPIENT_OFFSET: usize = 0;
 pub const AMOUNT_OFFSET: usize = 32;
 pub const MESSAGE_SIZE: usize = 48;
 
+// Pre-computed powers of 10 (10^0..10^18).
+// 0–18 is the only decimal range permitted by the codec (matches Ethereum tokens).
+pub const fn build_scale() -> [u64; 19] {
+    let mut arr = [1u64; 19];
+    let mut i = 1;
+    while i < 19 {
+        arr[i] = arr[i - 1] * 10;
+        i += 1;
+    }
+    arr
+}
+pub const DECIMAL_SCALE: [u64; 19] = build_scale();
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShareBridgeMessage {
     pub recipient: [u8; 32],
@@ -28,8 +41,14 @@ pub struct ShareBridgeMessage {
 }
 
 impl ShareBridgeMessage {
-    pub fn new(recipient: [u8; 32], amount: u128) -> Self {
-        Self { recipient, amount }
+    pub fn new(recipient: [u8; 32], amount: u128) -> Result<Self> {
+        if recipient.iter().all(|&b| b == 0) {
+            return Err(ShareBridgeCodecError::InvalidRecipient.into());
+        }
+        if amount <= 0 {
+            return Err(ShareBridgeCodecError::InvalidMessage.into());
+        }
+        Ok(Self { recipient, amount })
     }
 
     /// Helper to convert amount between different decimal representations
@@ -41,25 +60,27 @@ impl ShareBridgeMessage {
         from_decimals: u8,
         to_decimals: u8,
     ) -> Result<u128> {
+        if from_decimals > 18 || to_decimals > 18 {
+            return Err(ShareBridgeCodecError::InvalidDecimals.into());
+        }
+
         if from_decimals == to_decimals {
             return Ok(amount);
         }
 
         let result = if from_decimals > to_decimals {
+            let scale_down = from_decimals - to_decimals;
             // Scale down
-            let divisor = 10u128
-                .checked_pow((from_decimals - to_decimals) as u32)
-                .ok_or(ShareBridgeCodecError::AmountTooLarge)?;
+            let divisor = DECIMAL_SCALE[scale_down as usize];
             amount
-                .checked_div(divisor)
+                .checked_div(divisor.into())
                 .ok_or(ShareBridgeCodecError::AmountTooLarge)?
         } else {
+            let scale_up = to_decimals - from_decimals;
             // Scale up
-            let multiplier = 10u128
-                .checked_pow((to_decimals - from_decimals) as u32)
-                .ok_or(ShareBridgeCodecError::AmountTooLarge)?;
+            let multiplier = DECIMAL_SCALE[scale_up as usize];
             amount
-                .checked_mul(multiplier)
+                .checked_mul(multiplier.into())
                 .ok_or(ShareBridgeCodecError::AmountTooLarge)?
         };
 
@@ -71,17 +92,18 @@ impl ShareBridgeMessage {
         Ok(result)
     }
 
-    /// Validates if a 32-byte address is a correctly padded 20-byte EVM address.
-    /// EVM addresses should be left-padded with 12 zero bytes.
+    /// Validates if a 32-byte address is a correctly left-padded 20-byte EVM address.
     pub fn is_valid_padded_evm_address(address: &[u8; 32]) -> bool {
-        // The first 12 bytes must be all zeros for correct padding.
-        let padding = &address[0..12];
-        let is_padded_correctly = padding.iter().all(|&byte| byte == 0);
+        if !address[..12].iter().all(|&b| b == 0) {
+            return false;
+        }
 
-        // The zero address is generally not a valid recipient.
-        let is_zero_address = address.iter().all(|&byte| byte == 0);
+        // Check the address part is not all zeros
+        if address[12..].iter().all(|&b| b == 0) {
+            return false;
+        }
 
-        is_padded_correctly && !is_zero_address
+        true
     }
 }
 
@@ -100,23 +122,29 @@ pub fn encode_message(msg: &ShareBridgeMessage) -> Vec<u8> {
 
 /// Decode bytes into a ShareBridgeMessage
 pub fn decode_message(data: &[u8]) -> Result<ShareBridgeMessage> {
-    // Check exact length
     if data.len() != MESSAGE_SIZE {
         return Err(ShareBridgeCodecError::InvalidLength.into());
     }
 
-    // Decode recipient
-    let recipient: [u8; 32] = data[RECIPIENT_OFFSET..AMOUNT_OFFSET]
+    let recipient_slice = data
+        .get(RECIPIENT_OFFSET..AMOUNT_OFFSET)
+        .ok_or(ShareBridgeCodecError::InvalidLength)?;
+    let amount_slice = data
+        .get(AMOUNT_OFFSET..MESSAGE_SIZE)
+        .ok_or(ShareBridgeCodecError::InvalidLength)?;
+
+    let recipient: [u8; 32] = recipient_slice
         .try_into()
         .map_err(|_| ShareBridgeCodecError::InvalidLength)?;
 
-    // Decode amount (u128)
-    let amount_bytes: [u8; 16] = data[AMOUNT_OFFSET..MESSAGE_SIZE]
+    let amount_bytes: [u8; 16] = amount_slice
         .try_into()
         .map_err(|_| ShareBridgeCodecError::InvalidLength)?;
+
     let amount = u128::from_be_bytes(amount_bytes);
 
-    Ok(ShareBridgeMessage { recipient, amount })
+    // Use the validated constructor
+    ShareBridgeMessage::new(recipient, amount)
 }
 
 #[cfg(test)]
@@ -128,7 +156,7 @@ mod tests {
         // Test basic encoding/decoding
         let recipient = [0x11u8; 32];
         let amount = 1_000_000_000_000_000_000u128; // 1 token with 18 decimals
-        let msg = ShareBridgeMessage::new(recipient, amount);
+        let msg = ShareBridgeMessage::new(recipient, amount).unwrap();
 
         let encoded = encode_message(&msg);
         assert_eq!(encoded.len(), MESSAGE_SIZE);
@@ -148,7 +176,7 @@ mod tests {
 
         let amount = 0x1234567890ABCDEFu128;
 
-        let msg = ShareBridgeMessage::new(recipient, amount);
+        let msg = ShareBridgeMessage::new(recipient, amount).unwrap();
         let encoded = encode_message(&msg);
 
         // Check recipient bytes
@@ -169,7 +197,7 @@ mod tests {
         let recipient = [0xFFu8; 32];
         let amount = u128::MAX;
 
-        let msg = ShareBridgeMessage::new(recipient, amount);
+        let msg = ShareBridgeMessage::new(recipient, amount).unwrap();
         let encoded = encode_message(&msg);
         let decoded = decode_message(&encoded).unwrap();
 

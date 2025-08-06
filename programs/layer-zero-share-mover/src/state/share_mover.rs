@@ -60,8 +60,11 @@ impl PeerChain {
 #[account]
 pub struct ShareMover {
     pub admin: Pubkey,
+    /// Endpoint program associated with this ShareMover.
+    ///
+    /// LayerZero allows multiple endpoints/DVNs per chain; if we ever need
+    /// to support that, this can be swapped for a Pubkey array
     pub endpoint_program: Pubkey,
-    pub executor_program: Pubkey,
     // immutable after deployment
     pub boring_vault_program: Pubkey,
     // immutable after deployment
@@ -106,7 +109,6 @@ mod tests {
         ShareMover {
             admin: Pubkey::new_unique(),
             endpoint_program: Pubkey::new_unique(),
-            executor_program: Pubkey::new_unique(),
             boring_vault_program: Pubkey::new_unique(),
             vault: Pubkey::new_unique(),
             mint: Pubkey::new_unique(),
