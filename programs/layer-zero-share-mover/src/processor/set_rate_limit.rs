@@ -25,12 +25,20 @@ pub fn set_rate_limit(
     inbound_window: u64,
 ) -> Result<()> {
     let share_mover = &mut ctx.accounts.share_mover;
-    let clock = Clock::get()?;
+    let ts = Clock::get()?.unix_timestamp;
 
-    share_mover.outbound_rate_limit =
-        RateLimitState::new(outbound_limit, outbound_window, clock.unix_timestamp)?;
-    share_mover.inbound_rate_limit =
-        RateLimitState::new(inbound_limit, inbound_window, clock.unix_timestamp)?;
+    // carry over decayed in-flight amounts
+    let (out_in_flight, _) = share_mover.outbound_rate_limit.calculate_available(ts)?;
+    share_mover.outbound_rate_limit = RateLimitState {
+        amount_in_flight: out_in_flight,
+        ..RateLimitState::new(outbound_limit, outbound_window, ts)?
+    };
+
+    let (in_in_flight, _) = share_mover.inbound_rate_limit.calculate_available(ts)?;
+    share_mover.inbound_rate_limit = RateLimitState {
+        amount_in_flight: in_in_flight,
+        ..RateLimitState::new(inbound_limit, inbound_window, ts)?
+    };
 
     Ok(())
 }
