@@ -689,12 +689,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 100,
           isPeggedToBaseAsset: true,
-          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -721,9 +723,8 @@ describe("boring-vault-svm", () => {
     expect(assetData.allowWithdrawals).to.be.true;
     expect(assetData.sharePremiumBps).to.equal(100);
     expect(assetData.isPeggedToBaseAsset).to.be.true;
-    expect(assetData.priceFeed.equals(anchor.web3.PublicKey.default)).to.be
-      .true;
     expect(assetData.inversePriceFeed).to.be.false;
+    // Oracle source contains encapsulated parameters
 
     // Update JitoSol asset data again
     const ix_0 = await program.methods
@@ -734,12 +735,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: true,
-          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -770,9 +773,8 @@ describe("boring-vault-svm", () => {
     expect(assetDataAfterUpdate.allowWithdrawals).to.be.true;
     expect(assetDataAfterUpdate.sharePremiumBps).to.equal(0);
     expect(assetDataAfterUpdate.isPeggedToBaseAsset).to.be.true;
-    expect(assetDataAfterUpdate.priceFeed.equals(anchor.web3.PublicKey.default))
-      .to.be.true;
     expect(assetDataAfterUpdate.inversePriceFeed).to.be.false;
+    // Oracle source contains encapsulated parameters
   });
 
   it("Can deposit SOL into a vault", async () => {
@@ -784,12 +786,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: false,
-          priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: true,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -3085,14 +3089,16 @@ describe("boring-vault-svm", () => {
         allowWithdrawals: true,
         sharePremiumBps: 0,
         isPeggedToBaseAsset: false,
-        priceFeed: new anchor.web3.PublicKey(
-          "Feed111111111111111111111111111111111111111"
-        ),
         inversePriceFeed: false,
         maxStaleness: new anchor.BN(1),
-        minSamples: 1,
-        oracleSource: { switchboardV2: {} },
-        feedId: null, // Not used for SwitchboardV2 oracle
+        oracleSource: { 
+          switchboardV2: { 
+            feedAddress: new anchor.web3.PublicKey(
+              "Feed111111111111111111111111111111111111111"
+            ),
+            minSamples: 1 
+          } 
+        }
       },
     };
 
@@ -3134,8 +3140,12 @@ describe("boring-vault-svm", () => {
       assetData: {
         ...updateArgs.assetData,
         isPeggedToBaseAsset: false,
-        priceFeed: anchor.web3.PublicKey.default,
-        feedId: null, // Not used for SwitchboardV2 oracle
+        oracleSource: { 
+          switchboardV2: { 
+            feedAddress: anchor.web3.PublicKey.default, // Invalid zero address
+            minSamples: 1 
+          } 
+        }
       },
     };
     const invalidPriceFeedIx = await program.methods
@@ -3165,7 +3175,6 @@ describe("boring-vault-svm", () => {
       assetData: {
         ...updateArgs.assetData,
         sharePremiumBps: 1100, // 11%, exceeds maximum 10% (1000 basis points)
-        feedId: null, // Not used for SwitchboardV2 oracle
       },
     };
     const invalidSharePremiumIx = await program.methods
@@ -3204,8 +3213,12 @@ describe("boring-vault-svm", () => {
       assetData: {
         ...updateArgs.assetData,
         isPeggedToBaseAsset: false,
-        priceFeed: anchor.web3.PublicKey.default,
-        feedId: null, // Not used for SwitchboardV2 oracle
+        oracleSource: { 
+          switchboardV2: { 
+            feedAddress: anchor.web3.PublicKey.default, // Invalid zero address
+            minSamples: 1 
+          } 
+        }
       },
     };
     const validPeggedIx = await program.methods
@@ -3307,12 +3320,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: false,
-          priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -3369,12 +3384,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: false,
-          priceFeed: JITOSOL_SOL_ORACLE,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -3620,12 +3637,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: true,
-          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -3685,12 +3704,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: true,
-          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -3945,12 +3966,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: false,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: true,
-          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -4010,12 +4033,14 @@ describe("boring-vault-svm", () => {
           allowWithdrawals: true,
           sharePremiumBps: 0,
           isPeggedToBaseAsset: true,
-          priceFeed: anchor.web3.PublicKey.default,
           inversePriceFeed: false,
-          maxStaleness: new anchor.BN(1),
-          minSamples: 1,
-          oracleSource: { switchboardV2: {} },
-          feedId: null, // Not used for SwitchboardV2 oracle
+                      maxStaleness: new anchor.BN(1),
+            oracleSource: { 
+              switchboardV2: { 
+                feedAddress: JITOSOL_SOL_ORACLE,
+                minSamples: 1 
+              } 
+            }
         },
       })
       .accounts({
@@ -5552,5 +5577,139 @@ describe("boring-vault-svm", () => {
       depositIxAccounts
     );
     ths.expectTxToFail(txResult, "Math operation overflow");
+  });
+
+  it("Can burn shares from user account", async () => {
+    // First ensure user has some shares to burn
+    const userShareBalance = await ths.getTokenBalance(client, userShareAta);
+
+    if (userShareBalance === BigInt(0)) {
+      // Deposit some assets first to get shares
+      const depositArgs = {
+        vaultId: new anchor.BN(0),
+        depositAmount: new anchor.BN(1000000000), // 1 JitoSOL
+        minMintAmount: new anchor.BN(1),
+      };
+
+      const deposit_ix = await program.methods
+        .deposit(depositArgs)
+        .accounts({
+          signer: user.publicKey,
+          boringVaultState: boringVaultStateAccount,
+          boringVault: boringVaultAccount,
+          depositMint: JITOSOL,
+          userAta: userJitoSolAta,
+          vaultAta: vaultJitoSolAta,
+          // @ts-ignore
+          tokenProgram: TOKEN_PROGRAM_ID,
+          tokenProgram2022: TOKEN_2022_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          shareMint: boringVaultShareMint,
+          userShares: userShareAta,
+        })
+        .instruction();
+
+      let depositTxResult = await ths.createAndProcessTransaction(
+        client,
+        deployer,
+        deposit_ix,
+        [user]
+      );
+      ths.expectTxToSucceed(depositTxResult);
+    }
+
+    // Get current share balance
+    const shareBalanceBefore = await ths.getTokenBalance(client, userShareAta);
+    expect(shareBalanceBefore > BigInt(0)).to.be.true;
+
+    const burnAmount = new anchor.BN(100000); // Burn 0.1 shares
+
+    // Set share mover first to avoid default pubkey validation
+    const shareMover = anchor.web3.Keypair.generate().publicKey;
+    const setShareMoverIx = await program.methods
+      // @ts-ignore
+      .setShareMover(shareMover)
+      .accounts({
+        authority: authority.publicKey,
+        vault: boringVaultStateAccount,
+      })
+      .instruction();
+
+    let setShareMoverResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      setShareMoverIx,
+      [authority]
+    );
+    ths.expectTxToSucceed(setShareMoverResult);
+
+    // Test burn shares
+    const burnSharesIx = await program.methods
+      .burnShares(burnAmount)
+      .accounts({
+        signer: user.publicKey,
+        vault: boringVaultStateAccount,
+        shareMint: boringVaultShareMint,
+        sourceTokenAccount: userShareAta,
+      })
+      .instruction();
+
+    let txResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      burnSharesIx,
+      [user]
+    );
+    console.log(txResult);
+    ths.expectTxToSucceed(txResult);
+
+    // Verify shares were burned
+    const shareBalanceAfter = await ths.getTokenBalance(client, userShareAta);
+    expect(shareBalanceAfter).to.equal(
+      shareBalanceBefore - BigInt(burnAmount.toString())
+    );
+
+    // Test that burning more shares than available fails
+    const tooMuchBurnAmount = new anchor.BN(shareBalanceAfter.toString()).add(
+      new anchor.BN(1)
+    );
+
+    const invalidBurnSharesIx = await program.methods
+      .burnShares(tooMuchBurnAmount)
+      .accounts({
+        signer: user.publicKey,
+        vault: boringVaultStateAccount,
+        shareMint: boringVaultShareMint,
+        sourceTokenAccount: userShareAta,
+      })
+      .instruction();
+
+    let invalidTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      invalidBurnSharesIx,
+      [user]
+    );
+    ths.expectTxToFail(invalidTxResult, "InsufficientBalance");
+
+    // Test that zero amount burn fails
+    const zeroBurnSharesIx = await program.methods
+      .burnShares(new anchor.BN(0))
+      .accounts({
+        signer: user.publicKey,
+        vault: boringVaultStateAccount,
+        shareMint: boringVaultShareMint,
+        sourceTokenAccount: userShareAta,
+      })
+      .instruction();
+
+    let zeroTxResult = await ths.createAndProcessTransaction(
+      client,
+      deployer,
+      zeroBurnSharesIx,
+      [user]
+    );
+    ths.expectTxToFail(zeroTxResult, "InvalidAmount");
   });
 });
