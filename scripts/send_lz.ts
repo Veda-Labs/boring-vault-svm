@@ -113,9 +113,7 @@ async function getSendLibraryProgram(
 
 (async () => {
   // Provider ---------------------------------------------------------------
-  const conn = new Connection("https://solana-mainnet.g.alchemy.com/v2/NhUn5DbOXuljZZ2xciqQek0-NhYJnsD6", {
-    commitment: "confirmed",
-  });
+  const conn = new Connection(process.env.ANCHOR_PROVIDER_URL!, { commitment: "confirmed"});
   const payer = loadKeypair(process.env.ANCHOR_WALLET!);
   const provider = new AnchorProvider(conn, new Wallet(payer), {
     commitment: "confirmed",
