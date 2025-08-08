@@ -368,9 +368,7 @@ fn read_oracle(
                 .get_price_no_older_than(&Clock::get()?, max_age_sec, &feed_id)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
 
-            if price_data.price <= 0 {
-                return Err(error!(BoringErrorCode::InvalidPriceFeed));
-            }
+            require!(price_data.price > 0, BoringErrorCode::InvalidPriceFeed);
 
             // Verify confidence is within acceptable bounds
             let max_allowed_conf = (price_data.price as u64)
@@ -379,9 +377,10 @@ fn read_oracle(
                 .checked_div(BPS_SCALE as u64)
                 .ok_or(error!(BoringErrorCode::InvalidPriceFeed))?;
 
-            if price_data.conf as u64 > max_allowed_conf {
-                return Err(error!(BoringErrorCode::InvalidPriceFeed));
-            }
+            require!(
+                price_data.conf as u64 <= max_allowed_conf,
+                BoringErrorCode::InvalidPriceFeed
+            );
 
             // Convert to decimal using pure math function
             let decimal_price = math::pyth_price_to_decimal(price_data.price, price_data.exponent)?;
