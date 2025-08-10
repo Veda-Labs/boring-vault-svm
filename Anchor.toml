@@ -16,10 +16,11 @@ state_assert = "72mmDHDfvH1hGgo4thWjhpQRASkebRW1fjFMRzE5zimG"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "mainnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "RUST_LOG=error yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/*.ts"
-send_lz = "RUST_LOG=error yarn run ts-mocha -p ./tsconfig.json -t 1000000 scripts/send_lz.ts"
-receive_lz = "RUST_LOG=error yarn run ts-mocha -p ./tsconfig.json -t 1000000 scripts/receive_lz.ts"
+send_lz = "RUST_LOG=error yarn ts-node -T scripts/send_lz.ts"
+receive_lz = "RUST_LOG=error yarn ts-node -T scripts/receive_lz.ts"
+extend_share_mover = "RUST_LOG=error yarn ts-node -T scripts/extend_share_mover.ts"

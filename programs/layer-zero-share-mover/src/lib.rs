@@ -94,4 +94,11 @@ pub mod layer_zero_share_mover {
     pub fn accept_authority(ctx: Context<AcceptAuthority>) -> Result<()> {
         processor::accept_authority(ctx)
     }
+
+    /// Temporary instruction to extend the ShareMover account by 32 bytes so
+    /// we can test a future state layout change. To be removed once the new
+    /// layout is live.
+    pub fn extend_share_mover(ctx: Context<ExtendShareMover>, mint: Pubkey) -> Result<()> {
+        processor::extend_share_mover(ctx, mint)
+    }
 }
