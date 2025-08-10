@@ -235,10 +235,8 @@ pub fn lz_receive<'info>(
         BoringErrorCode::InvalidMessageRecipient
     );
 
-    ctx.accounts
-        .share_mover
-        .peer_chain
-        .validate(&decoded_msg.recipient)?;
+    // Inbound packets are already authenticated by the Endpoint & ULN.
+    // No additional peer-chain validation needed here.
 
     // Now that all checks have passed, safely update the inbound rate-limit state
     let clock = Clock::get()?;
