@@ -1,7 +1,6 @@
 pub mod accept_authority;
 pub mod close_peer;
 pub mod deploy;
-pub mod extend_share_mover;
 pub mod initialize;
 pub mod lz_receive;
 pub mod lz_receive_types;
@@ -17,7 +16,6 @@ pub mod transfer_authority;
 pub use accept_authority::*;
 pub use close_peer::*;
 pub use deploy::*;
-pub use extend_share_mover::*;
 pub use initialize::*;
 pub use lz_receive::*;
 pub use lz_receive_types::*;
