@@ -187,7 +187,7 @@ describe("boring-vault-svm", () => {
   before(async () => {
     connection = new Connection(
       process.env.ALCHEMY_API_KEY
-        ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+        ? process.env.ALCHEMY_API_KEY
         : "https://api.mainnet-beta.solana.com"
     );
 
