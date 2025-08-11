@@ -45,7 +45,7 @@ impl ShareBridgeMessage {
         if recipient.iter().all(|&b| b == 0) {
             return Err(ShareBridgeCodecError::InvalidRecipient.into());
         }
-        if amount <= 0 {
+        if amount == 0 {
             return Err(ShareBridgeCodecError::InvalidMessage.into());
         }
         Ok(Self { recipient, amount })
