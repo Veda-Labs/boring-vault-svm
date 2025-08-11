@@ -157,6 +157,7 @@ impl<'info> Send<'info> {
     }
 
     fn execute_layerzero_send(
+        share_mover: &AccountInfo<'info>,
         accounts: &[AccountInfo<'info>],
         share_mover_data: &ShareMoverData,
         signer_seeds: &[&[u8]],
@@ -183,6 +184,7 @@ impl<'info> Send<'info> {
         send_data.extend_from_slice(&SEND_DISCRIMINATOR);
         lz_send_params.serialize(&mut send_data)?;
 
+        // NOTE: After top level accounts, this is what we expect in the remaining accounts:
         // if native fee, cpi (unl::send) to dvn accounts:
         // [0] signer (endpoint)
         // [1] unl
@@ -209,7 +211,13 @@ impl<'info> Send<'info> {
         // and we should trust LZ contracts, frontend has responsiblity to pass the correct state
         // on the other hand, paranoia
 
-        let mut account_metas = vec![];
+        // NOTE: We need to add share_mover here instead of passing it due to solana tx size constraints,
+        // if share_mover is added as a signer to remaining accounts, we are over the 1232kb limit.
+        // see send_lz.ts for more details on how to pass in accounts
+        let mut account_metas = vec![
+            AccountMeta::new_readonly(share_mover_data.key, true), // sender (signer)
+        ];
+
         for account in accounts.iter() {
             account_metas.push(AccountMeta {
                 pubkey: account.key(),
@@ -224,7 +232,10 @@ impl<'info> Send<'info> {
             data: send_data,
         };
 
-        invoke_signed(&send_instruction, accounts, &[signer_seeds])?;
+        let mut account_infos = vec![share_mover.clone()];
+        account_infos.extend_from_slice(accounts);
+
+        invoke_signed(&send_instruction, &account_infos, &[signer_seeds])?;
 
         Ok(())
     }
@@ -259,6 +270,7 @@ pub fn send<'info>(
     )?;
 
     let share_mover_data = ShareMoverData {
+        key: ctx.accounts.share_mover.key(),
         bump: ctx.accounts.share_mover.bump,
         mint: ctx.accounts.share_mover.mint,
         endpoint_program: ctx.accounts.share_mover.endpoint_program,
@@ -288,6 +300,7 @@ pub fn send<'info>(
     let encoded_message = encode_message(&message);
 
     Send::execute_layerzero_send(
+        &ctx.accounts.share_mover.to_account_info(),
         ctx.remaining_accounts,
         &share_mover_data,
         share_mover_seeds,
@@ -305,6 +318,7 @@ pub fn send<'info>(
 
 #[derive(Clone, Copy)]
 struct ShareMoverData {
+    key: Pubkey,
     bump: u8,
     mint: Pubkey,
     endpoint_program: Pubkey,
