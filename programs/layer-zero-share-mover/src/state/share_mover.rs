@@ -56,24 +56,6 @@ impl PeerChain {
     }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
-pub struct OldShareMover {
-    pub admin: Pubkey,
-    pub endpoint_program: Pubkey,
-    pub executor_program: Pubkey, // This field was removed
-    pub boring_vault_program: Pubkey,
-    pub vault: Pubkey,
-    pub mint: Pubkey,
-    pub is_paused: bool,
-    pub peer_decimals: u8,
-    pub bump: u8,
-    pub allow_from: bool,
-    pub allow_to: bool,
-    pub outbound_rate_limit: RateLimitState,
-    pub inbound_rate_limit: RateLimitState,
-    pub peer_chain: PeerChain,
-}
-
 #[derive(InitSpace)]
 #[account]
 pub struct ShareMover {
