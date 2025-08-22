@@ -68,7 +68,7 @@ pub fn preview_fee(ctx: &Context<PreviewFee>, params: PreviewFeeParams) -> Resul
     let lz_quote_params = LzQuoteParams {
         sender: ctx.accounts.share_mover.key(),
         dst_eid: params.dst_eid,
-        receiver: params.recipient,
+        receiver: ctx.accounts.peer.peer_address,
         message: encoded_message,
         options: ctx
             .accounts
