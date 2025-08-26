@@ -1,8 +1,15 @@
+use std::str::FromStr as _;
+
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::get_associated_token_address_with_program_id, token_2022::ID as TOKEN_2022_ID,
+    associated_token::{
+        get_associated_token_address_with_program_id, ID as ASSOCIATED_TOKEN_PROGRAM_ID,
+    },
+    token_2022::ID as TOKEN_2022_ID,
 };
 use common::message::decode_message;
+
+use anchor_lang::solana_program::system_program::ID as SYSTEM_PROGRAM_ID;
 
 use crate::{
     constants::{PEER_SEED, SHARE_MOVER_SEED},
@@ -43,7 +50,21 @@ pub fn lz_receive_types(
 
     let peer = Pubkey::find_program_address(&peer_seeds, &crate::ID).0;
 
+    let decoded_msg = decode_message(&params.message)?;
+
+    let recipient_ata = get_associated_token_address_with_program_id(
+        &Pubkey::from(decoded_msg.recipient),
+        &mint,
+        // Shares are always a 2022 token
+        &TOKEN_2022_ID,
+    );
+
     let mut accounts = vec![
+        LzAccount {
+            pubkey: Pubkey::from_str("HgsxLyn8175xEwRffPRN3DeARE2EVcEeXENr12HpadL6").unwrap(),
+            is_signer: true,
+            is_writable: true,
+        },
         LzAccount {
             pubkey: share_mover_key,
             is_signer: false,
@@ -51,6 +72,36 @@ pub fn lz_receive_types(
         },
         LzAccount {
             pubkey: peer,
+            is_signer: false,
+            is_writable: false,
+        },
+        LzAccount {
+            pubkey: mint,
+            is_signer: false,
+            is_writable: true,
+        },
+        LzAccount {
+            pubkey: Pubkey::from(decoded_msg.recipient),
+            is_signer: false,
+            is_writable: true,
+        },
+        LzAccount {
+            pubkey: recipient_ata,
+            is_signer: false,
+            is_writable: true,
+        },
+        LzAccount {
+            pubkey: SYSTEM_PROGRAM_ID,
+            is_signer: false,
+            is_writable: false,
+        },
+        LzAccount {
+            pubkey: TOKEN_2022_ID,
+            is_signer: false,
+            is_writable: false,
+        },
+        LzAccount {
+            pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
             is_signer: false,
             is_writable: false,
         },
@@ -65,15 +116,6 @@ pub fn lz_receive_types(
     );
     accounts.extend(accounts_for_clear);
 
-    let decoded_msg = decode_message(&params.message)?;
-
-    let recipient_ata = get_associated_token_address_with_program_id(
-        &Pubkey::from(decoded_msg.recipient),
-        &mint,
-        // Shares are always a 2022 token
-        &TOKEN_2022_ID,
-    );
-
     accounts.extend(vec![
         LzAccount {
             pubkey: share_mover_key,
@@ -82,21 +124,6 @@ pub fn lz_receive_types(
         },
         LzAccount {
             pubkey: share_mover.vault,
-            is_signer: false,
-            is_writable: false,
-        },
-        LzAccount {
-            pubkey: mint,
-            is_signer: false,
-            is_writable: true,
-        },
-        LzAccount {
-            pubkey: recipient_ata,
-            is_signer: false,
-            is_writable: true,
-        },
-        LzAccount {
-            pubkey: TOKEN_2022_ID,
             is_signer: false,
             is_writable: false,
         },

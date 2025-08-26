@@ -332,7 +332,10 @@ fn read_oracle(
     max_staleness: u64,
 ) -> Result<Decimal> {
     match oracle_source {
-        OracleSource::SwitchboardV2 { feed_address, min_samples } => {
+        OracleSource::SwitchboardV2 {
+            feed_address,
+            min_samples,
+        } => {
             // Validate that the provided account matches the expected feed address
             require!(
                 price_feed.key() == feed_address,
@@ -348,7 +351,10 @@ fn read_oracle(
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
             Ok(price)
         }
-        OracleSource::PythV2 { feed_id, max_conf_width_bps } => {
+        OracleSource::PythV2 {
+            feed_id,
+            max_conf_width_bps,
+        } => {
             // Decode Pyth Pull Oracle price update account
             let price_update_account =
                 PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
