@@ -15,6 +15,7 @@ use anchor_lang::{
 };
 use anchor_spl::token_2022::spl_token_2022::ID as TOKEN_2022_PROGRAM_ID;
 use anchor_spl::token_interface::Mint;
+use boring_vault_svm::BoringVault;
 use common::{pda::get_vault_state, rate_limit::RateLimitState};
 use std::mem::size_of;
 
@@ -73,6 +74,14 @@ pub struct Deploy<'info> {
     #[account(owner = TOKEN_2022_PROGRAM_ID)]
     pub mint: InterfaceAccount<'info, Mint>,
 
+    #[account(
+        mut,
+        address = get_vault_state(params.vault_id, &params.boring_vault_program),
+        owner = params.boring_vault_program,
+        constraint = boring_vault_state.config.share_mint == mint.key() @ BoringErrorCode::InvalidShareMint,
+    )]
+    pub boring_vault_state: Account<'info, BoringVault>,
+
     /// CHECK: oapp registry is initialized in LZ CPI call
     #[account(mut)]
     pub oapp_registry: UncheckedAccount<'info>,
@@ -103,7 +112,7 @@ pub fn deploy(ctx: Context<Deploy>, params: DeployParams) -> Result<()> {
     share_mover.endpoint_program = endpoint_program;
     share_mover.bump = ctx.bumps.share_mover;
 
-    share_mover.vault = get_vault_state(params.vault_id, &boring_vault_program);
+    share_mover.vault = ctx.accounts.boring_vault_state.key();
 
     // eg if they want 1000 tokens per hour, they set limit=1000, window=3600
     share_mover.outbound_rate_limit = RateLimitState::new(
