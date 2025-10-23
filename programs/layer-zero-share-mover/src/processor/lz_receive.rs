@@ -12,6 +12,9 @@ use anchor_lang::{
     prelude::*,
     solana_program::{instruction::Instruction, program::invoke_signed},
 };
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token_2022::Token2022;
+use anchor_spl::token_interface::{Mint, TokenAccount};
 use anchor_spl::{
     associated_token::get_associated_token_address_with_program_id,
     token_2022::spl_token_2022::ID as TOKEN_2022_PROGRAM_ID,
@@ -32,11 +35,8 @@ pub const CLEAR_MIN_ACCOUNTS_LEN: usize = 7;
 // Accounts slice forwarded to `execute_mint` (boring-vault CPI):
 // [0] share_mover          – signer PDA (read-only is sufficient)
 // [1] vault_state         – vault PDA holding config & balances
-// [2] share_mint          – mutable SPL Token-2022 mint of shares
-// [3] recipient_ata       – mutable ATA that will receive the minted shares
-// [4] token_program_2022  – SPL Token-2022 program id
-// [5] boring_vault_program – read-only, on-chain boring-vault program id
-pub const MINT_ACCOUNTS_LEN: usize = 6;
+// [2] boring_vault_program – read-only, on-chain boring-vault program id
+pub const MINT_ACCOUNTS_LEN: usize = 3;
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct ClearParams {
@@ -51,6 +51,12 @@ pub struct ClearParams {
 #[derive(Accounts)]
 #[instruction(params: LzReceiveParams)]
 pub struct LzReceive<'info> {
+    // TODO: constrain share_mover.executor == executor, after testing
+    // add executor to share_mover data, and add it to the lz_receive_types function
+    // add set_executor_ix
+    #[account(mut)]
+    pub executor: Signer<'info>,
+
     #[account(
         mut,
         seeds = [SHARE_MOVER_SEED, share_mover.mint.as_ref()],
@@ -65,6 +71,33 @@ pub struct LzReceive<'info> {
         bump
     )]
     pub peer: Account<'info, PeerConfig>,
+
+    #[account(
+        mut,
+        constraint = share_mint.key() == share_mover.mint @ BoringErrorCode::InvalidShareMint,
+    )]
+    pub share_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        constraint = recipient.key()
+            == Pubkey::from(decode_message(&params.message)?.recipient)
+            @ BoringErrorCode::InvalidMessageRecipient,
+    )]
+    /// CHECK: Only the pubkey is used to derive the recipient ATA
+    pub recipient: UncheckedAccount<'info>,
+
+    #[account(
+        init_if_needed,
+        payer = executor,
+        associated_token::mint = share_mint,
+        associated_token::authority = recipient,
+        associated_token::token_program = token_program_2022,
+    )]
+    pub recipient_ata: InterfaceAccount<'info, TokenAccount>,
+
+    pub system_program: Program<'info, System>,
+    pub token_program_2022: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
 impl<'info> LzReceive<'info> {
@@ -119,6 +152,9 @@ impl<'info> LzReceive<'info> {
 
     fn execute_mint(
         accounts: &'info [AccountInfo<'info>],
+        share_mint_account: &AccountInfo<'info>,
+        recipient_ata_account: &AccountInfo<'info>,
+        token_program_2022_account: &AccountInfo<'info>,
         share_mover_data: &ShareMoverData,
         signer_seeds: &[&[u8]],
         recipient: &Pubkey,
@@ -136,13 +172,18 @@ impl<'info> LzReceive<'info> {
             BoringErrorCode::InvalidMintAccounts
         );
         require_eq!(
-            accounts[2].key(),
+            accounts[1].key(),
+            share_mover_data.vault,
+            BoringErrorCode::InvalidMintAccounts
+        );
+        require_eq!(
+            share_mint_account.key(),
             share_mover_data.mint,
             BoringErrorCode::InvalidMintAccounts
         );
 
         require_eq!(
-            accounts[3].key(),
+            recipient_ata_account.key(),
             get_associated_token_address_with_program_id(
                 recipient,
                 &share_mover_data.mint,
@@ -152,12 +193,12 @@ impl<'info> LzReceive<'info> {
         );
 
         require_eq!(
-            accounts[4].key(),
+            token_program_2022_account.key(),
             TOKEN_2022_PROGRAM_ID,
             BoringErrorCode::InvalidMintAccounts
         );
         require_eq!(
-            accounts[5].key(),
+            accounts[2].key(),
             share_mover_data.boring_vault_program,
             BoringErrorCode::InvalidMintAccounts
         );
@@ -169,15 +210,25 @@ impl<'info> LzReceive<'info> {
             accounts: vec![
                 AccountMeta::new_readonly(accounts[0].key(), true), // share_mover (signer, read-only suffices)
                 AccountMeta::new_readonly(accounts[1].key(), false), // vault state
-                AccountMeta::new(accounts[2].key(), false),         // share_mint
-                AccountMeta::new(accounts[3].key(), false),         // recipient_ata
-                AccountMeta::new_readonly(accounts[4].key(), false), // token_program
-                AccountMeta::new_readonly(accounts[5].key(), false), // boring_vault_program
+                AccountMeta::new(share_mint_account.key(), false),  // share_mint
+                AccountMeta::new(recipient_ata_account.key(), false), // recipient_ata
+                AccountMeta::new_readonly(token_program_2022_account.key(), false), // token_program
+                AccountMeta::new_readonly(accounts[2].key(), false), // boring_vault_program
             ],
             data: mint_data,
         };
 
-        invoke_signed(&mint_ix, accounts, &[signer_seeds])?;
+        // Order must match metas above
+        let mint_infos = [
+            accounts[0].clone(),
+            accounts[1].clone(),
+            share_mint_account.clone(),
+            recipient_ata_account.clone(),
+            token_program_2022_account.clone(),
+            accounts[2].clone(),
+        ];
+
+        invoke_signed(&mint_ix, &mint_infos, &[signer_seeds])?;
 
         Ok(())
     }
@@ -250,6 +301,7 @@ pub fn lz_receive<'info>(
         mint: ctx.accounts.share_mover.mint,
         endpoint_program: ctx.accounts.share_mover.endpoint_program,
         boring_vault_program: ctx.accounts.share_mover.boring_vault_program,
+        vault: ctx.accounts.share_mover.vault,
     };
 
     // ShareMover PDA seeds
@@ -266,6 +318,9 @@ pub fn lz_receive<'info>(
 
     LzReceive::execute_mint(
         mint_accounts,
+        &ctx.accounts.share_mint.to_account_info(),
+        &ctx.accounts.recipient_ata.to_account_info(),
+        &ctx.accounts.token_program_2022.to_account_info(),
         &share_mover_data,
         share_mover_seeds,
         &Pubkey::from(decoded_msg.recipient),
@@ -282,4 +337,5 @@ struct ShareMoverData {
     mint: Pubkey,
     endpoint_program: Pubkey,
     boring_vault_program: Pubkey,
+    vault: Pubkey,
 }

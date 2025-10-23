@@ -112,12 +112,12 @@ pub struct AssetData {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq)]
 pub enum OracleSource {
     /// Switchboard on-demand PullFeed with feed address and minimum samples requirement
-    SwitchboardV2 { 
+    SwitchboardV2 {
         feed_address: Pubkey,
-        min_samples: u32 
+        min_samples: u32,
     },
     /// Pyth Pull Oracle with feed ID and confidence validation
-    PythV2 { 
+    PythV2 {
         feed_id: [u8; 32],
         /// Maximum allowed confidence as basis points of price (e.g., 500 = 5%)
         max_conf_width_bps: u16,
@@ -126,9 +126,9 @@ pub enum OracleSource {
 
 impl Default for OracleSource {
     fn default() -> Self {
-        OracleSource::PythV2 { 
+        OracleSource::PythV2 {
             feed_id: [0; 32],
-            max_conf_width_bps: 500  // 5% default confidence width
+            max_conf_width_bps: 500, // 5% default confidence width
         }
     }
 }

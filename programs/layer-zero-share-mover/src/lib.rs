@@ -83,6 +83,10 @@ pub mod layer_zero_share_mover {
         processor::set_endpoint_program(ctx, endpoint)
     }
 
+    pub fn set_executor_program(ctx: Context<SetExecutorProgram>, executor: Pubkey) -> Result<()> {
+        processor::set_executor_program(ctx, executor)
+    }
+
     pub fn set_allow(ctx: Context<SetAllow>, allow_from: bool, allow_to: bool) -> Result<()> {
         processor::set_allow(ctx, allow_from, allow_to)
     }
