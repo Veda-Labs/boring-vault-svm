@@ -1,5 +1,3 @@
-use std::str::FromStr as _;
-
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::{
@@ -61,7 +59,7 @@ pub fn lz_receive_types(
 
     let mut accounts = vec![
         LzAccount {
-            pubkey: Pubkey::from_str("HgsxLyn8175xEwRffPRN3DeARE2EVcEeXENr12HpadL6").unwrap(),
+            pubkey: share_mover.executor_program,
             is_signer: true,
             is_writable: true,
         },
