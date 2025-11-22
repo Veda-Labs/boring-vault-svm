@@ -26,5 +26,6 @@
   "resolutions": {
     "@solana/web3.js": "1.98.2",
     "rpc-websockets": "9.0.4"
-  }
+  },
+  "version": "0.0.0"
 }
