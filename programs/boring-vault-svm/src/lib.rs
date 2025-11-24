@@ -10,10 +10,7 @@
 
 use anchor_lang::{
     prelude::*,
-    solana_program::{
-        program::invoke_signed,
-        rent::{DEFAULT_EXEMPTION_THRESHOLD, DEFAULT_LAMPORTS_PER_BYTE_YEAR},
-    },
+    solana_program::program::invoke_signed,
     system_program,
 };
 use anchor_spl::{
@@ -25,6 +22,7 @@ use anchor_spl::{
     },
 };
 use rust_decimal::Decimal;
+
 use spl_token_metadata_interface::state::TokenMetadata;
 use spl_type_length_value::variable_len_pack::VariableLenPack;
 
@@ -196,8 +194,8 @@ pub mod boring_vault_svm {
         let data_len = 4 + token_metadata.get_packed_len()?;
 
         // Calculate lamports required for the additional metadata
-        let lamports =
-            data_len as u64 * DEFAULT_LAMPORTS_PER_BYTE_YEAR * DEFAULT_EXEMPTION_THRESHOLD as u64;
+        let rent = Rent::default();
+        let lamports = rent.minimum_balance(data_len);
 
         system_program::transfer(
             CpiContext::new(

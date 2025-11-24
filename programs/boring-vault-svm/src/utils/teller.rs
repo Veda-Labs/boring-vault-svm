@@ -344,8 +344,9 @@ fn read_oracle(
             let feed = PullFeedAccountData::parse(feed_account)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
 
+            let clock = Clock::get()?;
             let price = feed
-                .get_value(&Clock::get()?, max_staleness, min_samples, true)
+                .get_value(clock.unix_timestamp as u64, max_staleness, min_samples, true)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
             Ok(price)
         }
