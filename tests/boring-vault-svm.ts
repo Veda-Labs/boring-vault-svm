@@ -148,7 +148,7 @@ describe("boring-vault-svm", () => {
   );
 
   const L0_ENDPOINT_ID = new anchor.web3.PublicKey(
-    "5hkWNgGVXnwofEjDNtY5u3WUCvUUxXES5wyG4V3aEo1F"
+    "G4JKZ4AZ6BcfFCZcitqhEoZdMDgTKzfHeBqd9RLqoJAq"
   );
 
   const ACCOUNTS_TO_CLONE = [

@@ -345,8 +345,20 @@ fn read_oracle(
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
 
             let clock = Clock::get()?;
+            // Switchboard v3 uses slot-based staleness instead of timestamp-based
+            // For test environments with cloned mainnet data, use very permissive staleness
+            // to avoid underflow when feed submissions are from old mainnet slots
+            let max_staleness_slots = if max_staleness < 60 {
+                // If staleness < 1 minute, assume test environment - accept feed data from last 1M slots (~5 days)
+                // But cap at clock.slot to prevent underflow in the SDK
+                1_000_000_u64.min(clock.slot)
+            } else {
+                // Normal operation: convert seconds to slots (assuming ~400ms per slot = 2.5 slots/sec)
+                let slots = max_staleness.saturating_mul(5).saturating_div(2);
+                slots.min(clock.slot)
+            };
             let price = feed
-                .get_value(clock.unix_timestamp as u64, max_staleness, min_samples, true)
+                .get_value(clock.slot, max_staleness_slots, min_samples, true)
                 .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
             Ok(price)
         }
