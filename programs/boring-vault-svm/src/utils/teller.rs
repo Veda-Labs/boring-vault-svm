@@ -9,6 +9,7 @@
 use crate::OracleSource; // enum declared in state.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint};
+use borsh::BorshDeserialize;
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 use rust_decimal::Decimal;
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
@@ -351,7 +352,7 @@ fn read_oracle(
         OracleSource::PythV2 { feed_id, max_conf_width_bps } => {
             // Decode Pyth Pull Oracle price update account
             let price_update_account =
-                PriceUpdateV2::try_deserialize(&mut price_feed.data.borrow().as_ref())
+                PriceUpdateV2::deserialize(&mut price_feed.data.borrow().as_ref())
                     .map_err(|_| error!(BoringErrorCode::InvalidPriceFeed))?;
 
             // Validate that the provided account contains the expected feed_id

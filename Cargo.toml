@@ -3,10 +3,10 @@ members = ["programs/*"]
 resolver = "2"
 
 [workspace.dependencies]
-anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
-anchor-spl = "0.31.1"
+anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
+anchor-spl = "0.32.1"
 rust_decimal = "1.36.0"
-common = { path = "crates/common"}
+common = { path = "crates/common" }
 
 [profile.release]
 overflow-checks = true
