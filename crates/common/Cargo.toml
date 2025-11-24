@@ -1,11 +1,14 @@
 [package]
 name = "common"
+description = "Shared utilities, error types, and constants used across the Boring Vault SVM project. Includes helper functions for token transfers, PDA derivation, and math operations."
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 anchor-lang.workspace = true
-boring-vault-svm = { path = "../../programs/boring-vault-svm", features = ["no-entrypoint"] }
+boring-vault-svm = { path = "../../programs/boring-vault-svm", features = [
+    "no-entrypoint",
+] }
 
 [dev-dependencies]
 arbitrary = { version = "1.3", features = ["derive"] }

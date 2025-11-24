@@ -1,7 +1,7 @@
 [package]
 name = "boring-onchain-queue"
 version = "0.1.0"
-description = "Created with Anchor"
+description = "Manages the asynchronous withdrawal process for Boring Vault. Handles withdrawal requests, maturity periods, and the fulfillment of withdrawals by burning shares and returning assets."
 edition = "2021"
 
 [lib]

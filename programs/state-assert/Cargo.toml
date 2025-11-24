@@ -1,7 +1,7 @@
 [package]
 name = "state-assert"
 version = "0.1.0"
-description = "Created with Anchor"
+description = "A utility program for asserting on-chain state conditions during transaction execution. Useful for verifying account data, balances, and other properties in atomic transactions."
 edition = "2021"
 
 [lib]
