@@ -1,8 +1,11 @@
 {
   "license": "ISC",
   "scripts": {
+    "deploy:vault:mainnet": "TS_NODE_TRANSPILE_ONLY=1 ts-node --project ./tsconfig.json scripts/deploy_mainnet_vault.ts",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
-    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
+    "smoke:queue": "TS_NODE_TRANSPILE_ONLY=1 ts-node --project ./tsconfig.json scripts/queue_smoke_test.ts",
+    "smoke:vault": "TS_NODE_TRANSPILE_ONLY=1 ts-node --project ./tsconfig.json scripts/vault_smoke_test.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.31.1",

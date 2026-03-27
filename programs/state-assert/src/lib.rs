@@ -1,7 +1,7 @@
 #![allow(unexpected_cfgs)]
 use anchor_lang::prelude::*;
 
-declare_id!("72mmDHDfvH1hGgo4thWjhpQRASkebRW1fjFMRzE5zimG");
+declare_id!("3Zpw9BRjzRfqQ1g74kc5CcCcAXUxVoB2A3oS6VYuzVAr");
 
 const MAX_STACK_SIZE: u8 = 16;
 
