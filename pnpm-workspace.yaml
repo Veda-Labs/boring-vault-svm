@@ -1,0 +1,11 @@
+allowBuilds:
+  bigint-buffer: false
+  bufferutil: false
+  es5-ext: false
+  keccak: false
+  protobufjs: false
+  secp256k1: false
+  utf-8-validate: false
+overrides:
+  '@solana/web3.js': 1.98.2
+  rpc-websockets: 9.0.4

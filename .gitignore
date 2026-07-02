@@ -7,3 +7,4 @@ test-ledger
 .yarn
 .env
 docker-target/
+deployments/
